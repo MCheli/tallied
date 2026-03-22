@@ -52,7 +52,7 @@ const router = createRouter({
     {
       path: '/admin',
       name: 'admin',
-      component: () => import('../views/AdminView.vue'),
+      component: () => import('../views/DatabaseView.vue'),
     },
     {
       path: '/income',

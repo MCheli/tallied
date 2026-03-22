@@ -82,14 +82,23 @@ const schemaLoading = ref(false)
 const schemaError = ref<string | null>(null)
 
 const selectedTable = ref<string | null>(null)
-const centerMode = ref<'schema' | 'data'>('schema')
+const centerMode = ref<'schema' | 'data' | 'query' | 'access'>('schema')
+
+// Zoom & fullscreen
+const zoomLevel = ref(1)
+const isFullscreen = ref(false)
+const erdScrollContainer = ref<HTMLDivElement | null>(null)
+
+function zoomIn() { zoomLevel.value = Math.min(2, zoomLevel.value + 0.15) }
+function zoomOut() { zoomLevel.value = Math.max(0.4, zoomLevel.value - 0.15) }
+function zoomReset() { zoomLevel.value = 1 }
+function toggleFullscreen() { isFullscreen.value = !isFullscreen.value }
 
 const searchQuery = ref('')
 const sqlText = ref('')
 const sqlRunning = ref(false)
 const sqlError = ref<string | null>(null)
 const sqlResult = ref<QueryResponse | null>(null)
-const sqlPanelOpen = ref(true)
 
 const previewData = ref<PreviewResponse | null>(null)
 const previewLoading = ref(false)
@@ -97,7 +106,6 @@ const previewError = ref<string | null>(null)
 const previewOffset = ref(0)
 const PAGE_SIZE = 20
 
-const erdContainer = ref<HTMLDivElement | null>(null)
 const isDark = computed(() => typeof document !== 'undefined' && isDark)
 
 // ── Category classification ───────────────────────────────────────────────────
@@ -395,8 +403,14 @@ async function runSql() {
 
 function selectTable(name: string) {
   selectedTable.value = name
-  centerMode.value = 'data'
-  loadPreview(name, 0)
+  centerMode.value = 'schema'
+  // Scroll ERD to center on the selected table
+  nextTick(() => {
+    const card = erdScrollContainer.value?.querySelector(`[data-table="${name}"]`)
+    if (card && erdScrollContainer.value) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+    }
+  })
 }
 
 function selectTableFromErd(name: string) {
@@ -476,9 +490,9 @@ function isColumnFk(tableName: string, colName: string): boolean {
 
 // Watch for table selection to scroll ERD card into view
 watch(selectedTable, () => {
-  if (centerMode.value === 'schema' && selectedTable.value && erdContainer.value) {
+  if (centerMode.value === 'schema' && selectedTable.value && erdScrollContainer.value) {
     nextTick(() => {
-      const card = erdContainer.value?.querySelector(`[data-table="${selectedTable.value}"]`)
+      const card = erdScrollContainer.value?.querySelector(`[data-table="${selectedTable.value}"]`)
       card?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
     })
   }
@@ -490,7 +504,10 @@ onMounted(loadSchema)
 </script>
 
 <template>
-  <div class="flex flex-col h-[calc(100vh-120px)] min-h-0">
+  <div :class="[
+    'flex flex-col min-h-0',
+    isFullscreen ? 'fixed inset-0 z-50 bg-white dark:bg-gray-950 p-4' : 'h-[calc(100vh-120px)]'
+  ]">
     <!-- Header -->
     <div class="flex items-center justify-between mb-4 flex-shrink-0">
       <div class="flex items-center gap-2">
@@ -501,6 +518,12 @@ onMounted(loadSchema)
         <span v-if="schema">{{ tables.length }} tables</span>
         <span v-if="schema">&middot;</span>
         <span v-if="schema">{{ edges.length }} relationships</span>
+        <button
+          v-if="isFullscreen"
+          @click="isFullscreen = false"
+          class="ml-2 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
+          title="Exit fullscreen"
+        >&times;</button>
       </div>
     </div>
 
@@ -616,6 +639,28 @@ onMounted(loadSchema)
               >
                 Data
               </button>
+              <button
+                @click="centerMode = 'query'"
+                :class="[
+                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                  centerMode === 'query'
+                    ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                ]"
+              >
+                Query
+              </button>
+              <button
+                @click="centerMode = 'access'"
+                :class="[
+                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                  centerMode === 'access'
+                    ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                ]"
+              >
+                Access
+              </button>
             </div>
             <div class="flex items-center gap-2">
               <span v-if="centerMode === 'data' && selectedTable" class="text-xs font-medium text-gray-700 dark:text-gray-300">
@@ -630,8 +675,15 @@ onMounted(loadSchema)
           </div>
 
           <!-- Schema mode (ERD) -->
-          <div v-if="centerMode === 'schema'" ref="erdContainer" class="flex-1 overflow-auto bg-gray-50 dark:bg-gray-950/50">
-            <svg :width="svgWidth" :height="svgHeight" class="block">
+          <div v-if="centerMode === 'schema'" ref="erdScrollContainer" class="flex-1 overflow-auto bg-gray-50 dark:bg-gray-950/50 relative">
+            <!-- Zoom controls -->
+            <div class="absolute top-2 right-2 flex gap-1 z-10">
+              <button @click="zoomIn" class="p-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 text-xs">+</button>
+              <button @click="zoomOut" class="p-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 text-xs">&minus;</button>
+              <button @click="zoomReset" class="p-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 text-xs">1:1</button>
+              <button @click="toggleFullscreen" class="p-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 text-xs">&#x26F6;</button>
+            </div>
+            <svg :width="svgWidth * zoomLevel" :height="svgHeight * zoomLevel" class="block" :style="{ transform: `scale(${zoomLevel})`, transformOrigin: 'top left' }">
               <!-- Relationship lines -->
               <g>
                 <path
@@ -639,9 +691,9 @@ onMounted(loadSchema)
                   :key="'edge-' + i"
                   :d="ep.path"
                   fill="none"
-                  stroke-width="1.5"
-                  :stroke="selectedTable && (ep.edge.from_table === selectedTable || ep.edge.to_table === selectedTable) ? '#6366f1' : '#9ca3af'"
-                  :stroke-opacity="selectedTable && (ep.edge.from_table === selectedTable || ep.edge.to_table === selectedTable) ? 0.8 : 0.3"
+                  stroke-width="2"
+                  :stroke="selectedTable && (ep.edge.from_table === selectedTable || ep.edge.to_table === selectedTable) ? '#6366f1' : '#94a3b8'"
+                  :stroke-opacity="selectedTable && (ep.edge.from_table === selectedTable || ep.edge.to_table === selectedTable) ? 0.9 : 0.5"
                   stroke-dasharray="4 3"
                   class="transition-all duration-200"
                 />
@@ -652,8 +704,8 @@ onMounted(loadSchema)
                   :cx="ep.path.split(' ').slice(-2)[0]"
                   :cy="ep.path.split(' ').slice(-1)[0]"
                   r="3"
-                  :fill="selectedTable && (ep.edge.from_table === selectedTable || ep.edge.to_table === selectedTable) ? '#6366f1' : '#9ca3af'"
-                  :fill-opacity="selectedTable && (ep.edge.from_table === selectedTable || ep.edge.to_table === selectedTable) ? 0.8 : 0.3"
+                  :fill="selectedTable && (ep.edge.from_table === selectedTable || ep.edge.to_table === selectedTable) ? '#6366f1' : '#94a3b8'"
+                  :fill-opacity="selectedTable && (ep.edge.from_table === selectedTable || ep.edge.to_table === selectedTable) ? 0.9 : 0.5"
                 />
               </g>
 
@@ -769,6 +821,100 @@ onMounted(loadSchema)
             </svg>
           </div>
 
+          <!-- Query mode (SQL Runner) -->
+          <div v-else-if="centerMode === 'query'" class="flex-1 flex flex-col min-h-0">
+            <!-- Input area -->
+            <div class="flex gap-2 px-3 py-2 flex-shrink-0">
+              <textarea
+                v-model="sqlText"
+                @keydown="handleSqlKeydown"
+                placeholder="SELECT * FROM accounts LIMIT 10"
+                rows="3"
+                class="flex-1 px-3 py-2 text-xs font-mono bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+              ></textarea>
+              <button
+                @click="runSql"
+                :disabled="sqlRunning || !sqlText.trim()"
+                :class="[
+                  'px-4 py-2 rounded-lg text-xs font-semibold transition-colors self-end',
+                  sqlRunning || !sqlText.trim()
+                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                ]"
+              >
+                <span v-if="sqlRunning" class="flex items-center gap-1.5">
+                  <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  Running...
+                </span>
+                <span v-else>Run</span>
+              </button>
+            </div>
+
+            <!-- SQL error -->
+            <div v-if="sqlError" class="px-3 py-2 flex-shrink-0">
+              <div class="px-3 py-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-600 dark:text-red-400 font-mono break-all">
+                {{ sqlError }}
+              </div>
+            </div>
+
+            <!-- SQL results -->
+            <div v-if="sqlResult" class="flex-1 overflow-auto min-h-0 px-3 pb-2">
+              <div class="flex items-center justify-between px-1 py-1 mb-1">
+                <span class="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
+                  {{ sqlResult.row_count }} row{{ sqlResult.row_count !== 1 ? 's' : '' }}
+                </span>
+              </div>
+              <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                <table class="w-full text-xs">
+                  <thead class="sticky top-0 z-10">
+                    <tr class="bg-gray-50 dark:bg-gray-800">
+                      <th
+                        v-for="col in sqlResult.columns"
+                        :key="col"
+                        class="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap border-b border-gray-200 dark:border-gray-700"
+                      >{{ col }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="(row, idx) in sqlResult.rows"
+                      :key="idx"
+                      class="border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50/60 dark:hover:bg-gray-800/30"
+                    >
+                      <td
+                        v-for="col in sqlResult.columns"
+                        :key="col"
+                        class="px-3 py-1.5 text-gray-700 dark:text-gray-300 whitespace-nowrap max-w-[200px] truncate"
+                        :title="formatCellValue(row[col])"
+                      >{{ formatCellValue(row[col]) }}</td>
+                    </tr>
+                    <tr v-if="sqlResult.rows.length === 0">
+                      <td :colspan="sqlResult.columns.length" class="px-4 py-4 text-center text-gray-400 dark:text-gray-500">
+                        Query returned no rows
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Empty state -->
+            <div v-if="!sqlResult && !sqlError && !sqlRunning" class="flex-1 flex items-center justify-center">
+              <p class="text-xs text-gray-300 dark:text-gray-600">Press Cmd+Enter to run a query</p>
+            </div>
+          </div>
+
+          <!-- Access mode -->
+          <div v-else-if="centerMode === 'access'" class="flex-1 min-h-0">
+            <div class="flex items-center justify-center h-full">
+              <div class="text-center">
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Database Access Management</p>
+                <p class="text-xs text-gray-400">Create and manage database credentials for direct access via psql, Excel ODBC, or Tableau.</p>
+                <p class="text-xs text-gray-400 mt-2">Coming soon &mdash; requires PostgreSQL migration.</p>
+              </div>
+            </div>
+          </div>
+
           <!-- Data mode (Table Preview) -->
           <div v-else-if="centerMode === 'data'" class="flex-1 overflow-auto min-h-0">
             <!-- No table selected -->
@@ -880,114 +1026,6 @@ onMounted(loadSchema)
           </div>
         </div>
 
-        <!-- ═══ Bottom Panel: SQL Runner ═══ -->
-        <div :class="[
-          'flex-shrink-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden transition-all duration-200',
-          sqlPanelOpen ? 'h-[300px]' : 'h-10'
-        ]">
-          <!-- Header -->
-          <div
-            @click="sqlPanelOpen = !sqlPanelOpen"
-            class="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors flex-shrink-0"
-          >
-            <div class="flex items-center gap-1.5">
-              <span class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">SQL Runner</span>
-              <InfoTooltip text="<strong>SQL Runner</strong><br>Execute raw SQL queries against the database. Results limited to 100 rows. Press <code>Cmd+Enter</code> or <code>Ctrl+Enter</code> to run." />
-            </div>
-            <div class="flex items-center gap-2">
-              <span v-if="sqlResult" class="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
-                {{ sqlResult.row_count }} row{{ sqlResult.row_count !== 1 ? 's' : '' }}
-              </span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                class="w-4 h-4 text-gray-400 dark:text-gray-500 transition-transform duration-200"
-                :style="{ transform: sqlPanelOpen ? 'rotate(0deg)' : 'rotate(180deg)' }"
-              >
-                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-              </svg>
-            </div>
-          </div>
-
-          <!-- SQL content -->
-          <div v-if="sqlPanelOpen" class="flex flex-col h-[calc(100%-40px)]">
-            <!-- Input area -->
-            <div class="flex gap-2 px-3 py-2 flex-shrink-0">
-              <textarea
-                v-model="sqlText"
-                @keydown="handleSqlKeydown"
-                placeholder="SELECT * FROM accounts LIMIT 10"
-                rows="3"
-                class="flex-1 px-3 py-2 text-xs font-mono bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-              ></textarea>
-              <button
-                @click="runSql"
-                :disabled="sqlRunning || !sqlText.trim()"
-                :class="[
-                  'px-4 py-2 rounded-lg text-xs font-semibold transition-colors self-end',
-                  sqlRunning || !sqlText.trim()
-                    ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                ]"
-              >
-                <span v-if="sqlRunning" class="flex items-center gap-1.5">
-                  <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                  Running...
-                </span>
-                <span v-else>Run</span>
-              </button>
-            </div>
-
-            <!-- SQL error -->
-            <div v-if="sqlError" class="px-3 py-2 flex-shrink-0">
-              <div class="px-3 py-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-600 dark:text-red-400 font-mono break-all">
-                {{ sqlError }}
-              </div>
-            </div>
-
-            <!-- SQL results -->
-            <div v-if="sqlResult" class="flex-1 overflow-auto min-h-0 px-3 pb-2">
-              <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                <table class="w-full text-xs">
-                  <thead class="sticky top-0 z-10">
-                    <tr class="bg-gray-50 dark:bg-gray-800">
-                      <th
-                        v-for="col in sqlResult.columns"
-                        :key="col"
-                        class="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap border-b border-gray-200 dark:border-gray-700"
-                      >{{ col }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="(row, idx) in sqlResult.rows"
-                      :key="idx"
-                      class="border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50/60 dark:hover:bg-gray-800/30"
-                    >
-                      <td
-                        v-for="col in sqlResult.columns"
-                        :key="col"
-                        class="px-3 py-1.5 text-gray-700 dark:text-gray-300 whitespace-nowrap max-w-[200px] truncate"
-                        :title="formatCellValue(row[col])"
-                      >{{ formatCellValue(row[col]) }}</td>
-                    </tr>
-                    <tr v-if="sqlResult.rows.length === 0">
-                      <td :colspan="sqlResult.columns.length" class="px-4 py-4 text-center text-gray-400 dark:text-gray-500">
-                        Query returned no rows
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- Empty state -->
-            <div v-if="!sqlResult && !sqlError && !sqlRunning" class="flex-1 flex items-center justify-center">
-              <p class="text-xs text-gray-300 dark:text-gray-600">Press Cmd+Enter to run a query</p>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
