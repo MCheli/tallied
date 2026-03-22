@@ -20,8 +20,8 @@ generate-docs:
 test:
 	cd backend && source .venv/bin/activate && pytest tests/ -v
 
-test-all: test
-	cd frontend && npm run test 2>/dev/null || echo "Frontend tests not configured yet"
+test-all: test typecheck
+	cd frontend && npm run test 2>/dev/null || echo "Frontend unit tests not configured yet"
 
 # Linting & type checking
 lint:

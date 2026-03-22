@@ -6,10 +6,19 @@
 make dev          # Start backend + frontend dev servers
 make seed-test    # Reset DB and seed with Claudius Banks test data
 make test         # Run backend tests
-make test-all     # Run backend + frontend tests
+make typecheck    # Run frontend TypeScript strict check
+make pre-commit   # Run tests + typecheck (always run before pushing)
+make test-all     # Run backend tests + typecheck + frontend tests
 make lint         # Run linters
 make build        # Build Docker image
 ```
+
+## Before Pushing
+Always run `make pre-commit` before committing/pushing. This runs the same checks as CI:
+- Backend pytest suite
+- Frontend TypeScript strict checking (`vue-tsc --noEmit`)
+
+If `make pre-commit` passes, CI will pass.
 
 ## Architecture
 
