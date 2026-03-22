@@ -23,10 +23,15 @@ test:
 test-all: test
 	cd frontend && npm run test 2>/dev/null || echo "Frontend tests not configured yet"
 
-# Linting
+# Linting & type checking
 lint:
 	cd backend && source .venv/bin/activate && ruff check app/ 2>/dev/null || echo "Install ruff: pip install ruff"
-	cd frontend && npx vue-tsc --noEmit 2>/dev/null || echo "TypeScript check skipped"
+
+typecheck:
+	cd frontend && npx vue-tsc --noEmit
+
+# Run before committing — catches what CI would catch
+pre-commit: test typecheck
 
 # Build
 build:
