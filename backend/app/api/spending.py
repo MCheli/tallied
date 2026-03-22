@@ -1,0 +1,135 @@
+from datetime import date
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select, func, case
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.transaction import Transaction
+from app.schemas.transaction import CategorySummary, RecurringExpense, MonthlySpending
+
+router = APIRouter(prefix="/api/spending", tags=["spending"])
+
+
+@router.get("/by-category", response_model=list[CategorySummary])
+def spending_by_category(
+    from_date: date | None = Query(None),
+    to_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Category totals for a date range (expenses only, amount < 0)."""
+    stmt = (
+        select(
+            Transaction.category,
+            Transaction.category_group,
+            func.sum(Transaction.amount).label("total"),
+            func.count().label("count"),
+        )
+        .where(Transaction.amount < 0)
+        .where(Transaction.source != "plaid")
+        .group_by(Transaction.category, Transaction.category_group)
+        .order_by(func.sum(Transaction.amount))
+    )
+
+    if from_date:
+        stmt = stmt.where(Transaction.date >= from_date)
+    if to_date:
+        stmt = stmt.where(Transaction.date <= to_date)
+
+    rows = db.execute(stmt).all()
+
+    grand_total = sum(abs(float(r.total)) for r in rows) if rows else 1.0
+
+    return [
+        CategorySummary(
+            category=r.category or "Uncategorized",
+            category_group=r.category_group,
+            total=round(float(r.total), 2),
+            count=r.count,
+            pct_of_total=round(abs(float(r.total)) / grand_total * 100, 1),
+        )
+        for r in rows
+    ]
+
+
+@router.get("/recurring", response_model=list[RecurringExpense])
+def recurring_expenses(
+    months: int = Query(6, ge=1, le=24, description="Lookback months"),
+    db: Session = Depends(get_db),
+):
+    """Detect recurring expenses by merchant frequency."""
+    from datetime import timedelta
+
+    cutoff = date.today() - timedelta(days=months * 30)
+
+    stmt = (
+        select(
+            Transaction.merchant,
+            Transaction.category,
+            func.avg(Transaction.amount).label("avg_amount"),
+            func.count(func.distinct(
+                func.strftime("%Y-%m", Transaction.date)
+            )).label("months_seen"),
+            func.max(Transaction.date).label("last_date"),
+        )
+        .where(Transaction.amount < 0)
+        .where(Transaction.source != "plaid")
+        .where(Transaction.date >= cutoff)
+        .where(Transaction.merchant.isnot(None))
+        .group_by(Transaction.merchant, Transaction.category)
+        .having(
+            func.count(func.distinct(
+                func.strftime("%Y-%m", Transaction.date)
+            )) >= max(2, months // 3)
+        )
+        .order_by(func.avg(Transaction.amount))
+    )
+
+    rows = db.execute(stmt).all()
+
+    return [
+        RecurringExpense(
+            merchant=r.merchant,
+            category=r.category or "Uncategorized",
+            avg_monthly=round(abs(float(r.avg_amount)), 2),
+            months_seen=r.months_seen,
+            last_date=r.last_date,
+        )
+        for r in rows
+    ]
+
+
+@router.get("/monthly-trend", response_model=list[MonthlySpending])
+def monthly_spending_trend(
+    from_date: date | None = Query(None),
+    to_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Monthly spending totals."""
+    stmt = (
+        select(
+            func.strftime("%Y-%m", Transaction.date).label("month"),
+            func.sum(Transaction.amount).label("total"),
+            func.count().label("count"),
+        )
+        .where(Transaction.amount < 0)
+        .where(Transaction.source != "plaid")
+        .group_by("month")
+        .order_by("month")
+    )
+
+    if from_date:
+        stmt = stmt.where(Transaction.date >= from_date)
+    if to_date:
+        stmt = stmt.where(Transaction.date <= to_date)
+
+    rows = db.execute(stmt).all()
+
+    return [
+        MonthlySpending(
+            month=r.month,
+            total=round(float(r.total), 2),
+            count=r.count,
+        )
+        for r in rows
+    ]

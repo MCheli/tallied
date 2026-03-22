@@ -1,0 +1,46 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.ipynb_checkpoints/
+
+# Environment & secrets
+.env
+backend/.env
+.env.local
+.env.*.local
+*.pickle
+.mcp.json
+
+# Database
+data/
+*.db
+
+# Personal documents (never commit)
+*.pdf
+*.xlsx
+*.xls
+!fixtures/**/*.pdf
+
+# Node
+node_modules/
+frontend/dist/
+
+# Build
+dist/
+build/
+
+# System
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# Screenshots
+Screenshot*
