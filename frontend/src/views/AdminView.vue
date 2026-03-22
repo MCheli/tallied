@@ -494,7 +494,7 @@ onMounted(loadSchema)
     <!-- Header -->
     <div class="flex items-center justify-between mb-4 flex-shrink-0">
       <div class="flex items-center gap-2">
-        <h2 class="text-lg font-bold text-gray-900 dark:text-white">Admin — Database Schema</h2>
+        <h2 class="text-lg font-bold text-gray-900 dark:text-white">Database</h2>
         <InfoTooltip text="<strong>Database Schema Canvas</strong><br>Browse your database tables, view their relationships, preview data, and run SQL queries." />
       </div>
       <div class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">

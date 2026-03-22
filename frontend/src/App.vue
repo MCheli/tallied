@@ -74,7 +74,7 @@ const navGroups: { group: string; items: NavItem[] }[] = [
     group: 'System',
     items: [
       { to: '/settings', name: 'settings', label: 'Settings', icon: Settings },
-      { to: '/admin', name: 'admin', label: 'Admin', icon: Database },
+      { to: '/admin', name: 'admin', label: 'Database', icon: Database },
       { to: '/guide', name: 'guide', label: 'Guide', icon: BookOpen },
     ],
   },
