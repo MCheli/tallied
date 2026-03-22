@@ -65,6 +65,12 @@ from app.api import (  # noqa: E402
     auth,
 )
 
+# ── API Routes ──
+# Current routes use /api/* prefix (legacy, consumed by frontend).
+# New public API endpoints use /api/v1/* prefix.
+# Full migration to /api/v1/ will happen when the API platform is built.
+
+# Core routes (/api/*)
 app.include_router(accounts.router)
 app.include_router(transactions.router)
 app.include_router(snapshot.router)
@@ -81,13 +87,16 @@ app.include_router(rsu.router)
 app.include_router(property.router)
 app.include_router(assets.router)
 app.include_router(retirement.router)
-app.include_router(import_unified.router)
 app.include_router(auth.router)
+
+# Versioned routes (/api/v1/*)
+app.include_router(import_unified.router)
 
 
 @app.get("/api/health")
+@app.get("/api/v1/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "1.0.0"}
 
 
 # ── Static file serving (production: serves Vue SPA) ──
