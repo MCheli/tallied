@@ -63,6 +63,7 @@ from app.api import (  # noqa: E402
     retirement,
     import_unified,
     auth,
+    schema,
 )
 
 # ── API Routes ──
@@ -88,6 +89,7 @@ app.include_router(property.router)
 app.include_router(assets.router)
 app.include_router(retirement.router)
 app.include_router(auth.router)
+app.include_router(schema.router)
 
 # Versioned routes (/api/v1/*)
 app.include_router(import_unified.router)
