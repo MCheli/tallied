@@ -4,25 +4,59 @@
 
 A comprehensive personal finance dashboard that tracks net worth, income, spending, investments, property, and retirement planning — all in one place.
 
-![Dashboard](https://img.shields.io/badge/status-active-green) ![Python](https://img.shields.io/badge/python-3.12+-blue) ![Vue](https://img.shields.io/badge/vue-3-green) ![License](https://img.shields.io/badge/license-MIT-blue)
+![Dashboard](docs/screenshots/dashboard.png)
 
 ## Features
 
-- **Dashboard** — Net worth overview, liquidity layers, compensation split, upcoming RSU vests, recent spending
-- **Cash** — Checking & savings accounts with balance history, notable transaction markers, and account-level detail
-- **Spending** — Category breakdown, recurring expense detection, monthly trend, searchable transaction table
-- **Income** — W2 data with gross-to-net waterfall, compensation history, salary vs RSU split across years
-- **RSU** — Stock holdings with live prices, vest schedule, tax lot analysis (long/short term), vesting projections
-- **401(k)** — Retirement account with Roth/pretax breakdown, contribution rates, holdings, balance history
-- **Property** — Mortgage details, amortization schedule with principal/interest/escrow visualization, equity tracking (appreciation vs payments)
-- **Assets** — Fixed capital assets (vehicles) with AI-estimated market values
-- **Planning** — Year-by-year retirement projection table with editable assumptions, collapsible column groups, and "What You Need to Believe" narrative summaries
+### Dashboard
+Net worth overview, liquidity layers, compensation split, upcoming RSU vests, spending summary, and net worth trend over time.
+
+### Income
+W2 and pay stub import via AI parsing. Gross-to-net waterfall chart, compensation breakdown (salary vs RSU), multi-year history.
+
+![Income](docs/screenshots/income.png)
+
+### Cash
+Checking & savings account tracking with balance history, account breakdown donut, notable transaction markers, and per-account transaction detail.
+
+![Cash](docs/screenshots/cash.png)
+
+### RSU Holdings
+Stock grants with live prices (Yahoo Finance), vest schedule tracking, tax lot analysis (long/short term capital gains), liquidation estimates, and vesting projections.
+
+![RSU](docs/screenshots/rsu.png)
+
+### 401(k) Retirement
+Roth vs pretax balance breakdown, contribution rate tracking, fund holdings with live prices, and balance history.
+
+![401k](docs/screenshots/retirement.png)
+
+### Property
+Mortgage amortization schedule with principal/interest/escrow visualization, equity position (appreciation vs payments), and property valuation tracking.
+
+![Property](docs/screenshots/property.png)
+
+### Spending
+Category breakdown, recurring expense detection, monthly trend, searchable transaction table with time range controls.
+
+![Spending](docs/screenshots/spending.png)
+
+### Planning
+Year-by-year retirement projection table with editable assumptions, collapsible column groups, plan comparison, and "What You Need to Believe" narrative summaries for each plan year.
+
+### Assets
+Fixed capital assets (vehicles) with AI-estimated market values.
+
+### Unified Import
+AI-powered document parsing with a unified modal workflow — upload any financial document, review AI-extracted changes, chat with AI about findings, then accept or reject before saving.
+
+![Login](docs/screenshots/login.png)
 
 ## Data Import
 
 Tallied uses AI (Claude) to parse financial documents:
 
-- **W2 forms** — Upload PDF, AI extracts tax/income fields
+- **W2 forms** — AI extracts tax/income fields
 - **Pay stubs** — AI extracts salary/RSU split from YTD totals
 - **Mortgage statements** — AI extracts balance, rate, payment breakdown
 - **401(k) statements** — AI extracts balances, contribution rates, holdings
@@ -52,7 +86,7 @@ All imports go through a unified review workflow where you can accept/reject ind
 
 ```bash
 # Clone
-git clone https://github.com/your-username/tallied.git
+git clone https://github.com/MCheli/tallied.git
 cd tallied
 
 # Install dependencies
@@ -81,7 +115,7 @@ FINANCE_PLAID_SECRET=...              # Optional, for bank sync
 
 ### Test Persona
 
-The app ships with a test persona — **Claudius Banks** — a 30-year-old software engineer with realistic (but fake) financial data. Use `make seed-test` to populate the database with his data.
+The app ships with a test persona — **Claudius Banks** — a 30-year-old software engineer with realistic (but fake) financial data. Use `make seed-test` to populate the database.
 
 Login: `claudius@tallied.dev` / `demo123`
 
@@ -125,6 +159,6 @@ frontend/
 │   └── stores/       # Pinia state management
 ```
 
-## License
+## Copyright
 
-MIT
+Copyright (c) 2026. All rights reserved.
