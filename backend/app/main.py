@@ -16,6 +16,26 @@ import app.models  # noqa
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import logging
+    logger = logging.getLogger("tallied")
+
+    # Safety check: warn if dev mode is active
+    if settings.dev_mode:
+        db_url = settings.effective_database_url
+        local_hosts = ["localhost", "127.0.0.1", "postgres", "tallied-postgres", "db"]
+        is_remote_db = not settings.is_sqlite and not any(h in db_url for h in local_hosts)
+        if is_remote_db:
+            logger.error(
+                "SECURITY: Dev mode is enabled but DATABASE_URL points to a remote database. "
+                "This is dangerous — dev mode allows password login without Google SSO. "
+                "Set FINANCE_DEV_MODE=false for production deployments."
+            )
+            raise RuntimeError("Dev mode cannot be used with a remote database. Set FINANCE_DEV_MODE=false.")
+        logger.warning("Dev mode is ENABLED — local email/password login is available. Disable for production.")
+
+    if not settings.dev_mode and not settings.google_client_id:
+        logger.warning("Neither dev mode nor Google SSO is configured. Users will not be able to log in.")
+
     Base.metadata.create_all(bind=engine)
     yield
 

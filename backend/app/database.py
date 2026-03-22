@@ -10,7 +10,10 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_engine(settings.database_url, connect_args={"check_same_thread": False})
+# SQLite needs check_same_thread=False; Postgres doesn't
+connect_args = {"check_same_thread": False} if settings.is_sqlite else {}
+
+engine = create_engine(settings.effective_database_url, connect_args=connect_args)
 SessionLocal = sessionmaker(bind=engine)
 
 

@@ -1,0 +1,25 @@
+# Tallied — Local Development
+# Usage: docker compose up -d postgres
+# Then: make dev (runs backend + frontend against the local Postgres)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tallied-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tallied
+      POSTGRES_PASSWORD: tallied_dev
+      POSTGRES_DB: tallied
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tallied"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
