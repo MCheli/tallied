@@ -73,14 +73,6 @@ async function saveRates() {
 
 // ── Format helpers ──
 
-function fmt(n: number | null | undefined): string {
-  if (n === null || n === undefined) return '--'
-  const abs = Math.abs(n)
-  const sign = n < 0 ? '-' : ''
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`
-  return `${sign}$${abs.toFixed(0)}`
-}
 
 function fmtFull(n: number | null | undefined): string {
   if (n === null || n === undefined) return '--'

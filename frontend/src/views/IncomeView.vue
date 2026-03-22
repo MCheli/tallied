@@ -9,7 +9,7 @@ import { useChartDefaults } from '../composables/useChartDefaults'
 import { useImportModal } from '../composables/useImportModal'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
 import { api } from '../api/client'
-import type { W2Record, IncomeHistory } from '../types'
+import type { W2Record } from '../types'
 
 use([BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 

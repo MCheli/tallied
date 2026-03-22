@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   LogOut,
   CreditCard,
-  TrendingUp,
   Target,
   DollarSign,
   Gem,

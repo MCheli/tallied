@@ -175,14 +175,6 @@ const orderedMetrics = computed<string[]>(() => {
   return result
 })
 
-// Visible metrics (respects collapsed groups)
-const visibleMetrics = computed<string[]>(() => {
-  return orderedMetrics.value.filter(m => {
-    const group = METRIC_GROUPS.find(g => g.metrics.includes(m))
-    return !group || !collapsedGroups.value.has(group.label)
-  })
-})
-
 const years = computed<number[]>(() => plan1Data.value?.years ?? [])
 const comparing = computed(() => plan2Data.value !== null)
 
@@ -213,7 +205,7 @@ function fmtPct(n: number): string {
   return `${(n * 100).toFixed(1)}%`
 }
 
-function formatDelta(metric: string, v1: number | null, v2: number | null): string {
+function formatDelta(_metric: string, v1: number | null, v2: number | null): string {
   if (v1 === null || v2 === null) return '—'
   const delta = v1 - v2
   if (delta === 0) return '—'

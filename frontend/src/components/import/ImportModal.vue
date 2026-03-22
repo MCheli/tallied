@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import { useImportModal } from '../../composables/useImportModal'
-import { X, Upload, Check, AlertTriangle, ChevronDown, ChevronRight, Send, Loader2 } from 'lucide-vue-next'
+import { X, Upload, Check, AlertTriangle, Send, Loader2 } from 'lucide-vue-next'
 import { marked } from 'marked'
 
 // Configure marked for safe inline rendering
@@ -216,7 +216,7 @@ async function acceptAction() {
 
 // Generate SQL preview from proposed changes
 const sqlPreview = computed(() => {
-  const statements: { table: string; action: string; sql: string; fields: any[] }[] = []
+  const statements: { table: string; action: string; sql: string; recordLabel?: string | null; recordKey?: string | null; fields: any[] }[] = []
 
   for (const change of proposedChanges.value) {
     const table = change.table
@@ -275,13 +275,6 @@ function fmt(n: number | null | undefined, format?: string): string {
   return `$${Math.round(n).toLocaleString()}`
 }
 
-function fmtField(f: any): string {
-  return fmt(f.new_value, f.format)
-}
-
-function fmtFieldOld(f: any): string {
-  return fmt(f.old_value, f.format)
-}
 </script>
 
 <template>
