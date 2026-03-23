@@ -148,11 +148,11 @@ def upgrade() -> None:
     with op.batch_alter_table('rsu_grants', schema=None) as batch_op:
         batch_op.add_column(sa.Column('symbol', sa.String(), nullable=True))
 
-    with op.batch_alter_table('users', schema=None) as batch_op:
-        batch_op.alter_column('status',
-               existing_type=sa.VARCHAR(),
-               nullable=False,
-               existing_server_default=sa.text("'active'::character varying"))
+    # Direct ALTER for users table (batch mode fails on Postgres due to FK constraints)
+    op.alter_column('users', 'status',
+           existing_type=sa.VARCHAR(),
+           nullable=False,
+           existing_server_default=sa.text("'active'::character varying"))
 
     with op.batch_alter_table('vest_events', schema=None) as batch_op:
         batch_op.add_column(sa.Column('vest_period', sa.Integer(), nullable=True))
@@ -174,11 +174,10 @@ def downgrade() -> None:
         batch_op.drop_column('fmv_at_vest')
         batch_op.drop_column('vest_period')
 
-    with op.batch_alter_table('users', schema=None) as batch_op:
-        batch_op.alter_column('status',
-               existing_type=sa.VARCHAR(),
-               nullable=True,
-               existing_server_default=sa.text("'active'::character varying"))
+    op.alter_column('users', 'status',
+           existing_type=sa.VARCHAR(),
+           nullable=True,
+           existing_server_default=sa.text("'active'::character varying"))
 
     with op.batch_alter_table('rsu_grants', schema=None) as batch_op:
         batch_op.drop_column('symbol')
