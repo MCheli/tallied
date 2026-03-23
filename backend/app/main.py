@@ -68,7 +68,7 @@ app.add_middleware(
 )
 
 from starlette.middleware.sessions import SessionMiddleware  # noqa: E402
-app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax", https_only=not settings.dev_mode)
+# SessionMiddleware only on sub-apps (not main app) to avoid duplicate session cookies
 
 # SEC-6.2: Add HSTS header in production to enforce HTTPS
 if not settings.dev_mode:
@@ -243,7 +243,7 @@ app.mount("/api/v1", v1)
 # These are the same routers, just mounted at /api instead of /api/v1.
 
 legacy = FastAPI(title="Tallied API (legacy)", docs_url=None, redoc_url=None)
-legacy.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax", https_only=not settings.dev_mode)
+# No SessionMiddleware on legacy — OAuth only runs on v1
 legacy.include_router(accounts.router)
 legacy.include_router(transactions.router)
 legacy.include_router(snapshot.router)
