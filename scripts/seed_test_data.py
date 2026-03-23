@@ -107,7 +107,7 @@ def seed(reset=False):
                     account_type="credit_card", display_group="Credit Cards", include_in_nw=True),
             Account(id="cb-brokerage", name="Microsoft Brokerage", institution="E-Trade",
                     account_type="investment_stock", display_group="Investments", include_in_nw=True),
-            Account(id="cb-property", name="456 Oak Street Springfield MA 01101",
+            Account(id="cb-property", name="83 Roberts Road Ashland MA 01721",
                     account_type="real_estate", display_group="Home Equity", include_in_nw=True),
             Account(id="cb-mortgage", name="MORTGAGE LOAN (...9100)", institution="First National Bank",
                     account_type="loan_mortgage", display_group="Home Equity", include_in_nw=True),
@@ -251,6 +251,7 @@ def seed(reset=False):
             current_balance=Decimal(str(M["current_balance"])),
             origination_date=date(2021, 6, 15),
             original_payoff_date=date(2051, 6, 1),
+            property_address="83 Roberts Road, Ashland, MA 01721",
         ))
         db.flush()
         print("  ✓ Mortgage")
