@@ -47,11 +47,14 @@ async def lifespan(app: FastAPI):
     if not settings.dev_mode and not settings.google_client_id:
         logger.warning("Neither dev mode nor Google SSO is configured. Users will not be able to log in.")
 
-    # Only create platform tables in public schema.
+    # Create platform tables in public schema.
     # Tenant financial tables are created per-schema via create_tenant_schema().
     from app.services.tenant_service import PLATFORM_TABLES
-    platform_tables = [t for t in Base.metadata.sorted_tables if t.name in PLATFORM_TABLES]
+    all_tables = Base.metadata.sorted_tables
+    platform_tables = [t for t in all_tables if t.name in PLATFORM_TABLES]
+    logger.info(f"Creating {len(platform_tables)} platform tables: {[t.name for t in platform_tables]}")
     Base.metadata.create_all(bind=engine, tables=platform_tables)
+    logger.info("Platform tables created successfully")
     yield
 
 
