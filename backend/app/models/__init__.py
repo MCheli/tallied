@@ -15,6 +15,14 @@ from app.models.planning import (
 from app.models.import_log import ImportLog
 from app.models.plaid_link import PlaidLink
 from app.models.asset import Vehicle
+from app.models.asset_value_history import AssetValueHistory
 from app.models.retirement import RetirementAccount, RetirementHolding, RetirementSnapshot
 from app.models.import_session import ImportSession
 from app.models.user import User
+from app.models.tenant import Tenant, TenantMembership
+from app.models.api_key import ApiKey
+from app.models.api_usage import ApiUsageLog
+from app.models.db_credential import DbCredential
+from app.models.webhook import WebhookSubscription
+from app.models.audit_log import AuditLog
+from app.models.property_value_history import PropertyValueHistory

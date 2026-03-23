@@ -8,6 +8,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { useChartDefaults } from '../composables/useChartDefaults'
 import { useImportModal } from '../composables/useImportModal'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
+import SqlViewerModal from '../components/common/SqlViewerModal.vue'
 
 use([LineChart, GridComponent, TooltipComponent, MarkLineComponent, CanvasRenderer])
 
@@ -25,14 +26,22 @@ const error = ref('')
 const expandedGrant = ref<string | null>(null)
 const priceHistory = ref<any[]>([])
 
+// SQL transparency modal state
+const showSummaryCardsSql = ref(false)
+const showPriceChartSql = ref(false)
+const showLiquidationSql = ref(false)
+const showUpcomingVestsSql = ref(false)
+const showVestingIncomeSql = ref(false)
+const showGrantsSql = ref(false)
+
 const ETRADE_URL = 'https://us.etrade.com/etx/sp/stockplan?accountIndex=0&traxui=tsp_accountshome#/holdings'
 
 onMounted(async () => {
   try {
     const [sumRes, grantRes, priceRes] = await Promise.all([
-      fetch(`${API}/api/rsu/summary`),
-      fetch(`${API}/api/rsu/grants`),
-      fetch(`${API}/api/rsu/price-history?symbol=PTC&range=5y`),
+      fetch(`${API}/api/v1/rsu/summary`, { credentials: 'include' }),
+      fetch(`${API}/api/v1/rsu/grants`, { credentials: 'include' }),
+      fetch(`${API}/api/v1/rsu/price-history?symbol=PTC&range=5y`, { credentials: 'include' }),
     ])
     summary.value = await sumRes.json()
     const grantData = await grantRes.json()
@@ -50,9 +59,9 @@ onMounted(async () => {
 
 async function fetchData() {
   const [sumRes, grantRes, priceRes] = await Promise.all([
-    fetch(`${API}/api/rsu/summary`),
-    fetch(`${API}/api/rsu/grants`),
-    fetch(`${API}/api/rsu/price-history?symbol=PTC&range=5y`),
+    fetch(`${API}/api/v1/rsu/summary`, { credentials: 'include' }),
+    fetch(`${API}/api/v1/rsu/grants`, { credentials: 'include' }),
+    fetch(`${API}/api/v1/rsu/price-history?symbol=PTC&range=5y`, { credentials: 'include' }),
   ])
   summary.value = await sumRes.json()
   const grantData = await grantRes.json()
@@ -236,9 +245,18 @@ const priceChartOption = computed(() => {
     <div v-if="loading" class="text-sm text-gray-400">Loading RSU data...</div>
     <div v-else-if="error" class="text-sm text-red-500">{{ error }}</div>
 
+    <div v-else-if="!summary || (!grants.length && !summary.held_shares)" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
+      <p class="text-gray-500 dark:text-gray-400">No RSU data found.</p>
+      <p class="text-sm text-gray-400 dark:text-gray-500 mt-1">Import your RSU grants from E-Trade to get started.</p>
+    </div>
+
     <template v-else-if="summary">
       <!-- Summary Cards -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="group/summary relative grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <button @click="showSummaryCardsSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/summary:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all z-10" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showSummaryCardsSql" :sql="`-- RSU Holdings Summary\nSELECT\n  SUM(sellable_shares) AS sellable_shares,\n  SUM(unvested_shares) AS unvested_shares,\n  SUM(sellable_shares + unvested_shares) AS total_shares\nFROM rsu_grants;\n\n-- Values computed as: shares × current stock price\n-- Current price fetched from stock_prices table (Yahoo Finance cache)`" title="RSU Summary Cards" :tables="['rsu_grants', 'stock_prices']" @close="showSummaryCardsSql = false" />
         <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
           <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">Holdings <InfoTooltip text="<strong>Total RSU Holdings</strong><br>Current market value of all PTC shares you own or will receive. Includes sellable shares (vested, in your account) plus unvested shares (scheduled to vest in the future).<br><br><strong>Formula:</strong> <code>(sellable + unvested shares) × current PTC price</code><br><strong>Source:</strong> RSU grants table × live PTC price from Yahoo Finance (cached daily)." /></div>
           <div class="text-xl font-bold text-gray-900 dark:text-white mt-1">{{ fmt(summary.held_value) }}</div>
@@ -264,7 +282,11 @@ const priceChartOption = computed(() => {
       </div>
 
       <!-- Stock Price Chart -->
-      <div v-if="priceChartOption" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <div v-if="priceChartOption" class="group/price relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <button @click="showPriceChartSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/price:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showPriceChartSql" :sql="`-- Stock price history (5-year weekly)\nSELECT date, close_price AS price\nFROM stock_prices\nWHERE symbol = 'PTC'\n  AND date >= date('now', '-5 years')\nORDER BY date;\n\n-- Vest event overlay marks\nSELECT ve.vest_date, ve.fmv_at_vest\nFROM vest_events ve\nJOIN rsu_grants g ON ve.grant_id = g.id\nWHERE ve.is_actual = 1\nORDER BY ve.vest_date;`" title="Stock Price Chart" :tables="['stock_prices', 'vest_events', 'rsu_grants']" @close="showPriceChartSql = false" />
         <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">{{ symbol }} Stock Price <InfoTooltip text="5-year weekly closing price for PTC stock. Dashed vertical lines mark dates when RSU shares vested. Useful for seeing whether shares vested at favorable or unfavorable prices.<br><br><strong>Source:</strong> Yahoo Finance historical data (weekly interval), vest event dates from vest_events table." /></h2>
         <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">5-year weekly &middot; dashed lines = vest events</p>
         <v-chart :option="priceChartOption" style="height: 250px" autoresize />
@@ -273,7 +295,11 @@ const priceChartOption = computed(() => {
       <!-- Liquidation Analysis + Upcoming Vests side by side -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <!-- Liquidation Analysis -->
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <div class="group/liquidation relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+          <button @click="showLiquidationSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/liquidation:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showLiquidationSql" :sql="`-- Tax lot analysis (FIFO allocation of sellable shares to vest events)\nSELECT\n  ve.vest_date,\n  ve.shares_released,\n  ve.fmv_at_vest AS cost_basis_per_share,\n  CASE\n    WHEN ve.vest_date <= date('now', '-1 year') THEN 'Long Term'\n    ELSE 'Short Term'\n  END AS tax_status\nFROM vest_events ve\nJOIN rsu_grants g ON ve.grant_id = g.id\nWHERE ve.is_actual = 1\n  AND ve.shares_released > 0\nORDER BY ve.vest_date;  -- FIFO: oldest lots first\n\n-- Gain per lot: (current_price - fmv_at_vest) × allocated_shares\n-- Tax: gain × (federal_rate + state_rate)\n-- Net proceeds: market_value - est_tax`" title="Liquidation Analysis" :tables="['vest_events', 'rsu_grants', 'stock_prices']" @close="showLiquidationSql = false" />
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">If You Sold Today <InfoTooltip text="Estimates what you would net after taxes if you sold all sellable shares at the current price. Long-term lots (held >1 year) are taxed at lower capital gains rates; short-term lots at ordinary income rates. Losses generate a tax benefit.<br><br><strong>Source:</strong> FIFO lot allocation, current PTC price, assumed tax rates (see Assumptions section)." /></h2>
           <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">
             Estimated tax impact on {{ fmt(summary.tax_lots.all.shares, 'number') }} sellable shares at {{ fmt(currentPrice) }}/sh
@@ -413,7 +439,11 @@ const priceChartOption = computed(() => {
         </div>
 
         <!-- Upcoming Vests -->
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <div class="group/upcoming relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+          <button @click="showUpcomingVestsSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/upcoming:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showUpcomingVestsSql" :sql="`-- Upcoming vest events\nSELECT\n  ve.vest_date,\n  ve.shares,\n  g.grant_date,\n  g.id AS grant_id,\n  ve.shares * sp.close_price AS est_value\nFROM vest_events ve\nJOIN rsu_grants g ON ve.grant_id = g.id\nCROSS JOIN (\n  SELECT close_price FROM stock_prices\n  WHERE symbol = 'PTC'\n  ORDER BY date DESC LIMIT 1\n) sp\nWHERE ve.is_actual = 0\n  AND ve.vest_date > date('now')\nORDER BY ve.vest_date;`" title="Upcoming Vests" :tables="['vest_events', 'rsu_grants', 'stock_prices']" @close="showUpcomingVestsSql = false" />
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Upcoming Vests <InfoTooltip text="Future vest events from your active RSU grants. Shows the date, number of shares, and estimated value at current stock price. Days until vest shown as a countdown badge.<br><br><strong>Note:</strong> Estimated values will change as PTC stock price moves. Shares withheld for taxes (typically ~37-42%) are deducted at vesting." /></h2>
           <div v-if="Object.keys(upcomingByYear).length === 0" class="text-sm text-gray-400 italic">
             No upcoming vest events.
@@ -441,7 +471,11 @@ const priceChartOption = computed(() => {
       </div>
 
       <!-- Vesting Income by Year -->
-      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <div class="group/vestincome relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <button @click="showVestingIncomeSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/vestincome:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showVestingIncomeSql" :sql="`-- Vest event value by year\nSELECT\n  strftime('%Y', ve.vest_date) AS year,\n  SUM(ve.shares * COALESCE(ve.fmv_at_vest, sp.close_price)) AS value,\n  SUM(CASE WHEN ve.is_actual = 1 THEN ve.shares * ve.fmv_at_vest ELSE 0 END) AS actual,\n  SUM(CASE WHEN ve.is_actual = 0 THEN ve.shares * sp.close_price ELSE 0 END) AS projected\nFROM vest_events ve\nJOIN rsu_grants g ON ve.grant_id = g.id\nCROSS JOIN (\n  SELECT close_price FROM stock_prices\n  WHERE symbol = 'PTC'\n  ORDER BY date DESC LIMIT 1\n) sp\nGROUP BY strftime('%Y', ve.vest_date)\nORDER BY year;`" title="Vest Event Value by Year" :tables="['vest_events', 'rsu_grants', 'stock_prices']" @close="showVestingIncomeSql = false" />
         <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Vest Event Value by Year <InfoTooltip text="Total value of shares that vested (or will vest) each year, calculated as shares × FMV at vest date for past events, or shares × current price for future events. May differ from W2 RSU income due to employer payroll adjustments.<br><br><strong>Source:</strong> Vest events table. Actual years use recorded FMV; projected years use current PTC price." /></h2>
         <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">Shares &times; FMV at each vest date. May differ from W2 RSU income due to employer adjustments and tax lot accounting — see the Income page for W2-based figures.</p>
         <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
@@ -462,7 +496,11 @@ const priceChartOption = computed(() => {
       </div>
 
       <!-- Grants List -->
-      <div>
+      <div class="group/grants relative">
+        <button @click="showGrantsSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/grants:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all z-10" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showGrantsSql" :sql="`-- All RSU grants with vest details\nSELECT\n  g.id,\n  g.grant_date,\n  g.total_shares,\n  g.vested_shares,\n  g.unvested_shares,\n  g.sellable_shares,\n  g.sellable_shares * sp.close_price AS sellable_value,\n  (g.sellable_shares + g.unvested_shares) * sp.close_price AS held_value\nFROM rsu_grants g\nCROSS JOIN (\n  SELECT close_price FROM stock_prices\n  WHERE symbol = 'PTC'\n  ORDER BY date DESC LIMIT 1\n) sp\nORDER BY g.unvested_shares DESC, g.grant_date DESC;\n\n-- Vest events per grant\nSELECT\n  ve.grant_id,\n  ve.vest_date,\n  ve.shares,\n  ve.shares_withheld,\n  ve.shares_released,\n  ve.fmv_at_vest,\n  ve.total_taxes_paid,\n  ve.is_actual,\n  CASE\n    WHEN ve.vest_date <= date('now', '-1 year') THEN 'Long Term'\n    ELSE 'Short Term'\n  END AS tax_status\nFROM vest_events ve\nORDER BY ve.vest_date;`" title="All Grants &amp; Vest Events" :tables="['rsu_grants', 'vest_events', 'stock_prices']" @close="showGrantsSql = false" />
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">All Grants ({{ grants.length }}) <InfoTooltip text="Every RSU grant from E-Trade, sorted with unvested grants first. The progress ring shows what percentage of the grant has vested. Click any grant to see individual vest event details including cost basis, tax paid, and holding period status.<br><br><strong>Source:</strong> E-Trade &quot;Download by Type (expanded)&quot; spreadsheet export via the RSU data loader." /></h2>
           <p class="text-xs text-gray-400">

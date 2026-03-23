@@ -1,6 +1,45 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent, MarkLineComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import { useChartDefaults } from '../composables/useChartDefaults'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
+import SqlViewerModal from '../components/common/SqlViewerModal.vue'
+
+use([LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer])
+const { baseOption, COLORS } = useChartDefaults()
+
+// SQL transparency state
+const showTotalValueSql = ref(false)
+const showTotalPurchaseSql = ref(false)
+const showTotalDepreciationSql = ref(false)
+const showVehiclesSql = ref(false)
+
+// SQL queries
+const totalValueSql = `SELECT SUM(estimated_value) AS total_value,
+       COUNT(*) AS vehicle_count
+FROM vehicles
+WHERE estimated_value IS NOT NULL;`
+
+const totalPurchaseSql = `SELECT SUM(purchase_price) AS total_purchase_price
+FROM vehicles
+WHERE purchase_price IS NOT NULL;`
+
+const totalDepreciationSql = `SELECT SUM(purchase_price - estimated_value) AS total_depreciation
+FROM vehicles
+WHERE purchase_price IS NOT NULL
+  AND estimated_value IS NOT NULL;`
+
+const vehiclesSql = `SELECT id, year, make, model, trim,
+       mileage, condition, purchase_price,
+       estimated_value,
+       (purchase_price - estimated_value) AS depreciation,
+       value_last_updated, notes
+FROM vehicles
+ORDER BY estimated_value DESC;`
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -9,6 +48,28 @@ const loading = ref(true)
 const error = ref('')
 const summary = ref<any>(null)
 const vehicles = ref<any[]>([])
+
+// Value history state
+interface ValueHistoryEntry {
+  date: string
+  value: number
+  source: string
+  is_projected: boolean
+}
+interface VehicleValueHistory {
+  vehicle_id: number
+  history: ValueHistoryEntry[]
+}
+interface AggregateHistory {
+  dates: string[]
+  total: number[]
+  vehicles: Record<string, (number | null)[]>
+  is_projected: boolean[]
+}
+
+const vehicleHistories = ref<Record<number, VehicleValueHistory>>({})
+const aggregateHistory = ref<AggregateHistory | null>(null)
+const collapsedNotes = ref<Record<number, boolean>>({})
 
 // Add form state
 const showAddForm = ref(false)
@@ -42,11 +103,14 @@ const refreshingId = ref<number | null>(null)
 const confirmDeleteId = ref<number | null>(null)
 
 // ── Data Loading ──
-onMounted(() => fetchData())
+onMounted(async () => {
+  await fetchData()
+  await fetchAllHistory()
+})
 
 async function fetchData() {
   try {
-    const res = await fetch(`${API}/api/assets/summary`)
+    const res = await fetch(`${API}/api/v1/assets/summary`, { credentials: 'include' })
     if (!res.ok) throw new Error(`Failed to load assets (${res.status})`)
     const data = await res.json()
     summary.value = data
@@ -55,6 +119,34 @@ async function fetchData() {
     error.value = e.message
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchAllHistory() {
+  try {
+    // Fetch aggregate
+    const aggRes = await fetch(`${API}/api/v1/assets/value-history/aggregate`, { credentials: 'include' })
+    if (aggRes.ok) {
+      aggregateHistory.value = await aggRes.json()
+    }
+    // Fetch per-vehicle
+    for (const v of vehicles.value) {
+      await fetchVehicleHistory(v.id)
+    }
+  } catch {
+    // Non-critical — charts just won't show
+  }
+}
+
+async function fetchVehicleHistory(vehicleId: number) {
+  try {
+    const res = await fetch(`${API}/api/v1/assets/vehicles/${vehicleId}/value-history`, { credentials: 'include' })
+    if (res.ok) {
+      const data = await res.json()
+      vehicleHistories.value[vehicleId] = data
+    }
+  } catch {
+    // Non-critical
   }
 }
 
@@ -132,8 +224,9 @@ async function addVehicle() {
     if (addForm.value.purchase_price) body.purchase_price = addForm.value.purchase_price
     if (addForm.value.notes) body.notes = addForm.value.notes
 
-    const res = await fetch(`${API}/api/assets/vehicles`, {
+    const res = await fetch(`${API}/api/v1/assets/vehicles`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
@@ -144,6 +237,7 @@ async function addVehicle() {
     showAddForm.value = false
     resetAddForm()
     await fetchData()
+    await fetchAllHistory()
   } catch (e: any) {
     addError.value = e.message
   } finally {
@@ -176,8 +270,9 @@ async function saveEdit(id: number) {
       purchase_price: editForm.value.purchase_price ? Number(editForm.value.purchase_price) : null,
     }
 
-    const res = await fetch(`${API}/api/assets/vehicles/${id}`, {
+    const res = await fetch(`${API}/api/v1/assets/vehicles/${id}`, {
       method: 'PUT',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
@@ -198,12 +293,13 @@ async function saveEdit(id: number) {
 async function refreshValue(id: number) {
   refreshingId.value = id
   try {
-    const res = await fetch(`${API}/api/assets/vehicles/${id}/refresh-value`, { method: 'POST' })
+    const res = await fetch(`${API}/api/v1/assets/vehicles/${id}/refresh-value`, { method: 'POST', credentials: 'include' })
     if (!res.ok) {
       const text = await res.text()
       throw new Error(`Failed to refresh value: ${text}`)
     }
     await fetchData()
+    await fetchAllHistory()
   } catch (e: any) {
     error.value = e.message
   } finally {
@@ -214,13 +310,14 @@ async function refreshValue(id: number) {
 // ── Delete Vehicle ──
 async function deleteVehicle(id: number) {
   try {
-    const res = await fetch(`${API}/api/assets/vehicles/${id}`, { method: 'DELETE' })
+    const res = await fetch(`${API}/api/v1/assets/vehicles/${id}`, { method: 'DELETE', credentials: 'include' })
     if (!res.ok) {
       const text = await res.text()
       throw new Error(`Failed to delete vehicle: ${text}`)
     }
     confirmDeleteId.value = null
     await fetchData()
+    await fetchAllHistory()
   } catch (e: any) {
     error.value = e.message
   }
@@ -228,6 +325,198 @@ async function deleteVehicle(id: number) {
 
 // ── Computed ──
 const hasVehicles = computed(() => vehicles.value.length > 0)
+const hasAggregateHistory = computed(() => {
+  return aggregateHistory.value && aggregateHistory.value.dates.length > 0
+})
+
+// ── Chart Options ──
+const aggregateChartOption = computed(() => {
+  const agg = aggregateHistory.value
+  if (!agg || agg.dates.length === 0) return null
+
+  const vehicleNames = Object.keys(agg.vehicles)
+
+  // Find the index where projections start
+  const projStartIdx = agg.is_projected.indexOf(true)
+
+  // Build series for each vehicle (stacked area)
+  const series: any[] = vehicleNames.map((name, i) => {
+    const values = agg.vehicles[name]
+    // Split into historical and projected
+    const historicalData = values.map((v, idx) => {
+      if (projStartIdx >= 0 && idx >= projStartIdx) return null
+      return v
+    })
+    const projectedData = values.map((v, idx) => {
+      // Include the last historical point for continuity
+      if (projStartIdx >= 0 && idx >= projStartIdx - 1) return v
+      return null
+    })
+
+    const result: any[] = [
+      {
+        name,
+        type: 'line',
+        stack: 'total',
+        areaStyle: { opacity: 0.3 },
+        emphasis: { focus: 'series' },
+        data: historicalData,
+        color: COLORS[i % COLORS.length],
+        symbol: 'circle',
+        symbolSize: 4,
+      },
+    ]
+
+    // Add projected series (dashed)
+    if (projStartIdx >= 0) {
+      result.push({
+        name: `${name} (projected)`,
+        type: 'line',
+        stack: 'total-proj',
+        areaStyle: { opacity: 0.15 },
+        lineStyle: { type: 'dashed' },
+        emphasis: { focus: 'series' },
+        data: projectedData,
+        color: COLORS[i % COLORS.length],
+        symbol: 'circle',
+        symbolSize: 4,
+        showInLegend: false,
+      })
+    }
+
+    return result
+  }).flat()
+
+  return {
+    ...baseOption.value,
+    legend: {
+      data: vehicleNames,
+      textStyle: { color: baseOption.value.textStyle.color },
+      bottom: 0,
+    },
+    grid: { ...baseOption.value.grid, bottom: 60 },
+    xAxis: {
+      type: 'category',
+      data: agg.dates.map((d: string) => d.substring(0, 4)),
+      axisLine: { lineStyle: { color: baseOption.value.textStyle.color } },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        formatter: (v: number) => {
+          if (v >= 1000) return `$${(v / 1000).toFixed(0)}K`
+          return `$${v}`
+        },
+      },
+      axisLine: { lineStyle: { color: baseOption.value.textStyle.color } },
+      splitLine: { lineStyle: { color: baseOption.value.textStyle.color, opacity: 0.1 } },
+    },
+    tooltip: {
+      ...baseOption.value.tooltip,
+      formatter: (params: any) => {
+        if (!Array.isArray(params)) params = [params]
+        const date = params[0]?.axisValue || ''
+        let html = `<div style="font-weight:600;margin-bottom:4px">${date}</div>`
+        let total = 0
+        for (const p of params) {
+          if (p.value != null) {
+            html += `<div>${p.marker} ${p.seriesName}: <strong>$${Number(p.value).toLocaleString()}</strong></div>`
+            total += Number(p.value)
+          }
+        }
+        if (params.length > 1) {
+          html += `<div style="margin-top:4px;border-top:1px solid #555;padding-top:4px;font-weight:600">Total: $${total.toLocaleString()}</div>`
+        }
+        return html
+      },
+    },
+    series,
+  }
+})
+
+function vehicleChartOption(vehicleId: number) {
+  const hist = vehicleHistories.value[vehicleId]
+  if (!hist || hist.history.length === 0) return null
+
+  const entries = hist.history
+  const dates = entries.map(e => e.date.substring(0, 4))
+  const historicalValues = entries.map(e => e.is_projected ? null : e.value)
+
+  // Find where projections start for continuity
+  const lastHistIdx = entries.reduce((last, e, i) => !e.is_projected ? i : last, -1)
+  const projectedValues = entries.map((e, i) => {
+    if (e.is_projected) return e.value
+    if (i === lastHistIdx) return e.value // bridge point
+    return null
+  })
+
+  const hasProjections = entries.some(e => e.is_projected)
+
+  const series: any[] = [
+    {
+      name: 'Value',
+      type: 'line',
+      data: historicalValues,
+      color: COLORS[0],
+      symbol: 'circle',
+      symbolSize: 3,
+      lineStyle: { width: 2 },
+      areaStyle: { opacity: 0.1 },
+    },
+  ]
+
+  if (hasProjections) {
+    series.push({
+      name: 'Projected',
+      type: 'line',
+      data: projectedValues,
+      color: COLORS[0],
+      symbol: 'circle',
+      symbolSize: 3,
+      lineStyle: { width: 2, type: 'dashed' },
+      areaStyle: { opacity: 0.05 },
+    })
+  }
+
+  return {
+    ...baseOption.value,
+    grid: { left: 50, right: 10, top: 10, bottom: 20 },
+    xAxis: {
+      type: 'category',
+      data: dates,
+      axisLabel: { fontSize: 10 },
+      axisLine: { lineStyle: { color: baseOption.value.textStyle.color } },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        fontSize: 10,
+        formatter: (v: number) => {
+          if (v >= 1000) return `$${(v / 1000).toFixed(0)}K`
+          return `$${v}`
+        },
+      },
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: baseOption.value.textStyle.color, opacity: 0.1 } },
+    },
+    tooltip: {
+      ...baseOption.value.tooltip,
+      formatter: (params: any) => {
+        if (!Array.isArray(params)) params = [params]
+        const p = params[0]
+        if (!p || p.value == null) return ''
+        return `<div>${p.axisValue}: <strong>$${Number(p.value).toLocaleString()}</strong></div>`
+      },
+    },
+    legend: { show: false },
+    series,
+  }
+}
+
+function vehicleHasHistory(vehicleId: number): boolean {
+  const hist = vehicleHistories.value[vehicleId]
+  return !!(hist && hist.history.length > 0)
+}
 </script>
 
 <template>
@@ -320,9 +609,22 @@ const hasVehicles = computed(() => vehicles.value.length > 0)
         </div>
       </div>
 
+      <!-- Cumulative Value Chart -->
+      <div v-if="hasAggregateHistory" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+          Vehicle Value Over Time
+          <InfoTooltip text="<strong>Vehicle Value History</strong><br>Stacked area chart showing estimated value of each vehicle over time. Solid lines represent historical estimates; dashed lines show projected future values based on typical depreciation curves.<br><br><strong>Source:</strong> AI-generated estimates using KBB, Edmunds, and NADA reference data." />
+        </h2>
+        <VChart v-if="aggregateChartOption" :option="aggregateChartOption" style="height: 300px; width: 100%;" autoresize />
+      </div>
+
       <!-- Summary Cards -->
       <div v-if="hasVehicles" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+        <div class="group/totalValue relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <button @click="showTotalValueSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/totalValue:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showTotalValueSql" :sql="totalValueSql" title="Total Asset Value" :tables="['vehicles']" @close="showTotalValueSql = false" />
           <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
             Total Asset Value
             <InfoTooltip text="<strong>Total Asset Value</strong><br>Sum of all estimated current market values for tracked vehicles. Values are estimated using AI based on year, make, model, mileage, and condition.<br><br><strong>Source:</strong> AI-generated estimates, refreshed on demand." />
@@ -330,7 +632,11 @@ const hasVehicles = computed(() => vehicles.value.length > 0)
           <div class="text-xl font-bold text-gray-900 dark:text-white mt-1">{{ fmtCurrency(summary.total_value) }}</div>
           <div class="text-xs text-gray-400 mt-1">{{ summary.vehicle_count }} vehicle{{ summary.vehicle_count !== 1 ? 's' : '' }}</div>
         </div>
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+        <div class="group/totalPurchase relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <button @click="showTotalPurchaseSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/totalPurchase:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showTotalPurchaseSql" :sql="totalPurchaseSql" title="Total Purchase Price" :tables="['vehicles']" @close="showTotalPurchaseSql = false" />
           <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
             Total Purchase Price
             <InfoTooltip text="<strong>Total Purchase Price</strong><br>Sum of original purchase prices for vehicles where the purchase price is known. Useful for calculating total depreciation." />
@@ -338,7 +644,11 @@ const hasVehicles = computed(() => vehicles.value.length > 0)
           <div class="text-xl font-bold text-gray-900 dark:text-white mt-1">{{ summary.total_purchase_price ? fmtCurrency(summary.total_purchase_price) : '--' }}</div>
           <div class="text-xs text-gray-400 mt-1">Original cost basis</div>
         </div>
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+        <div class="group/totalDepr relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <button @click="showTotalDepreciationSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/totalDepr:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showTotalDepreciationSql" :sql="totalDepreciationSql" title="Total Depreciation" :tables="['vehicles']" @close="showTotalDepreciationSql = false" />
           <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
             Total Depreciation
             <InfoTooltip text="<strong>Total Depreciation</strong><br>How much value has been lost since purchase. Positive = lost value (typical for vehicles). Negative = gained value (appreciation).<br><br><strong>Formula:</strong> <code>purchase price - current value</code>" />
@@ -354,11 +664,17 @@ const hasVehicles = computed(() => vehicles.value.length > 0)
       </div>
 
       <!-- Vehicle Cards -->
-      <div v-if="hasVehicles">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-          Vehicles
-          <InfoTooltip text="Each card shows a tracked vehicle with its AI-estimated market value. Click 'Refresh Value' to get an updated estimate based on current market data." />
-        </h2>
+      <div v-if="hasVehicles" class="group/vehicles relative">
+        <div class="flex items-center gap-2 mb-3">
+          <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+            Vehicles
+            <InfoTooltip text="Each card shows a tracked vehicle with its AI-estimated market value. Click 'Refresh Value' to get an updated estimate based on current market data." />
+          </h2>
+          <button @click="showVehiclesSql = true" class="p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/vehicles:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+        </div>
+        <SqlViewerModal :open="showVehiclesSql" :sql="vehiclesSql" title="Vehicles" :tables="['vehicles']" @close="showVehiclesSql = false" />
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div v-for="v in vehicles" :key="v.id"
             class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
@@ -375,6 +691,32 @@ const hasVehicles = computed(() => vehicles.value.length > 0)
                 <div class="text-right">
                   <div class="text-lg font-bold text-green-600 dark:text-green-400">{{ fmtCurrency(v.estimated_value) }}</div>
                   <div class="text-xs text-gray-400">Estimated value</div>
+                </div>
+              </div>
+
+              <!-- Per-vehicle value chart -->
+              <div v-if="vehicleHasHistory(v.id)" class="mb-3">
+                <VChart :option="vehicleChartOption(v.id)!" style="height: 150px; width: 100%;" autoresize />
+              </div>
+
+              <!-- Persistent AI valuation notes -->
+              <div v-if="v.valuation_notes" class="mb-3">
+                <button
+                  @click="collapsedNotes[v.id] = !collapsedNotes[v.id]"
+                  class="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 font-medium hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+                >
+                  <svg
+                    class="w-3 h-3 transition-transform"
+                    :class="{ 'rotate-90': !collapsedNotes[v.id] }"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  ><polyline points="9 18 15 12 9 6"/></svg>
+                  AI Analysis
+                </button>
+                <div v-if="!collapsedNotes[v.id]" class="mt-1.5 p-2.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900 rounded-lg">
+                  <p class="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{{ v.valuation_notes }}</p>
+                  <div v-if="v.value_last_updated" class="text-[10px] text-gray-400 dark:text-gray-500 mt-1.5">
+                    Updated {{ fmtDate(v.value_last_updated) }}
+                  </div>
                 </div>
               </div>
 

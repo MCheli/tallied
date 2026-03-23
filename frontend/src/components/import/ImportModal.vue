@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import { useImportModal } from '../../composables/useImportModal'
-import { X, Upload, Check, AlertTriangle, Send, Loader2 } from 'lucide-vue-next'
+import { X, Upload, Check, AlertTriangle, Send, Loader2, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { marked } from 'marked'
 
 // Configure marked for safe inline rendering
@@ -63,7 +63,7 @@ watch(isOpen, async (open) => {
     pendingAction.value = null
     // Fetch config for context
     try {
-      const res = await fetch(`${API}/api/v1/import/config/${context.value}`)
+      const res = await fetch(`${API}/api/v1/import/config/${context.value}`, { credentials: 'include' })
       if (res.ok) importConfig.value = await res.json()
     } catch {}
   }
@@ -100,7 +100,7 @@ async function processFile(idx: number) {
   formData.append('context', context.value)
 
   try {
-    const res = await fetch(`${API}/api/v1/import/upload`, { method: 'POST', body: formData })
+    const res = await fetch(`${API}/api/v1/import/upload`, { method: 'POST', credentials: 'include', body: formData })
     if (!res.ok) {
       const text = await res.text()
       throw new Error(text)
@@ -119,7 +119,7 @@ async function processFile(idx: number) {
       chatSending.value = true
       try {
         const chatRes = await fetch(`${API}/api/v1/import/${data.session_id}/chat`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: `Briefly summarize what you found in this document that's relevant to our app. Focus only on the specific database fields we track — mention the actual values found and whether they're new or updating existing data. If no changes are needed (data already matches), say so clearly. Keep it concise.` }),
         })
         const chatData = await chatRes.json()
@@ -146,11 +146,11 @@ async function confirmChanges() {
   if (!sessionId.value) return
   // Send accepted IDs
   await fetch(`${API}/api/v1/import/${sessionId.value}/accept`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ accepted_change_ids: [...acceptedIds.value] }),
   })
   // Confirm
-  const res = await fetch(`${API}/api/v1/import/${sessionId.value}/confirm`, { method: 'POST' })
+  const res = await fetch(`${API}/api/v1/import/${sessionId.value}/confirm`, { method: 'POST', credentials: 'include' })
   const data = await res.json()
   changesApplied.value = data.changes_applied || 0
 
@@ -185,7 +185,7 @@ async function sendChat() {
 
   try {
     const res = await fetch(`${API}/api/v1/import/${sessionId.value}/chat`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: msg }),
     })
     const data = await res.json()
@@ -201,17 +201,56 @@ async function sendChat() {
 
 async function acceptAction() {
   if (!pendingAction.value || !sessionId.value) return
-  const res = await fetch(`${API}/api/v1/import/${sessionId.value}/apply-action`, { method: 'POST' })
+  const res = await fetch(`${API}/api/v1/import/${sessionId.value}/apply-action`, { method: 'POST', credentials: 'include' })
   const data = await res.json()
   if (data.applied) {
     // Refresh proposed changes
-    const sessRes = await fetch(`${API}/api/v1/import/${sessionId.value}`)
+    const sessRes = await fetch(`${API}/api/v1/import/${sessionId.value}`, { credentials: 'include' })
     const sessData = await sessRes.json()
     proposedChanges.value = sessData.proposed_changes || []
     acceptedIds.value = new Set(proposedChanges.value.map((c: any) => c.id))
     chatMessages.value.push({ role: 'system', content: `Applied: ${data.message}` })
   }
   pendingAction.value = null
+}
+
+// Collapsible SQL section in review view
+const showSqlSection = ref(false)
+
+// Summary of all proposed changes for the header
+const changeSummary = computed(() => {
+  const results: { table: string; action: 'new' | 'update'; label: string; fieldCount: number; updatedCount: number; newCount: number }[] = []
+  for (const change of proposedChanges.value) {
+    const fields = change.fields || []
+    const newFields = fields.filter((f: any) => f.is_new || f.old_value == null)
+    const updatedFields = fields.filter((f: any) => !f.is_new && f.old_value != null)
+    const isNew = newFields.length === fields.length
+    const label = change.record_label
+      ? `${change.table} (${change.record_label})`
+      : change.tax_year
+        ? `${change.table} (tax_year = ${change.tax_year})`
+        : change.table
+    results.push({
+      table: change.table,
+      action: isNew ? 'new' : 'update',
+      label,
+      fieldCount: fields.length,
+      updatedCount: updatedFields.length,
+      newCount: newFields.length,
+    })
+  }
+  return results
+})
+
+function fieldCountLabel(change: any): string {
+  const fields = change.fields || []
+  const newFields = fields.filter((f: any) => f.is_new || f.old_value == null)
+  const updatedFields = fields.filter((f: any) => !f.is_new && f.old_value != null)
+  if (updatedFields.length > 0 && newFields.length > 0) {
+    return `${updatedFields.length} updated, ${newFields.length} new`
+  }
+  if (updatedFields.length > 0) return `${updatedFields.length} field${updatedFields.length !== 1 ? 's' : ''} being updated`
+  return `${newFields.length} new field${newFields.length !== 1 ? 's' : ''}`
 }
 
 // Generate SQL preview from proposed changes
@@ -269,9 +308,11 @@ const sqlPreview = computed(() => {
   return statements
 })
 
-function fmt(n: number | null | undefined, format?: string): string {
+function fmt(n: number | null | undefined, format?: string, column?: string): string {
   if (n == null) return '--'
   if (format === 'percent') return `${n}%`
+  // Auto-detect percentage fields by column name
+  if (column && (column.endsWith('_pct') || column.endsWith('_rate') || column === 'allocation_pct' || column === 'account_return')) return `${n}%`
   return `$${Math.round(n).toLocaleString()}`
 }
 
@@ -447,44 +488,96 @@ function fmt(n: number | null | undefined, format?: string): string {
 
               <!-- ═══ REVIEW VIEW (accept/reject) ═══ -->
               <div v-else>
-                <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center justify-between mb-3">
                   <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Database Changes</h3>
                   <button @click="showDetail = !showDetail" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
                     {{ showDetail ? 'Summary view' : 'Show details' }}
                   </button>
                 </div>
 
+                <!-- Summary header: what will happen to the database -->
+                <div v-if="changeSummary.length > 0" class="mb-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl px-4 py-3 space-y-1">
+                  <p class="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Operations</p>
+                  <div v-for="s in changeSummary" :key="s.label" class="flex items-center gap-2 text-xs">
+                    <span class="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      :class="s.action === 'new' ? 'bg-green-500' : 'bg-amber-500'"></span>
+                    <span class="text-gray-700 dark:text-gray-300">
+                      <span class="font-medium">{{ s.action === 'new' ? 'Adding' : 'Updating' }}</span>
+                      {{ s.fieldCount }} field{{ s.fieldCount !== 1 ? 's' : '' }}
+                      <span v-if="s.action === 'new'"> as new record in </span>
+                      <span v-else> in </span>
+                      <span class="font-mono text-[11px] text-indigo-600 dark:text-indigo-400">{{ s.label }}</span>
+                    </span>
+                  </div>
+                </div>
+
                 <div class="space-y-2">
                   <div v-for="change in proposedChanges" :key="change.id"
-                    class="border rounded-lg overflow-hidden"
+                    class="border rounded-xl overflow-hidden"
                     :class="acceptedIds.has(change.id) ? 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20' : 'border-gray-200 dark:border-gray-800 opacity-60'">
-                    <!-- Change header -->
+                    <!-- Change header: table name + operation badge -->
                     <div class="flex items-center gap-3 px-4 py-3 cursor-pointer" @click="toggleChange(change.id)">
                       <input type="checkbox" :checked="acceptedIds.has(change.id)" class="rounded" @click.stop="toggleChange(change.id)" />
-                      <div class="flex-1">
-                        <span class="text-sm font-medium text-gray-900 dark:text-white">{{ change.table.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) }}</span>
-                        <span v-if="change.record_label" class="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
-                          {{ change.record_label }}
-                        </span>
-                        <span class="text-xs text-gray-400 ml-2">{{ change.fields.length }} field{{ change.fields.length !== 1 ? 's' : '' }}</span>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <span class="text-sm font-medium text-gray-900 dark:text-white font-mono">{{ change.table }}</span>
+                          <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
+                          <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
+                            :class="change.fields.every((f: any) => f.is_new || f.old_value == null)
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                              : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'">
+                            {{ change.fields.every((f: any) => f.is_new || f.old_value == null) ? 'New Record' : 'Update' }}{{ change.record_label ? ` (${change.record_label})` : change.tax_year ? ` (${change.tax_year})` : '' }}
+                          </span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{{ fieldCountLabel(change) }}</p>
                       </div>
-                      <span class="text-xs px-2 py-0.5 rounded-full"
-                        :class="change.fields.some((f: any) => !f.is_new) ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700' : 'bg-green-100 dark:bg-green-900/30 text-green-700'">
-                        {{ change.fields.some((f: any) => !f.is_new) ? 'Update' : 'New' }}
-                      </span>
                     </div>
 
-                    <!-- Detail view -->
-                    <div v-if="showDetail" class="border-t border-gray-100 dark:border-gray-800 px-4 py-2 space-y-1">
-                      <div v-for="f in change.fields" :key="f.column" class="flex items-center justify-between text-xs py-0.5">
-                        <span class="text-gray-600 dark:text-gray-400">{{ f.display_name || f.column }}</span>
-                        <div>
-                          <span v-if="f.old_value != null && !f.is_new" class="text-gray-400 line-through mr-2">{{ fmt(f.old_value, f.format) }}</span>
-                          <span class="font-medium" :class="f.is_new ? 'text-green-600' : 'text-amber-600'">
-                            {{ typeof f.new_value === 'number' ? fmt(f.new_value, f.format) : f.new_value }}
-                          </span>
+                    <!-- Detail view: before/after for each field -->
+                    <div v-if="showDetail" class="border-t border-gray-100 dark:border-gray-800 px-4 py-2">
+                      <div v-for="f in change.fields" :key="f.column" class="flex items-center justify-between text-xs py-1 border-b border-gray-50 dark:border-gray-800/50 last:border-0">
+                        <span class="text-gray-600 dark:text-gray-400 font-mono text-[11px]">{{ f.display_name || f.column }}</span>
+                        <div class="flex items-center gap-1.5">
+                          <template v-if="f.old_value != null && !f.is_new">
+                            <span class="text-gray-400 text-[10px]">current:</span>
+                            <span class="text-gray-400 line-through">{{ fmt(f.old_value, f.format, f.column) }}</span>
+                            <span class="text-gray-300 dark:text-gray-600">→</span>
+                            <span class="text-[10px] text-gray-400">new:</span>
+                            <span class="font-medium text-amber-600 dark:text-amber-400">
+                              {{ typeof f.new_value === 'number' ? fmt(f.new_value, f.format, f.column) : f.new_value }}
+                            </span>
+                          </template>
+                          <template v-else>
+                            <span class="font-medium text-green-600 dark:text-green-400">
+                              {{ typeof f.new_value === 'number' ? fmt(f.new_value, f.format, f.column) : f.new_value }}
+                            </span>
+                          </template>
                           <span v-if="f.source === 'user_corrected'" class="ml-1 text-indigo-500 text-[10px]">(manual)</span>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Collapsible SQL preview at bottom of review view -->
+                <div v-if="sqlPreview.length > 0" class="mt-4 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+                  <button @click="showSqlSection = !showSqlSection"
+                    class="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/50 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                    <component :is="showSqlSection ? ChevronDown : ChevronRight" class="w-3.5 h-3.5" />
+                    View SQL
+                    <span class="text-[10px] text-gray-400 ml-1">{{ sqlPreview.length }} statement{{ sqlPreview.length !== 1 ? 's' : '' }}</span>
+                  </button>
+                  <div v-if="showSqlSection" class="border-t border-gray-200 dark:border-gray-800">
+                    <div v-for="stmt in sqlPreview" :key="stmt.table + (stmt.recordLabel || '')" class="border-b border-gray-100 dark:border-gray-800 last:border-0">
+                      <div class="px-4 py-1.5 bg-gray-50/50 dark:bg-gray-800/30 flex items-center gap-2">
+                        <span class="text-[10px] font-mono text-gray-500">{{ stmt.table }}</span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded-full"
+                          :class="stmt.action === 'INSERT' ? 'bg-green-100 dark:bg-green-900/30 text-green-700' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700'">
+                          {{ stmt.action }}
+                        </span>
+                      </div>
+                      <div class="px-4 py-3 bg-gray-900 dark:bg-black">
+                        <pre class="text-xs font-mono text-green-400 whitespace-pre-wrap leading-relaxed">{{ stmt.sql }}</pre>
                       </div>
                     </div>
                   </div>

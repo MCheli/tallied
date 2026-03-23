@@ -38,8 +38,9 @@ const option = computed(() => {
       axisLabel: {
         color: baseOption.value.textStyle.color,
         formatter: (v: number) => v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v.toFixed(0)}`,
+        hideOverlap: true,
       },
-      splitNumber: 4,
+      splitNumber: 3,
       splitLine: { lineStyle: { color: '#e5e7eb33' } },
     },
     yAxis: {

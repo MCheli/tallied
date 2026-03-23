@@ -1,18 +1,20 @@
-# Tallied — Local Development
-# Usage: docker compose up -d postgres
-# Then: make dev (runs backend + frontend against the local Postgres)
+# Tallied — Docker Compose
+#
+# Development:  docker compose up -d postgres   (then: make dev)
+# Production:   docker compose --profile prod up -d
 
 services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: tallied-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: tallied
-      POSTGRES_PASSWORD: tallied_dev
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tallied_dev}
       POSTGRES_DB: tallied
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,6 +22,30 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ── Tallied App (production only) ──────────────────────────────────────────
+  tallied:
+    build: .
+    image: tallied:latest
+    container_name: tallied-app
+    restart: unless-stopped
+    profiles:
+      - prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - backend/.env
+    environment:
+      - DATABASE_URL=postgresql://tallied:${POSTGRES_PASSWORD:-tallied_dev}@postgres:5432/tallied
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
 volumes:
   pgdata:

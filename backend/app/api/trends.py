@@ -4,18 +4,19 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import year_month
+from app.dependencies import get_tenant_db
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 
-router = APIRouter(prefix="/api/trends", tags=["trends"])
+router = APIRouter(prefix="/trends", tags=["trends"])
 
 
 @router.get("/net-worth")
 def net_worth_trend(
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Net worth by display_group over time."""
     stmt = (
@@ -70,7 +71,7 @@ def balance_trend(
     display_group: str | None = Query(None),
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Balance history for selected accounts or groups."""
     stmt = (
@@ -111,12 +112,12 @@ def balance_trend(
 def cash_flow(
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Monthly balance changes by account type."""
     stmt = (
         select(
-            func.strftime("%Y-%m", BalanceSnapshot.snapshot_date).label("month"),
+            year_month(BalanceSnapshot.snapshot_date).label("month"),
             Account.account_type,
             func.sum(BalanceSnapshot.balance).label("total"),
         )

@@ -4,12 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import inspect, text, func, select
 from sqlalchemy.orm import Session
 
-from app.database import get_db, engine, Base
+from app.database import engine, Base
+from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 from app.models.transaction import Transaction
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"], include_in_schema=False)
 
 # Known date columns per table for "most recent record" queries
 _DATE_COLS = {
@@ -45,14 +46,18 @@ def _coerce(value: Any) -> Any:
 
 
 @router.get("/tables")
-def list_tables(db: Session = Depends(get_db)):
+def list_tables(
+    db: Session = Depends(get_tenant_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
     """Return all tables with row counts and most recent record date."""
-    inspector = inspect(engine)
-    table_names = inspector.get_table_names()
+    inspector = inspect(db.get_bind())
+    schema = ctx.tenant_schema
+    table_names = inspector.get_table_names(schema=schema)
     results = []
     for table in sorted(table_names):
         try:
-            row_count = db.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
+            row_count = db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar()
         except Exception:
             row_count = None
 
@@ -60,10 +65,10 @@ def list_tables(db: Session = Depends(get_db)):
         date_col = _DATE_COLS.get(table)
         if date_col:
             try:
-                cols = [c["name"] for c in inspector.get_columns(table)]
+                cols = [c["name"] for c in inspector.get_columns(table, schema=schema)]
                 if date_col in cols:
                     most_recent = db.execute(
-                        text(f"SELECT MAX({date_col}) FROM {table}")
+                        text(f'SELECT MAX({date_col}) FROM "{table}"')
                     ).scalar()
                     if most_recent and hasattr(most_recent, "isoformat"):
                         most_recent = most_recent.isoformat()
@@ -88,19 +93,21 @@ def get_table_rows(
     table_name: str,
     limit: int = 50,
     offset: int = 0,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
+    ctx: TenantContext = Depends(get_tenant_context),
 ):
     """Return paginated rows from any table with all columns."""
-    inspector = inspect(engine)
-    valid_tables = inspector.get_table_names()
+    inspector = inspect(db.get_bind())
+    schema = ctx.tenant_schema
+    valid_tables = inspector.get_table_names(schema=schema)
     if table_name not in valid_tables:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
 
-    columns = [c["name"] for c in inspector.get_columns(table_name)]
+    columns = [c["name"] for c in inspector.get_columns(table_name, schema=schema)]
 
-    total = db.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+    total = db.execute(text(f'SELECT COUNT(*) FROM "{table_name}"')).scalar()
     rows_raw = db.execute(
-        text(f"SELECT * FROM {table_name} LIMIT :limit OFFSET :offset"),
+        text(f'SELECT * FROM "{table_name}" LIMIT :limit OFFSET :offset'),
         {"limit": limit, "offset": offset},
     ).fetchall()
 
@@ -119,7 +126,7 @@ def get_table_rows(
 
 
 @router.get("/accounts/{account_id}/related")
-def get_account_related(account_id: str, db: Session = Depends(get_db)):
+def get_account_related(account_id: str, db: Session = Depends(get_tenant_db)):
     """Return all balance snapshots and transactions for an account."""
     account = db.get(Account, account_id)
     if not account is not None:

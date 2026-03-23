@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response as StarletteResponse
+
 from app.config import settings
 from app.database import engine, Base
 
@@ -19,21 +22,42 @@ async def lifespan(app: FastAPI):
     import logging
     logger = logging.getLogger("tallied")
 
-    # Safety check: warn if dev mode is active
+    # SEC-1.1: Fail fast if production is running with default secrets
+    if not settings.dev_mode and "change-in-production" in settings.secret_key:
+        raise RuntimeError("FATAL: FINANCE_SECRET_KEY must be changed from the default before running in production. "
+                           "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(64))\"")
+    if not settings.dev_mode and "change-in-production" in settings.api_key_pepper:
+        raise RuntimeError("FATAL: FINANCE_API_KEY_PEPPER must be changed from the default before running in production. "
+                           "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\"")
+
+    # SEC-1.3: Guard against dev_mode with a non-local database
+    if settings.dev_mode:
+        from urllib.parse import urlparse
+        parsed = urlparse(settings.database_url)
+        if parsed.hostname and parsed.hostname not in ("localhost", "127.0.0.1", "postgres"):
+            raise RuntimeError("FATAL: dev_mode=true with non-local database. This looks like production. "
+                               "Set FINANCE_DEV_MODE=false.")
+
     if settings.dev_mode:
         logger.warning(
-            "⚠️  DEV MODE IS ENABLED — local email/password login is available. "
+            "\u26a0\ufe0f  DEV MODE IS ENABLED \u2014 local email/password login is available. "
             "This should NEVER be enabled in production. Set FINANCE_DEV_MODE=false."
         )
 
     if not settings.dev_mode and not settings.google_client_id:
         logger.warning("Neither dev mode nor Google SSO is configured. Users will not be able to log in.")
 
-    Base.metadata.create_all(bind=engine)
+    # Only create platform tables in public schema.
+    # Tenant financial tables are created per-schema via create_tenant_schema().
+    from app.services.tenant_service import PLATFORM_TABLES
+    platform_tables = [t for t in Base.metadata.sorted_tables if t.name in PLATFORM_TABLES]
+    Base.metadata.create_all(bind=engine, tables=platform_tables)
     yield
 
 
-app = FastAPI(title="Tallied API", lifespan=lifespan)
+# ── Main application ──────────────────────────────────────────────────────────
+
+app = FastAPI(title="Tallied", docs_url=None, redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,7 +67,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include all routers
+from starlette.middleware.sessions import SessionMiddleware  # noqa: E402
+app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax", https_only=not settings.dev_mode)
+
+# SEC-6.2: Add HSTS header in production to enforce HTTPS
+if not settings.dev_mode:
+    class HSTSMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            return response
+
+    app.add_middleware(HSTSMiddleware)
+
+# ── Import all routers ────────────────────────────────────────────────────────
+
 from app.api import (  # noqa: E402
     accounts,
     transactions,
@@ -64,44 +102,183 @@ from app.api import (  # noqa: E402
     import_unified,
     auth,
     schema,
+    tenants,
+    api_keys,
+    db_credentials,
+    platform_admin,
+    webhooks,
 )
 
-# ── API Routes ──
-# Current routes use /api/* prefix (legacy, consumed by frontend).
-# New public API endpoints use /api/v1/* prefix.
-# Full migration to /api/v1/ will happen when the API platform is built.
+# ── v1 API (versioned, with OpenAPI docs) ─────────────────────────────────────
 
-# Core routes (/api/*)
-app.include_router(accounts.router)
-app.include_router(transactions.router)
-app.include_router(snapshot.router)
-app.include_router(trends.router)
-app.include_router(spending.router)
-app.include_router(income.router)
-app.include_router(planning.router)
-app.include_router(import_data.router)
-app.include_router(mock.router)
-app.include_router(admin.router)
-app.include_router(plaid_routes.router)
-app.include_router(ingest.router)
-app.include_router(rsu.router)
-app.include_router(property.router)
-app.include_router(assets.router)
-app.include_router(retirement.router)
-app.include_router(auth.router)
-app.include_router(schema.router)
+v1 = FastAPI(
+    title="Tallied API",
+    version="1.0.0",
+    description="Personal finance data platform API. Authenticate with a JWT cookie (browser) or X-API-Key header (programmatic).",
+    lifespan=lifespan,
+    openapi_tags=[
+        {"name": "accounts", "description": "Financial accounts management"},
+        {"name": "transactions", "description": "Transaction history and search"},
+        {"name": "snapshot", "description": "Net worth snapshot and summary"},
+        {"name": "spending", "description": "Spending analysis by category and trends"},
+        {"name": "income", "description": "W2 records and income breakdown"},
+        {"name": "rsu", "description": "RSU grants, vesting, and stock prices"},
+        {"name": "retirement", "description": "401(k) account summary and holdings"},
+        {"name": "property", "description": "Property valuation and mortgage"},
+        {"name": "assets", "description": "Vehicle and fixed asset tracking"},
+        {"name": "trends", "description": "Historical balance and cash flow trends"},
+        {"name": "planning", "description": "Retirement planning scenarios and projections"},
+        {"name": "import-v1", "description": "Document import workflow (upload, review, confirm)"},
+        {"name": "auth", "description": "Authentication (login, logout, Google SSO)"},
+        {"name": "tenants", "description": "Tenant management"},
+        {"name": "api-keys", "description": "API key management for programmatic access"},
+        {"name": "db-credentials", "description": "Direct database credential management for psql, DBeaver, Excel"},
+        {"name": "schema", "description": "Database schema introspection and SQL runner"},
+        {"name": "webhooks", "description": "Webhook subscription management for event delivery"},
+    ],
+)
+v1.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax", https_only=not settings.dev_mode)
 
-# Versioned routes (/api/v1/*)
-app.include_router(import_unified.router)
+
+# ── Rate-limit response headers middleware ────────────────────────────────────
+
+class RateLimitHeaderMiddleware(BaseHTTPMiddleware):
+    """Attach X-RateLimit-* headers to every v1 API response.
+
+    The actual enforcement (429 rejection) happens in dependencies.py;
+    this middleware only adds informational headers so clients can track
+    their remaining quota.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response: StarletteResponse = await call_next(request)
+
+        from app.middleware.rate_limit import rate_limiter
+
+        # Prefer the key stashed by get_tenant_context (exact match with
+        # the enforcement bucket).  Fall back to IP-based key.
+        rl_key = getattr(request.state, "rate_limit_key", None)
+        if not rl_key:
+            client = request.client
+            rl_key = f"ip:{client.host}" if client else "ip:unknown"
+
+        limit, remaining, reset_ts = rate_limiter.get_usage(rl_key)
+        response.headers["X-RateLimit-Limit"] = str(limit)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Reset"] = str(reset_ts)
+        return response
 
 
-@app.get("/api/health")
-@app.get("/api/v1/health")
+v1.add_middleware(RateLimitHeaderMiddleware)
+
+from app.middleware.usage_logger import UsageLoggerMiddleware  # noqa: E402
+v1.add_middleware(UsageLoggerMiddleware)
+
+# Financial data routes (tenant-scoped)
+v1.include_router(accounts.router)
+v1.include_router(transactions.router)
+v1.include_router(snapshot.router)
+v1.include_router(trends.router)
+v1.include_router(spending.router)
+v1.include_router(income.router)
+v1.include_router(planning.router)
+v1.include_router(import_data.router)
+v1.include_router(import_unified.router)
+v1.include_router(plaid_routes.router)
+v1.include_router(ingest.router)
+v1.include_router(rsu.router)
+v1.include_router(property.router)
+v1.include_router(assets.router)
+v1.include_router(retirement.router)
+
+# Admin / schema introspection
+v1.include_router(admin.router)
+v1.include_router(schema.router)
+
+# Platform routes (public schema)
+v1.include_router(auth.router)
+v1.include_router(tenants.router)
+v1.include_router(api_keys.router)
+v1.include_router(db_credentials.router)
+v1.include_router(webhooks.router)
+v1.include_router(mock.router)
+v1.include_router(platform_admin.router)
+
+
+@v1.get("/health")
 def health():
     return {"status": "ok", "version": "1.0.0"}
 
 
-# ── Static file serving (production: serves Vue SPA) ──
+from fastapi.responses import HTMLResponse  # noqa: E402
+
+
+@v1.get("/scalar", response_class=HTMLResponse, include_in_schema=False)
+def scalar_docs(dark: str = "0"):
+    """Scalar API reference — embedded in the frontend via iframe."""
+    is_dark = dark == "1"
+    bg = "#030712" if is_dark else "#ffffff"
+    return f"""<!DOCTYPE html>
+<html><head>
+<title>Tallied API Reference</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+  body {{ margin: 0; background: {bg}; }}
+  /* Hide Scalar top bar and sidebar header for cleaner embed */
+  .darklight, .darklight-reference {{ display: none !important; }}
+</style>
+</head><body>
+<script id="api-reference" data-url="./openapi.json"
+  data-configuration='{{"theme":"{"saturn" if is_dark else "default"}","layout":"classic","hideDownloadButton":true,"darkMode":{"true" if is_dark else "false"},"hideDarkModeToggle":true}}'></script>
+<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body></html>"""
+
+
+# Mount v1 as a sub-application at /api/v1 (has its own OpenAPI at /api/v1/docs)
+app.mount("/api/v1", v1)
+
+# ── Legacy /api mount (backwards compat for frontend during transition) ───────
+# Frontend currently calls /api/accounts, /api/snapshot, etc.
+# These are the same routers, just mounted at /api instead of /api/v1.
+
+legacy = FastAPI(title="Tallied API (legacy)", docs_url=None, redoc_url=None)
+legacy.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax", https_only=not settings.dev_mode)
+legacy.include_router(accounts.router)
+legacy.include_router(transactions.router)
+legacy.include_router(snapshot.router)
+legacy.include_router(trends.router)
+legacy.include_router(spending.router)
+legacy.include_router(income.router)
+legacy.include_router(planning.router)
+legacy.include_router(import_data.router)
+legacy.include_router(import_unified.router)
+legacy.include_router(plaid_routes.router)
+legacy.include_router(ingest.router)
+legacy.include_router(rsu.router)
+legacy.include_router(property.router)
+legacy.include_router(assets.router)
+legacy.include_router(retirement.router)
+legacy.include_router(admin.router)
+legacy.include_router(schema.router)
+legacy.include_router(auth.router)
+legacy.include_router(tenants.router)
+legacy.include_router(api_keys.router)
+legacy.include_router(db_credentials.router)
+legacy.include_router(webhooks.router)
+legacy.include_router(mock.router)
+legacy.include_router(platform_admin.router)
+
+
+@legacy.get("/health")
+def legacy_health():
+    return {"status": "ok", "version": "1.0.0"}
+
+
+app.mount("/api", legacy)
+
+# ── Static file serving (production: serves Vue SPA) ──────────────────────────
+
 STATIC_DIR = Path(__file__).parent.parent.parent / "static"
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="static-assets")

@@ -26,7 +26,7 @@ onMounted(async () => {
 
   // Get available auth methods
   try {
-    const res = await fetch(`${API}/api/auth/config`)
+    const res = await fetch(`${API}/api/v1/auth/config`)
     const config = await res.json()
     devMode.value = config.dev_mode
     googleSso.value = config.google_sso
@@ -46,7 +46,7 @@ async function handleDevLogin() {
 }
 
 function handleGoogleLogin() {
-  window.location.href = `${API}/api/auth/google/login`
+  window.location.href = `${API}/api/v1/auth/google/login`
 }
 </script>
 
@@ -114,7 +114,7 @@ function handleGoogleLogin() {
         <!-- Dev mode hint -->
         <div v-if="devMode" class="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
           <p class="text-[10px] text-gray-400 text-center">
-            Dev mode &middot; claudius@tallied.dev / demo123
+            Dev mode &middot; claudius@tallied.dev / demo123 &middot; admin account also available
           </p>
         </div>
       </div>

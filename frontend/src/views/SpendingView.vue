@@ -2,12 +2,65 @@
 import { onMounted, ref, watch } from 'vue'
 import { useTransactionStore } from '../stores/transactions'
 import ChartContainer from '../components/common/ChartContainer.vue'
+import SqlViewerModal from '../components/common/SqlViewerModal.vue'
 import TransactionTable from '../components/spending/TransactionTable.vue'
 import CategoryChart from '../components/spending/CategoryChart.vue'
 import RecurringList from '../components/spending/RecurringList.vue'
 import MonthlyTrend from '../components/spending/MonthlyTrend.vue'
 
 const store = useTransactionStore()
+
+const showRecurringSql = ref(false)
+const showTransactionsSql = ref(false)
+
+const categorySql = `SELECT
+  category,
+  category_group,
+  SUM(amount) AS total,
+  COUNT(*) AS count
+FROM transactions
+WHERE amount < 0
+  AND source != 'plaid'
+  AND date >= :from_date
+  AND date <= :to_date
+GROUP BY category, category_group
+ORDER BY SUM(amount) ASC`
+
+const recurringSql = `SELECT
+  merchant,
+  category,
+  AVG(amount) AS avg_amount,
+  COUNT(DISTINCT strftime('%Y-%m', date)) AS months_seen,
+  MAX(date) AS last_date
+FROM transactions
+WHERE amount < 0
+  AND source != 'plaid'
+  AND date >= date('now', '-6 months')
+  AND merchant IS NOT NULL
+GROUP BY merchant, category
+HAVING COUNT(DISTINCT strftime('%Y-%m', date)) >= 2
+ORDER BY AVG(amount) ASC`
+
+const transactionsSql = `SELECT id, date, merchant, category, amount, account_id, notes
+FROM transactions
+WHERE source != 'plaid'
+  AND date >= :from_date
+  AND date <= :to_date
+  AND (merchant LIKE '%' || :search || '%'
+       OR category LIKE '%' || :search || '%'
+       OR notes LIKE '%' || :search || '%')
+ORDER BY date DESC
+LIMIT :limit OFFSET :offset`
+
+const monthlyTrendSql = `SELECT
+  strftime('%Y-%m', date) AS month,
+  SUM(amount) AS total,
+  COUNT(*) AS count
+FROM transactions
+WHERE amount < 0
+  AND source != 'plaid'
+GROUP BY strftime('%Y-%m', date)
+ORDER BY month ASC`
 
 type DatePreset = 'month' | '3mo' | 'ytd' | '12mo'
 const activePreset = ref<DatePreset>('3mo')
@@ -100,27 +153,39 @@ const presets: { key: DatePreset; label: string }[] = [
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
       <!-- Left Column -->
       <div class="space-y-4">
-        <ChartContainer title="Spending by Category" info="Horizontal bar chart showing total spending by category for the selected time period. Only includes expenses (negative transaction amounts). Categories are sorted by total spend.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; Transactions table grouped by category field. Includes both Plaid-synced and imported transactions." :loading="store.categoryBreakdown.length === 0 && store.loading">
+        <ChartContainer title="Spending by Category" info="Horizontal bar chart showing total spending by category for the selected time period. Only includes expenses (negative transaction amounts). Categories are sorted by total spend.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; Transactions table grouped by category field. Includes both Plaid-synced and imported transactions." :loading="store.categoryBreakdown.length === 0 && store.loading" :sql="categorySql" :sqlTables="['transactions']">
           <CategoryChart :categories="store.categoryBreakdown" />
         </ChartContainer>
-        <RecurringList :expenses="store.recurring" />
+        <div class="group/recurring relative">
+          <RecurringList :expenses="store.recurring" />
+          <button @click="showRecurringSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/recurring:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showRecurringSql" :sql="recurringSql" title="Recurring Expenses" :tables="['transactions']" @close="showRecurringSql = false" />
+        </div>
       </div>
       <!-- Right Column -->
       <div class="lg:col-span-2">
-        <TransactionTable
-          :transactions="store.items"
-          :loading="store.loading"
-          :page="store.filters.page"
-          :pageSize="store.filters.page_size"
-          :total="store.total"
-          @page-change="onPageChange"
-          @search="onSearch"
-        />
+        <div class="group/txns relative">
+          <TransactionTable
+            :transactions="store.items"
+            :loading="store.loading"
+            :page="store.filters.page"
+            :pageSize="store.filters.page_size"
+            :total="store.total"
+            @page-change="onPageChange"
+            @search="onSearch"
+          />
+          <button @click="showTransactionsSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/txns:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showTransactionsSql" :sql="transactionsSql" title="Transactions" :tables="['transactions']" @close="showTransactionsSql = false" />
+        </div>
       </div>
     </div>
 
     <!-- Monthly Trend -->
-    <ChartContainer title="Monthly Spending Trend" info="Monthly total spending over time. Shows how your spending has trended month over month. Only includes expenses, not income. Useful for spotting seasonal patterns or lifestyle changes.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; Transactions table, summed by month (expenses only)." :loading="store.monthlyTrend.length === 0 && store.loading">
+    <ChartContainer title="Monthly Spending Trend" info="Monthly total spending over time. Shows how your spending has trended month over month. Only includes expenses, not income. Useful for spotting seasonal patterns or lifestyle changes.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; Transactions table, summed by month (expenses only)." :loading="store.monthlyTrend.length === 0 && store.loading" :sql="monthlyTrendSql" :sqlTables="['transactions']">
       <MonthlyTrend :data="store.monthlyTrend" />
     </ChartContainer>
   </div>

@@ -24,6 +24,8 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
+from sqlalchemy import text
+
 from app.database import engine, SessionLocal, Base
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
@@ -33,21 +35,65 @@ from app.models.investment import RSUGrant, VestEvent, StockPrice
 from app.models.property import Mortgage, PropertyValuation
 from app.models.retirement import RetirementAccount, RetirementHolding, RetirementSnapshot
 from app.models.asset import Vehicle
+from app.models.planning import PlanVersion, PlanAssumption, PlanProjection
+from app.models.user import User
+from app.models.tenant import Tenant, TenantMembership
+from app.services.tenant_service import create_tenant_schema, drop_tenant_schema, PLATFORM_TABLES
 
 # Import all models to register them
 import app.models  # noqa
+
+TENANT_SCHEMA = "tenant_claudius"
 
 
 def seed(reset=False):
     if reset:
         print("Resetting database...")
+        # Drop tenant schema first
+        drop_tenant_schema(TENANT_SCHEMA)
         Base.metadata.drop_all(bind=engine)
-        Base.metadata.create_all(bind=engine)
+        # Recreate only platform tables in public
+        platform_tables = [t for t in Base.metadata.sorted_tables if t.name in PLATFORM_TABLES]
+        Base.metadata.create_all(bind=engine, tables=platform_tables)
 
     db = SessionLocal()
 
     try:
         print("Seeding Claudius Banks test data...")
+
+        # ── User + Tenant ──
+        import hashlib
+        user = User(
+            email="claudius@tallied.dev",
+            password_hash=hashlib.sha256("demo123".encode()).hexdigest(),
+            display_name="Claudius Banks",
+            auth_provider="local",
+        )
+        db.add(user)
+        db.flush()
+
+        tenant = Tenant(
+            slug=TENANT_SCHEMA,
+            display_name="Claudius's Finances",
+            schema_name=TENANT_SCHEMA,
+        )
+        db.add(tenant)
+        db.flush()
+
+        db.add(TenantMembership(
+            user_id=user.id,
+            tenant_id=tenant.id,
+            role="owner",
+            is_default=True,
+        ))
+        db.flush()
+        print("  ✓ User + Tenant")
+
+        # Create tenant schema with all financial tables
+        create_tenant_schema(TENANT_SCHEMA)
+
+        # Switch session to tenant schema for all financial data
+        db.execute(text(f'SET search_path TO "{TENANT_SCHEMA}", public'))
 
         # ── Accounts ──
         accounts = [
@@ -65,7 +111,7 @@ def seed(reset=False):
                     account_type="real_estate", display_group="Home Equity", include_in_nw=True),
             Account(id="cb-mortgage", name="MORTGAGE LOAN (...9100)", institution="First National Bank",
                     account_type="loan_mortgage", display_group="Home Equity", include_in_nw=True),
-            Account(id="cb-401k", name="NEXUS 401(K) PLAN", institution="Fidelity",
+            Account(id="cb-401k", name="MICROSOFT 401(K) PLAN", institution="Fidelity",
                     account_type="investment_401k", display_group="Retirement", include_in_nw=True),
         ]
         for a in accounts:
@@ -194,11 +240,13 @@ def seed(reset=False):
         print("  ✓ W2 records (2023-2025)")
 
         # ── Mortgage ──
-        M = {"rate": 4.25, "monthly_payment": 2450.00, "original_amount": 380000.00, "current_balance": 362450.75}
+        M = {"rate": 4.25, "monthly_payment": 2450.00, "escrow": 450.00,
+             "original_amount": 380000.00, "current_balance": 362450.75}
         db.add(Mortgage(
             account_id="cb-mortgage",
             rate=Decimal(str(M["rate"] / 100)),
             monthly_payment=Decimal(str(M["monthly_payment"])),
+            escrow=Decimal(str(M["escrow"])),
             original_amount=Decimal(str(M["original_amount"])),
             current_balance=Decimal(str(M["current_balance"])),
             origination_date=date(2021, 6, 15),
@@ -219,14 +267,14 @@ def seed(reset=False):
 
         # ── RSU Grants ──
         grants = [
-            ("NXUS-001", date(2022, 5, 15), 200, 150, 50),
-            ("NXUS-002", date(2023, 5, 15), 180, 120, 60),
-            ("NXUS-003", date(2023, 11, 15), 150, 100, 50),
-            ("NXUS-004", date(2024, 5, 15), 160, 53, 107),
-            ("NXUS-005", date(2024, 11, 20), 200, 200, 0),
-            ("NXUS-006", date(2025, 5, 15), 220, 0, 220),
-            ("NXUS-007", date(2025, 11, 19), 180, 0, 180),
-            ("NXUS-008", date(2025, 11, 20), 250, 250, 0),
+            ("MSFT-001", date(2022, 5, 15), 200, 150, 50),
+            ("MSFT-002", date(2023, 5, 15), 180, 120, 60),
+            ("MSFT-003", date(2023, 11, 15), 150, 100, 50),
+            ("MSFT-004", date(2024, 5, 15), 160, 53, 107),
+            ("MSFT-005", date(2024, 11, 20), 200, 200, 0),
+            ("MSFT-006", date(2025, 5, 15), 220, 0, 220),
+            ("MSFT-007", date(2025, 11, 19), 180, 0, 180),
+            ("MSFT-008", date(2025, 11, 20), 250, 250, 0),
         ]
 
         for gid, gdate, total, vested, unvested in grants:
@@ -262,10 +310,10 @@ def seed(reset=False):
             close_price=Decimal("95.50"), source="seed",
         ))
         db.flush()
-        print("  ✓ Stock price (NXUS)")
+        print("  ✓ Stock price (MSFT)")
 
         # ── Retirement Account ──
-        R = {"plan_name": "NEXUS TECHNOLOGIES 401(K) PLAN", "provider": "Fidelity Investments",
+        R = {"plan_name": "MICROSOFT CORPORATION 401(K) PLAN", "provider": "Fidelity Investments",
              "total_balance": 185432.50, "vested_balance": 185432.50, "roth_balance": 129802.75,
              "pretax_balance": 18543.25, "employer_match_balance": 37086.50,
              "pretax_deferral_rate": 10, "roth_deferral_rate": 2, "roth_basis": 85000.00,
@@ -290,6 +338,7 @@ def seed(reset=False):
             estimated_monthly_income=Decimal(str(R["estimated_monthly_income"])),
             statement_start=date.fromisoformat(R["statement_start"]),
             statement_end=date.fromisoformat(R["statement_end"]),
+            return_period_start=date(2022, 1, 1),
         ))
         db.flush()
 
@@ -333,7 +382,59 @@ def seed(reset=False):
         db.flush()
         print("  ✓ Vehicles (2)")
 
+        # ── Planning Scenario ──
+        plan = PlanVersion(name="Retire at 60", scenario_type="base", is_active=True, description="Base retirement scenario")
+        db.add(plan)
+        db.flush()
+
+        # Add key assumptions
+        assumptions = [
+            ("current_age", "Current Age", 33, "personal", "high"),
+            ("retirement_age", "Retirement Age", 60, "personal", "high"),
+            ("life_expectancy", "Life Expectancy", 90, "personal", "medium"),
+            ("total_comp", "Total Compensation", 210000, "income", "high"),
+            ("total_comp_growth", "Comp Growth Rate", 0.04, "income", "high"),
+            ("pretax_401k_pct", "Pre-tax 401(k) %", 0.10, "savings", "medium"),
+            ("roth_401k_pct", "Roth 401(k) %", 0.02, "savings", "medium"),
+            ("employer_match_pct", "Employer Match %", 0.06, "savings", "low"),
+            ("monthly_cash_savings", "Monthly Cash Savings", 500, "savings", "medium"),
+            ("investment_return", "Investment Return", 0.07, "returns", "high"),
+            ("inflation", "Inflation Rate", 0.03, "returns", "medium"),
+            ("home_appreciation", "Home Appreciation", 0.03, "returns", "low"),
+            ("retirement_spending", "Retirement Spending", 100000, "retirement", "high"),
+            ("retirement_tax_rate", "Retirement Tax Rate", 0.20, "retirement", "medium"),
+            ("social_security_monthly", "Social Security", 2500, "retirement", "low"),
+        ]
+        for key, display, value, category, sensitivity in assumptions:
+            db.add(PlanAssumption(
+                plan_id=plan.id, key=key, display_name=display,
+                value=value, category=category, sensitivity=sensitivity,
+            ))
+        db.flush()
+
+        try:
+            from app.services.planning_service import build_projection_input, run_projection
+            proj_input = build_projection_input(db)
+            projections = run_projection(plan, proj_input)
+            for p in projections:
+                db.add(p)
+            db.flush()
+            print("  ✓ Plan + projections")
+        except Exception as e:
+            print(f"  ✓ Plan (projections skipped: {e})")
+
         db.commit()
+
+        # Seed schema descriptions (COMMENT ON) for the tenant schema
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "seed_schema_descriptions",
+            Path(__file__).parent / "seed_schema_descriptions.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.seed_descriptions(TENANT_SCHEMA)
+
         print()
         print("✅ Claudius Banks test data seeded successfully!")
 

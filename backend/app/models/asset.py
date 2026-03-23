@@ -25,5 +25,6 @@ class Vehicle(Base):
     estimated_value: Mapped[Optional[Decimal]] = mapped_column(Numeric)
     value_last_updated: Mapped[Optional[datetime]] = mapped_column(DateTime)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    valuation_notes: Mapped[Optional[str]] = mapped_column(Text)  # AI reasoning for current valuation
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

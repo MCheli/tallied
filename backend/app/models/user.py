@@ -18,5 +18,6 @@ class User(Base):
     auth_provider: Mapped[str] = mapped_column(String, default="local")  # "local", "google"
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String, default="active")  # "active", "pending_approval", "suspended"
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime)

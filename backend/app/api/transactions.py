@@ -1,15 +1,15 @@
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.dependencies import get_tenant_db
 from app.models.transaction import Transaction
-from app.schemas.transaction import TransactionCreate, TransactionResponse
+from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionResponse
 
-router = APIRouter(prefix="/api/transactions", tags=["transactions"])
+router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
 @router.get("/")
@@ -23,7 +23,7 @@ def list_transactions(
     search: str | None = Query(None),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     base = select(Transaction).where(Transaction.source != "plaid")
 
@@ -59,7 +59,8 @@ def list_transactions(
 
 
 @router.post("/", response_model=TransactionResponse, status_code=201)
-def create_transaction(payload: TransactionCreate, db: Session = Depends(get_db)):
+def create_transaction(payload: TransactionCreate, db: Session = Depends(get_tenant_db)):
+    """Create a single transaction."""
     txn = Transaction(
         id=str(uuid.uuid4()),
         account_id=payload.account_id,
@@ -81,8 +82,9 @@ def create_transaction(payload: TransactionCreate, db: Session = Depends(get_db)
 @router.post("/bulk", status_code=201)
 def bulk_create_transactions(
     payloads: list[TransactionCreate],
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
+    """Create multiple transactions in a single request."""
     created = []
     for payload in payloads:
         txn = Transaction(
@@ -108,7 +110,7 @@ def large_transactions(
     threshold: float = Query(500),
     days: int = Query(30),
     limit: int = Query(20),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Return recent transactions above a threshold amount (absolute value)."""
     from datetime import timedelta
@@ -144,3 +146,43 @@ def large_transactions(
         }
         for t in rows
     ]
+
+
+@router.get("/{transaction_id}", response_model=TransactionResponse)
+def get_transaction(transaction_id: str, db: Session = Depends(get_tenant_db)):
+    """Get a single transaction by ID."""
+    txn = db.get(Transaction, transaction_id)
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return txn
+
+
+@router.put("/{transaction_id}", response_model=TransactionResponse)
+def update_transaction(
+    transaction_id: str,
+    payload: TransactionUpdate,
+    db: Session = Depends(get_tenant_db),
+):
+    """Update a transaction's details."""
+    txn = db.get(Transaction, transaction_id)
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(txn, key, value)
+
+    db.commit()
+    db.refresh(txn)
+    return txn
+
+
+@router.delete("/{transaction_id}", status_code=204)
+def delete_transaction(transaction_id: str, db: Session = Depends(get_tenant_db)):
+    """Delete a transaction."""
+    txn = db.get(Transaction, transaction_id)
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    db.delete(txn)
+    db.commit()
+    return None

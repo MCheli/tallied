@@ -6,6 +6,7 @@ import { LineChart, BarChart, PieChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, MarkPointComponent, MarkLineComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
+import SqlViewerModal from '../components/common/SqlViewerModal.vue'
 import { useChartDefaults } from '../composables/useChartDefaults'
 import { ChevronDown, ChevronRight } from 'lucide-vue-next'
 
@@ -51,10 +52,10 @@ async function loadData() {
   try {
     const days = timeRange.value === 'all' ? 9999 : parseInt(timeRange.value)
     const [snapRes, txnRes, histRes, flowRes] = await Promise.all([
-      fetch(`${API}/api/snapshot`).then(r => r.json()),
-      fetch(`${API}/api/transactions/large?threshold=500&days=${days}&limit=100`).then(r => r.json()),
-      fetch(`${API}/api/trends/net-worth`).then(r => r.json()).catch(() => null),
-      fetch(`${API}/api/spending/monthly-trend`).then(r => r.json()).catch(() => []),
+      fetch(`${API}/api/v1/snapshot`, { credentials: 'include' }).then(r => r.json()),
+      fetch(`${API}/api/v1/transactions/large?threshold=500&days=${days}&limit=100`, { credentials: 'include' }).then(r => r.json()),
+      fetch(`${API}/api/v1/trends/net-worth`, { credentials: 'include' }).then(r => r.json()).catch(() => null),
+      fetch(`${API}/api/v1/spending/monthly-trend`, { credentials: 'include' }).then(r => r.json()).catch(() => []),
     ])
     snapshot.value = snapRes
     largeTransactions.value = Array.isArray(txnRes) ? txnRes : []
@@ -66,7 +67,7 @@ async function loadData() {
 
 watch(timeRange, () => {
   const days = timeRange.value === 'all' ? 9999 : parseInt(timeRange.value)
-  fetch(`${API}/api/transactions/large?threshold=500&days=${days}&limit=100`)
+  fetch(`${API}/api/v1/transactions/large?threshold=500&days=${days}&limit=100`, { credentials: 'include' })
     .then(r => r.json()).then(d => { largeTransactions.value = Array.isArray(d) ? d : [] })
 })
 
@@ -93,6 +94,7 @@ const avgMonthlySpend = computed(() => {
   if (!cashFlow.value.length) return null
   const n = Math.min(cashFlow.value.length, Math.max(1, Math.round(parseInt(timeRange.value || '90') / 30)))
   const recent = cashFlow.value.slice(-n)
+  if (!recent.length) return null
   return recent.reduce((s: number, m: any) => s + Math.abs(m.total || 0), 0) / recent.length
 })
 
@@ -117,10 +119,10 @@ const filteredHistory = computed(() => {
 async function syncBalances() {
   syncing.value = true; syncResult.value = null
   try {
-    const res = await fetch(`${API}/api/plaid/sync-balances`, { method: 'POST' })
+    const res = await fetch(`${API}/api/v1/plaid/sync-balances`, { method: 'POST', credentials: 'include' })
     if (!res.ok) throw new Error('Sync failed')
     syncResult.value = await res.json()
-    snapshot.value = await fetch(`${API}/api/snapshot`).then(r => r.json())
+    snapshot.value = await fetch(`${API}/api/v1/snapshot`, { credentials: 'include' }).then(r => r.json())
   } catch (e: any) { error.value = e.message }
   finally { syncing.value = false }
 }
@@ -138,7 +140,7 @@ async function loadAccountTxns(accountId: string, page: number) {
   accountTxnLoading.value = true
   const offset = page * 25
   try {
-    const res = await fetch(`${API}/api/transactions/?account_id=${accountId}&limit=25&offset=${offset}`)
+    const res = await fetch(`${API}/api/v1/transactions/?account_id=${accountId}&limit=25&offset=${offset}`, { credentials: 'include' })
     if (res.ok) {
       const d = await res.json()
       accountTransactions.value = d.items || d || []
@@ -184,7 +186,7 @@ const cashHistoryOption = computed(() => {
         itemStyle: { color: t.amount >= 0 ? '#22c55e' : '#ef4444', borderColor: '#fff', borderWidth: 1 }, label: { show: false }, _txnIdx: origIdx,
       }
     }).filter(Boolean)
-  const avg = cashData.reduce((s: number, v: number) => s + v, 0) / cashData.length
+  const avg = cashData.length ? cashData.reduce((s: number, v: number) => s + v, 0) / cashData.length : 0
   return {
     ...baseOption.value, grid: { left: 55, right: 20, top: 20, bottom: 30 },
     tooltip: { ...baseOption.value.tooltip, trigger: 'axis' as const, formatter: (params: any) => {
@@ -212,6 +214,81 @@ function onChartClick(params: any) {
     highlightedTxnIdx.value = params.data._txnIdx
     setTimeout(() => { document.getElementById(`txn-row-${params.data._txnIdx}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }, 100)
   }
+}
+
+// SQL transparency
+const showSummarySql = ref(false)
+const showBreakdownSql = ref(false)
+const showBalanceSql = ref(false)
+const showAccountsSql = ref(false)
+
+const SQL = {
+  totalCash: `SELECT a.name, bs.balance
+FROM balance_snapshots bs
+JOIN accounts a ON bs.account_id = a.id
+WHERE a.is_active = 1
+  AND a.display_group = 'Cash'
+  AND bs.snapshot_date = (
+    SELECT MAX(snapshot_date)
+    FROM balance_snapshots
+    WHERE account_id = bs.account_id
+  )
+ORDER BY bs.balance DESC
+
+-- Total Cash = SUM(balance)
+-- Accounts count = COUNT(*)`,
+
+  avgMonthlySpend: `SELECT
+  strftime('%Y-%m', date) AS month,
+  SUM(amount) AS total,
+  COUNT(*) AS count
+FROM transactions
+WHERE amount < 0
+  AND source != 'plaid'
+GROUP BY month
+ORDER BY month
+
+-- Avg Monthly Spend = AVG(ABS(total)) over recent N months
+-- Runway = Total Cash / Avg Monthly Spend`,
+
+  accountBreakdown: `SELECT a.name, bs.balance,
+  ROUND(bs.balance * 100.0 / SUM(bs.balance) OVER (), 1) AS pct
+FROM balance_snapshots bs
+JOIN accounts a ON bs.account_id = a.id
+WHERE a.is_active = 1
+  AND a.display_group = 'Cash'
+  AND bs.snapshot_date = (
+    SELECT MAX(snapshot_date)
+    FROM balance_snapshots
+    WHERE account_id = bs.account_id
+  )
+ORDER BY bs.balance DESC`,
+
+  balanceHistory: `SELECT bs.snapshot_date, SUM(bs.balance) AS cash_total
+FROM balance_snapshots bs
+JOIN accounts a ON bs.account_id = a.id
+WHERE a.is_active = 1
+  AND a.include_in_nw = 1
+  AND a.display_group = 'Cash'
+GROUP BY bs.snapshot_date
+ORDER BY bs.snapshot_date`,
+
+  largeTransactions: `SELECT t.date, t.amount, t.merchant,
+  t.category, a.name AS account_name
+FROM transactions t
+LEFT JOIN accounts a ON t.account_id = a.id
+WHERE t.date >= date('now', '-N days')
+  AND ABS(t.amount) >= 500
+  AND t.source != 'plaid'
+ORDER BY t.date DESC
+LIMIT 100`,
+
+  accountTransactions: `SELECT t.date, t.merchant, t.category, t.amount
+FROM transactions t
+WHERE t.account_id = :account_id
+  AND t.source != 'plaid'
+ORDER BY t.date DESC
+LIMIT 25 OFFSET :offset`,
 }
 
 function fmt(n: number | null | undefined): string { if (n == null) return '--'; return `$${Math.round(n).toLocaleString()}` }
@@ -251,7 +328,11 @@ function fmtDate(d: string | null | undefined): string { if (!d) return '--'; re
 
     <template v-else>
       <!-- Summary Cards -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="group/summary relative grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <button @click="showSummarySql = true" class="absolute top-3.5 right-3.5 z-10 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/summary:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showSummarySql" :sql="`${SQL.totalCash}\n\n---\n\n${SQL.avgMonthlySpend}`" title="Cash Summary Cards" :tables="['balance_snapshots', 'accounts', 'transactions']" @close="showSummarySql = false" />
         <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
           <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">Total Cash <InfoTooltip text="Sum of all checking and savings account balances." /></div>
           <div class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ fmt(totalCash) }}</div>
@@ -279,7 +360,11 @@ function fmtDate(d: string | null | undefined): string { if (!d) return '--'; re
       </div>
 
       <!-- Account Breakdown (donut + bars with correlated colors) -->
-      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <div class="group/breakdown relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <button @click="showBreakdownSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/breakdown:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showBreakdownSql" :sql="SQL.accountBreakdown" title="Account Breakdown" :tables="['balance_snapshots', 'accounts']" @close="showBreakdownSql = false" />
         <div class="flex items-center gap-1 mb-3">
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Account Breakdown</h2>
           <InfoTooltip text="Distribution of cash across accounts. Colors match between the chart and the bars." />
@@ -307,7 +392,11 @@ function fmtDate(d: string | null | undefined): string { if (!d) return '--'; re
       </div>
 
       <!-- Cash Balance & Activity (chart + notable transactions) -->
-      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <div class="group/balance relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <button @click="showBalanceSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/balance:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showBalanceSql" :sql="`${SQL.balanceHistory}\n\n---\n\n${SQL.largeTransactions}`" title="Cash Balance & Activity" :tables="['balance_snapshots', 'accounts', 'transactions']" @close="showBalanceSql = false" />
         <div class="flex items-center gap-1 mb-1">
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Cash Balance & Activity</h2>
           <InfoTooltip text="Balance trend with notable transactions marked. Green = deposits, red = withdrawals. Dashed line = period average. Hover markers for details." />
@@ -347,7 +436,11 @@ function fmtDate(d: string | null | undefined): string { if (!d) return '--'; re
       </div>
 
       <!-- All Accounts Detail (expandable) -->
-      <div>
+      <div class="group/accounts relative">
+        <button @click="showAccountsSql = true" class="absolute top-0.5 right-0 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/accounts:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showAccountsSql" :sql="`${SQL.totalCash}\n\n---\n\n${SQL.accountTransactions}`" title="All Accounts" :tables="['balance_snapshots', 'accounts', 'transactions']" @close="showAccountsSql = false" />
         <div class="flex items-center gap-1 mb-3">
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">All Accounts</h2>
           <InfoTooltip text="Click any account to expand and see its full transaction history." />

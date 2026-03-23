@@ -6,6 +6,7 @@ import { PieChart, LineChart, BarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
+import SqlViewerModal from '../components/common/SqlViewerModal.vue'
 import { useChartDefaults } from '../composables/useChartDefaults'
 import { useImportModal } from '../composables/useImportModal'
 
@@ -19,6 +20,123 @@ const loading = ref(true)
 const error = ref('')
 const data = ref<any>(null)
 
+// ── SQL viewer state ──
+const showTotalBalanceSql = ref(false)
+const showAccountReturnSql = ref(false)
+const showRothBalanceSql = ref(false)
+const showPretaxBalanceSql = ref(false)
+const showEstMonthlyIncomeSql = ref(false)
+const showBreakdownSql = ref(false)
+const showContributionRatesSql = ref(false)
+const showHoldingsSql = ref(false)
+const showHoldingsDetailSql = ref(false)
+const showBalanceHistorySql = ref(false)
+const showContributionsSql = ref(false)
+
+// ── SQL queries ──
+const SQL = {
+  totalBalance: `SELECT
+  ra.total_balance,
+  ra.vested_balance
+FROM retirement_accounts ra
+WHERE ra.id = (
+  SELECT id FROM retirement_accounts
+  ORDER BY updated_at DESC LIMIT 1
+)`,
+
+  accountReturn: `SELECT
+  ra.account_return,
+  ra.return_period_start
+FROM retirement_accounts ra
+WHERE ra.id = (
+  SELECT id FROM retirement_accounts
+  ORDER BY updated_at DESC LIMIT 1
+)`,
+
+  rothBalance: `SELECT
+  ra.roth_balance AS roth,
+  ROUND(ra.roth_balance * 100.0 / ra.total_balance, 1) AS roth_pct
+FROM retirement_accounts ra
+WHERE ra.id = (
+  SELECT id FROM retirement_accounts
+  ORDER BY updated_at DESC LIMIT 1
+)`,
+
+  pretaxBalance: `SELECT
+  ra.pretax_balance AS pretax,
+  ROUND(ra.pretax_balance * 100.0 / ra.total_balance, 1) AS pretax_pct
+FROM retirement_accounts ra
+WHERE ra.id = (
+  SELECT id FROM retirement_accounts
+  ORDER BY updated_at DESC LIMIT 1
+)`,
+
+  estMonthlyIncome: `SELECT
+  ra.estimated_monthly_income
+FROM retirement_accounts ra
+WHERE ra.id = (
+  SELECT id FROM retirement_accounts
+  ORDER BY updated_at DESC LIMIT 1
+)`,
+
+  breakdown: `SELECT
+  ra.roth_balance AS roth,
+  ra.pretax_balance AS pretax,
+  ra.employer_balance AS employer,
+  ra.other_balance AS other,
+  ra.total_balance
+FROM retirement_accounts ra
+WHERE ra.id = (
+  SELECT id FROM retirement_accounts
+  ORDER BY updated_at DESC LIMIT 1
+)`,
+
+  contributionRates: `SELECT
+  ra.pretax_deferral_rate,
+  ra.roth_deferral_rate
+FROM retirement_accounts ra
+WHERE ra.id = (
+  SELECT id FROM retirement_accounts
+  ORDER BY updated_at DESC LIMIT 1
+)`,
+
+  holdings: `SELECT
+  rh.fund_name,
+  rh.ticker,
+  rh.balance,
+  rh.allocation_pct,
+  rh.gain_loss
+FROM retirement_holdings rh
+JOIN retirement_accounts ra ON rh.account_id = ra.id
+WHERE ra.id = (
+  SELECT id FROM retirement_accounts
+  ORDER BY updated_at DESC LIMIT 1
+)
+ORDER BY rh.balance DESC`,
+
+  balanceHistory: `SELECT
+  rs.date,
+  rs.balance
+FROM retirement_snapshots rs
+JOIN retirement_accounts ra ON rs.account_id = ra.id
+WHERE ra.id = (
+  SELECT id FROM retirement_accounts
+  ORDER BY updated_at DESC LIMIT 1
+)
+ORDER BY rs.date ASC`,
+
+  contributions: `SELECT
+  ra.total_employee_contributions,
+  ra.total_employer_contributions,
+  ra.roth_basis,
+  ra.roth_balance
+FROM retirement_accounts ra
+WHERE ra.id = (
+  SELECT id FROM retirement_accounts
+  ORDER BY updated_at DESC LIMIT 1
+)`,
+}
+
 onMounted(async () => {
   await fetchData()
 })
@@ -27,7 +145,7 @@ async function fetchData() {
   loading.value = true
   error.value = ''
   try {
-    const res = await fetch(`${API}/api/retirement/summary`)
+    const res = await fetch(`${API}/api/v1/retirement/summary`, { credentials: 'include' })
     if (res.ok) {
       data.value = await res.json()
     } else if (res.status === 404) {
@@ -55,8 +173,9 @@ function startEditRates() {
 
 async function saveRates() {
   try {
-    const res = await fetch(`${API}/api/retirement/rates`, {
+    const res = await fetch(`${API}/api/v1/retirement/rates`, {
       method: 'PUT',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         pretax_deferral_rate: editPretax.value / 100,
@@ -335,7 +454,11 @@ const allocationPieOption = computed(() => {
       <!-- Summary Cards -->
       <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <!-- Total Balance -->
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+        <div class="group/totalBal relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <button @click="showTotalBalanceSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/totalBal:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showTotalBalanceSql" :sql="SQL.totalBalance" title="Total Balance" :tables="['retirement_accounts']" @close="showTotalBalanceSql = false" />
           <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
             Total Balance
             <InfoTooltip text="<strong>Total 401(k) Balance</strong><br>Sum of all sub-accounts: Roth, Pretax, Employer Match, and Other.<br><br><strong>Source:</strong> T. Rowe Price quarterly statement." />
@@ -345,7 +468,11 @@ const allocationPieOption = computed(() => {
         </div>
 
         <!-- Account Return -->
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+        <div class="group/acctReturn relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <button @click="showAccountReturnSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/acctReturn:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showAccountReturnSql" :sql="SQL.accountReturn" title="Account Return" :tables="['retirement_accounts']" @close="showAccountReturnSql = false" />
           <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
             Account Return
             <InfoTooltip text="<strong>Account Return</strong><br>Total return on the account since the return period start date. Includes market gains, dividends, and fund appreciation.<br><br><strong>Period:</strong> Since the return period start shown below." />
@@ -357,7 +484,11 @@ const allocationPieOption = computed(() => {
         </div>
 
         <!-- Roth Balance -->
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+        <div class="group/rothBal relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <button @click="showRothBalanceSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/rothBal:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showRothBalanceSql" :sql="SQL.rothBalance" title="Roth Balance" :tables="['retirement_accounts']" @close="showRothBalanceSql = false" />
           <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
             Roth Balance
             <InfoTooltip text="<strong>Roth 401(k) Balance</strong><br>After-tax contributions that grow tax-free. Withdrawals in retirement are tax-free (contributions and earnings).<br><br><strong>Roth Basis:</strong> The amount you contributed (not including growth). This is what you can withdraw penalty-free before 59.5." />
@@ -367,7 +498,11 @@ const allocationPieOption = computed(() => {
         </div>
 
         <!-- Pretax Balance -->
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+        <div class="group/pretaxBal relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <button @click="showPretaxBalanceSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/pretaxBal:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showPretaxBalanceSql" :sql="SQL.pretaxBalance" title="Pretax Balance" :tables="['retirement_accounts']" @close="showPretaxBalanceSql = false" />
           <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
             Pretax Balance
             <InfoTooltip text="<strong>Pretax 401(k) Balance</strong><br>Pre-tax contributions that reduce your current taxable income. Withdrawals in retirement are taxed as ordinary income." />
@@ -377,7 +512,11 @@ const allocationPieOption = computed(() => {
         </div>
 
         <!-- Est. Monthly Income -->
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+        <div class="group/estIncome relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <button @click="showEstMonthlyIncomeSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/estIncome:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </button>
+          <SqlViewerModal :open="showEstMonthlyIncomeSql" :sql="SQL.estMonthlyIncome" title="Est. Monthly Income" :tables="['retirement_accounts']" @close="showEstMonthlyIncomeSql = false" />
           <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
             Est. Monthly Income
             <InfoTooltip text="<strong>Estimated Monthly Income</strong><br>Projected monthly income at retirement based on current balance and assumed growth rates. This is an estimate and will change as your balance grows.<br><br><strong>Source:</strong> T. Rowe Price statement projection." />
@@ -392,7 +531,11 @@ const allocationPieOption = computed(() => {
         <!-- Left: 2/3 -->
         <div class="lg:col-span-2 space-y-4">
           <!-- Balance Breakdown Bar -->
-          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+          <div class="group/breakdown relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+            <button @click="showBreakdownSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/breakdown:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            </button>
+            <SqlViewerModal :open="showBreakdownSql" :sql="SQL.breakdown" title="Balance Breakdown" :tables="['retirement_accounts']" @close="showBreakdownSql = false" />
             <div class="flex items-center gap-1 mb-3">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Balance Breakdown</h2>
               <InfoTooltip text="<strong>Balance Breakdown</strong><br>Shows how your 401(k) balance is split across account types:<br><br><strong>Roth</strong> (green) — after-tax, tax-free growth<br><strong>Pretax</strong> (indigo) — pre-tax, taxed at withdrawal<br><strong>Employer Match</strong> (amber) — employer contributions, taxed at withdrawal<br><strong>Other</strong> (gray) — rollover or miscellaneous" />
@@ -422,7 +565,11 @@ const allocationPieOption = computed(() => {
           </div>
 
           <!-- Contribution Rates -->
-          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+          <div class="group/contRates relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+            <button @click="showContributionRatesSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/contRates:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            </button>
+            <SqlViewerModal :open="showContributionRatesSql" :sql="SQL.contributionRates" title="Contribution Rates" :tables="['retirement_accounts']" @close="showContributionRatesSql = false" />
             <div class="flex items-center justify-between mb-3">
               <div class="flex items-center gap-1">
                 <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Contribution Rates</h2>
@@ -485,7 +632,11 @@ const allocationPieOption = computed(() => {
         <!-- Right: 1/3 -->
         <div class="space-y-4">
           <!-- Asset Allocation / Holdings List -->
-          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+          <div class="group/holdings relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+            <button @click="showHoldingsSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/holdings:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            </button>
+            <SqlViewerModal :open="showHoldingsSql" :sql="SQL.holdings" title="Asset Allocation / Holdings" :tables="['retirement_holdings', 'retirement_accounts']" @close="showHoldingsSql = false" />
             <div class="flex items-center gap-1 mb-3">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
                 {{ allocationPieOption ? 'Asset Allocation' : 'Holdings' }}
@@ -527,7 +678,11 @@ const allocationPieOption = computed(() => {
       </div>
 
       <!-- Holdings Table -->
-      <div v-if="holdings.length > 0" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <div v-if="holdings.length > 0" class="group/holdingsDetail relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <button @click="showHoldingsDetailSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/holdingsDetail:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showHoldingsDetailSql" :sql="SQL.holdings" title="Holdings Detail" :tables="['retirement_holdings', 'retirement_accounts']" @close="showHoldingsDetailSql = false" />
         <div class="flex items-center gap-1 mb-3">
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Holdings Detail</h2>
           <InfoTooltip text="<strong>Holdings Detail</strong><br>Full table of all funds in the 401(k) account with balances, allocations, and gain/loss figures.<br><br>Live prices are fetched from Yahoo Finance when available." />
@@ -570,7 +725,11 @@ const allocationPieOption = computed(() => {
       </div>
 
       <!-- Balance History -->
-      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <div class="group/balHistory relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <button @click="showBalanceHistorySql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/balHistory:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showBalanceHistorySql" :sql="SQL.balanceHistory" title="Balance History" :tables="['retirement_snapshots', 'retirement_accounts']" @close="showBalanceHistorySql = false" />
         <div class="flex items-center gap-1 mb-3">
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Balance History</h2>
           <InfoTooltip text="<strong>Balance History</strong><br>Shows your 401(k) balance over time from uploaded statement snapshots. Upload more quarterly statements to build a more complete picture." />
@@ -589,7 +748,11 @@ const allocationPieOption = computed(() => {
       </div>
 
       <!-- Lifetime Contributions -->
-      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <div class="group/contributions relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <button @click="showContributionsSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/contributions:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showContributionsSql" :sql="SQL.contributions" title="Contributions" :tables="['retirement_accounts']" @close="showContributionsSql = false" />
         <div class="flex items-center gap-1 mb-3">
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Contributions</h2>
           <InfoTooltip text="<strong>Contribution Totals</strong><br>Employee and employer contribution totals as reported by T. Rowe Price. These track contributions <em>since T. Rowe Price became the plan provider</em>, not total lifetime contributions across all providers.<br><br>The Roth Basis is the exception — it tracks your total lifetime Roth contributions across all providers for tax purposes." />

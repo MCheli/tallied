@@ -191,7 +191,7 @@ const plaidSyncing = ref(false)
 async function loadPlaidLinks() {
   plaidLoading.value = true
   try {
-    const res = await fetch(`${API}/api/plaid/links`)
+    const res = await fetch(`${API}/api/v1/plaid/links`, { credentials: 'include' })
     plaidLinks.value = await res.json()
   } catch { /* ignore */ }
   plaidLoading.value = false
@@ -200,7 +200,7 @@ async function loadPlaidLinks() {
 async function connectPlaid() {
   plaidStatus.value = 'Getting link token...'
   try {
-    const res = await fetch(`${API}/api/plaid/link-token`)
+    const res = await fetch(`${API}/api/v1/plaid/link-token`, { credentials: 'include' })
     const { link_token } = await res.json()
 
     const handler = (window as any).Plaid.create({
@@ -208,8 +208,9 @@ async function connectPlaid() {
       onSuccess: async (public_token: string, metadata: any) => {
         plaidStatus.value = `Connecting ${metadata.institution?.name || 'institution'}...`
         try {
-          const exchangeRes = await fetch(`${API}/api/plaid/exchange`, {
+          const exchangeRes = await fetch(`${API}/api/v1/plaid/exchange`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               public_token,
@@ -239,7 +240,7 @@ async function syncPlaid() {
   plaidSyncing.value = true
   plaidStatus.value = 'Syncing transactions...'
   try {
-    const res = await fetch(`${API}/api/plaid/sync`, { method: 'POST' })
+    const res = await fetch(`${API}/api/v1/plaid/sync`, { method: 'POST', credentials: 'include' })
     const result = await res.json()
     if (!res.ok) throw new Error(result.detail || 'Sync failed')
     plaidStatus.value = `Synced: ${result.total_added} added, ${result.total_modified} modified, ${result.total_removed} removed`

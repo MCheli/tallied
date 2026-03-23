@@ -1,8 +1,9 @@
 # Platform Vision: Personal Finance as a Data Platform
 
-## Status: Planning — Not yet implemented
+## Status: Phase 1 Complete, Phase 2 In Progress
 
 *Created: March 22, 2026*
+*Updated: March 22, 2026*
 *This document captures the long-term vision for evolving the personal finance app from a single-user dashboard into a multi-tenant data platform with direct database access, public APIs, and extensibility.*
 
 ---
@@ -63,13 +64,14 @@ Tenant
 5. Seed initial tenant from existing SQLite data
 
 ### Technical Changes Required
-- [ ] Add `users`, `tenants`, `tenant_memberships` tables in platform schema
-- [ ] Add authentication middleware (JWT + API key)
-- [ ] Add tenant context middleware (resolve tenant from auth, set schema)
-- [ ] Migrate SQLAlchemy models to support schema-per-tenant
-- [ ] Build login/registration UI
-- [ ] Build tenant management (create, invite users, manage roles)
-- [ ] Migrate from SQLite to PostgreSQL
+- [x] Add `users`, `tenants`, `tenant_memberships` tables in platform schema
+- [x] Add authentication middleware (JWT + API key)
+- [x] Add tenant context middleware (resolve tenant from auth, set schema)
+- [x] Migrate SQLAlchemy models to support schema-per-tenant
+- [x] Build login/registration UI (Google SSO + dev mode)
+- [x] Build tenant management (create, auto-provision, switch)
+- [x] Migrate from SQLite to PostgreSQL
+- [ ] Invite users to tenants (sharing)
 
 ---
 
@@ -157,11 +159,13 @@ Net Worth KPI:
 ```
 
 ### Technical Changes Required
-- [ ] Create a registry of KPI definitions with their SQL
-- [ ] Add `SqlViewerModal` component with syntax highlighting (use Prism.js or Shiki)
-- [ ] Add join diagram renderer (simple SVG showing table relationships)
-- [ ] Add "View SQL" button to InfoTooltip or as a separate icon
-- [ ] Each backend endpoint annotates its query for the frontend
+- [x] Create a registry of KPI definitions with their SQL (SQL strings defined per-page)
+- [x] Add `SqlViewerModal` component with syntax highlighting (custom `useSqlHighlight` composable)
+- [x] Add "View SQL" `</>` button to `MetricCard` and `ChartContainer` components
+- [x] SQL transparency on all pages: Dashboard, Spending, Cash, RSU, Retirement, Property, Income, Assets, Planning
+- [x] Clickable table pills in SQL modal with inline data preview
+- [x] "Run in SQL Runner" button that pre-fills the Database page query editor
+- [ ] Join diagram renderer (simple SVG showing table relationships)
 
 ---
 
@@ -199,11 +203,16 @@ Replace the current basic table browser with an interactive entity-relationship 
 - **Schema metadata**: API endpoint that returns full schema as JSON (tables, columns, FKs, row counts)
 
 ### Technical Changes Required
-- [ ] Backend: `/api/admin/schema` endpoint returning full schema metadata with FK relationships
-- [ ] Frontend: Canvas component using React Flow or D3 for ERD
-- [ ] Frontend: Monaco/CodeMirror SQL editor component
-- [ ] Frontend: Query execution via `/api/admin/query` endpoint (read-only)
-- [ ] Frontend: Results grid with sorting, filtering, CSV export
+- [x] Backend: `/api/admin/schema` endpoint returning full schema metadata with FK relationships
+- [x] Frontend: SVG ERD canvas with Miro-style pan/zoom/pinch navigation
+- [x] Frontend: SQL editor with syntax highlighting overlay (custom `useSqlHighlight`)
+- [x] Frontend: Query execution via `/api/admin/query` endpoint (read-only, tenant-scoped)
+- [x] Frontend: Results grid with column count, row count display
+- [x] Native PostgreSQL COMMENT ON for table/column descriptions (hover tooltips)
+- [x] Data preview modal — click table icon to browse rows
+- [x] Orthogonal (H-V-H) relationship lines with glow highlight on selection
+- [ ] Results grid CSV export
+- [ ] Query history
 
 ---
 
@@ -261,37 +270,39 @@ Webhooks:     POST /api/v1/webhooks (subscribe to events)
 - Request/response logging (last 100 requests per key)
 
 ### Technical Changes Required
-- [ ] API versioning (`/api/v1/` prefix)
-- [ ] API key authentication middleware
+- [x] API versioning (`/api/v1/` prefix with sub-app + OpenAPI spec)
+- [x] API key authentication middleware (`X-API-Key` header, SHA-256 hashed, tenant-scoped)
+- [x] API key management UI (create, list, revoke in /developer page)
+- [x] API documentation page (Scalar via `/api/v1/scalar`, linked from frontend)
+- [x] Code examples (curl, Python, JavaScript in Quick Start section)
 - [ ] Rate limiting middleware (Redis-based or in-memory)
 - [ ] Webhook subscription model + delivery system (queue-based)
 - [ ] API usage logging (request count, latency, errors per key)
-- [ ] API documentation page (extend FastAPI's built-in OpenAPI)
-- [ ] API key management UI
+- [ ] Curate public OpenAPI spec (hide internal endpoints)
 
 ---
 
 ## 6. Migration Roadmap
 
-### Phase 1: Foundation (Current → Multi-user ready)
-1. Migrate SQLite → PostgreSQL
-2. Add user authentication (JWT)
-3. Add basic tenant isolation (schema-per-tenant)
-4. Versioned API (`/api/v1/`)
-5. API key auth for programmatic access
+### Phase 1: Foundation ✅ COMPLETE
+1. ~~Migrate SQLite → PostgreSQL~~ ✅
+2. ~~Add user authentication (JWT + Google SSO)~~ ✅
+3. ~~Add basic tenant isolation (schema-per-tenant)~~ ✅
+4. ~~Versioned API (`/api/v1/`)~~ ✅
+5. ~~API key auth for programmatic access~~ ✅
 
-### Phase 2: Data Platform
-6. Direct database access (Postgres roles + credential management)
-7. Interactive schema canvas (replace admin page)
-8. SQL transparency on dashboard KPIs
-9. SQL runner in admin page
+### Phase 2: Data Platform (mostly complete)
+6. Direct database access (Postgres roles + credential management) — **not started**
+7. ~~Interactive schema canvas (Miro-style ERD with pan/zoom)~~ ✅
+8. ~~SQL transparency on all dashboard KPIs~~ ✅
+9. ~~SQL runner with syntax highlighting~~ ✅
 
-### Phase 3: API Platform
-10. Full CRUD public API
-11. API documentation page
-12. Webhook system
-13. API usage tracking and logs
-14. Rate limiting
+### Phase 3: API Platform (in progress)
+10. Full CRUD public API — **not started**
+11. ~~API documentation page (Scalar + OpenAPI)~~ ✅
+12. Webhook system — **not started**
+13. API usage tracking and logs — **not started**
+14. Rate limiting — **not started**
 
 ### Phase 4: Commercialization Readiness
 15. Billing integration (Stripe)

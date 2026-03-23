@@ -1,25 +1,41 @@
-"""Test configuration — in-memory SQLite with Claudius Banks seed data."""
+"""Test configuration — in-memory SQLite for fast isolated tests.
+
+Production uses PostgreSQL with schema-per-tenant. Tests use SQLite with
+mocked tenant context for speed and zero-dependency CI.
+"""
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 
 # Add project root to path for script imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from app.database import Base, get_db
-from app.main import app
+from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
+from app.main import app, v1, legacy
 
-# In-memory SQLite for tests
+# In-memory SQLite for tests (fast, no Docker needed)
 TEST_DATABASE_URL = "sqlite:///:memory:"
 test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestSession = sessionmaker(bind=test_engine)
 
+# Mock tenant context for all tests
+MOCK_TENANT_CTX = TenantContext(
+    user_id=1, email="test@test.com", tenant_id=1, tenant_schema="public"
+)
 
-def override_get_db():
+
+def _sqlite_year_month(column):
+    """SQLite-compatible year_month for tests."""
+    return func.strftime("%Y-%m", column)
+
+
+def _override_get_db():
     db = TestSession()
     try:
         yield db
@@ -30,11 +46,14 @@ def override_get_db():
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
     """Create all tables once for the test session."""
-    # Import all models to register them
-    import app.models  # noqa
-    Base.metadata.create_all(bind=test_engine)
-    yield
-    Base.metadata.drop_all(bind=test_engine)
+    import app.models  # noqa — register all models
+
+    with patch("app.api.spending.year_month", _sqlite_year_month), \
+         patch("app.api.trends.year_month", _sqlite_year_month):
+        # In SQLite tests, create ALL tables in one schema (no tenant isolation)
+        Base.metadata.create_all(bind=test_engine)
+        yield
+        Base.metadata.drop_all(bind=test_engine)
 
 
 @pytest.fixture(autouse=True)
@@ -44,14 +63,25 @@ def db_session():
     transaction = connection.begin()
     session = TestSession(bind=connection)
 
-    # Override the dependency
-    app.dependency_overrides[get_db] = lambda: session
+    # Override dependencies on all three app instances (main, v1, legacy)
+    for a in (app, v1, legacy):
+        a.dependency_overrides[get_db] = lambda: session
+        a.dependency_overrides[get_tenant_db] = lambda: session
+        a.dependency_overrides[get_tenant_context] = lambda: MOCK_TENANT_CTX
 
     yield session
 
     session.close()
     transaction.rollback()
     connection.close()
+
+
+@pytest.fixture(autouse=True)
+def patch_year_month():
+    """Patch year_month to use SQLite strftime in all test API calls."""
+    with patch("app.api.spending.year_month", _sqlite_year_month), \
+         patch("app.api.trends.year_month", _sqlite_year_month):
+        yield
 
 
 @pytest.fixture

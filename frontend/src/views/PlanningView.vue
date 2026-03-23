@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { planningApi, type PlanListItem, type PlanTable, type CellValue, type RowStatus } from '../api/planning'
 import { api } from '../api/client'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
+import SqlViewerModal from '../components/common/SqlViewerModal.vue'
 import AssumptionPanel from '../components/planning/AssumptionPanel.vue'
 import type { AssumptionResponse, PlanResponse } from '../types'
 import { Settings as SettingsIcon, ChevronRight, ChevronDown } from 'lucide-vue-next'
@@ -67,6 +68,12 @@ const plan2Loading = ref(false)
 const plan1Error = ref<string | null>(null)
 const plan2Error = ref<string | null>(null)
 
+// Create plan
+const showCreatePlan = ref(false)
+const newPlanName = ref('')
+const newPlanType = ref('base')
+const creatingPlan = ref(false)
+
 // Assumptions sidebar
 const showAssumptions = ref(false)
 const assumptions = ref<AssumptionResponse[]>([])
@@ -86,10 +93,66 @@ function toggleGroup(label: string) {
   localStorage.setItem('planning-collapsed-groups', JSON.stringify([...s]))
 }
 
+// SQL viewer state
+const showProjectionSql = ref(false)
+const showAssumptionsSql = ref(false)
+
+// SQL queries
+const projectionTableSql = `-- Projection table: actuals + forecast + plan rows
+SELECT pv.name AS plan_name, pp.year, pp.age, pp.phase,
+       pp.salary AS base_salary, pp.rsu_income, pp.gross_income,
+       pp.tax_paid, pp.take_home, pp.contributions_401k,
+       pp.expenses_annual, pp.savings_rate,
+       pp.net_worth, pp.liquid_net_worth,
+       pp.investment_balance, pp.retirement_balance,
+       pp.home_equity, pp.mortgage_balance
+FROM plan_projections pp
+JOIN plan_versions pv ON pv.id = pp.plan_id
+WHERE pv.id = :plan_id
+ORDER BY pp.year;
+
+-- Actuals come from actual_snapshots for completed years
+SELECT year, metric, value, source
+FROM actual_snapshots
+WHERE year <= :current_year
+ORDER BY year, metric;
+
+-- Forecast rows use current-year data
+SELECT year, metric, value
+FROM forecasts
+WHERE year = :current_year;`
+
+const assumptionsSql = `SELECT pa.key, pa.display_name, pa.category,
+       pa.value, pa.description, pa.sensitivity
+FROM plan_assumptions pa
+JOIN plan_versions pv ON pv.id = pa.plan_id
+WHERE pv.id = :plan_id
+ORDER BY pa.category, pa.key;`
+
 // Expandable narrative rows
 const expandedYear = ref<number | null>(null)
 
 // ── Loaders ───────────────────────────────────────────────────────────────────
+
+async function createPlan() {
+  if (!newPlanName.value.trim()) return
+  creatingPlan.value = true
+  try {
+    const plan = await api.createPlan({
+      name: newPlanName.value.trim(),
+      scenario_type: newPlanType.value,
+      assumptions: [],
+    })
+    showCreatePlan.value = false
+    newPlanName.value = ''
+    await loadPlans()
+    plan1Id.value = plan.id
+  } catch (e: any) {
+    plansError.value = e.message
+  } finally {
+    creatingPlan.value = false
+  }
+}
 
 async function loadPlans() {
   plansLoading.value = true
@@ -390,6 +453,10 @@ const totalVisibleCols = computed(() => {
             <option :value="null" disabled>Select plan…</option>
             <option v-for="p in plans" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
+          <button @click="showCreatePlan = !showCreatePlan"
+            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+            {{ showCreatePlan ? 'Cancel' : '+ New Plan' }}
+          </button>
         </div>
         <span class="text-xs text-gray-400">vs.</span>
         <div class="flex items-center gap-2">
@@ -400,6 +467,32 @@ const totalVisibleCols = computed(() => {
             <option v-for="p in plans" :key="p.id" :value="p.id" :disabled="p.id === plan1Id">{{ p.name }}</option>
           </select>
         </div>
+      </div>
+    </div>
+
+    <!-- Create Plan Form -->
+    <div v-if="showCreatePlan" class="mb-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+      <div class="flex items-end gap-3">
+        <div class="flex-1">
+          <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Plan Name</label>
+          <input v-model="newPlanName" type="text" placeholder="e.g., Retire at 55"
+            class="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            @keydown.enter="createPlan" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
+          <select v-model="newPlanType"
+            class="px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white">
+            <option value="base">Base</option>
+            <option value="optimistic">Optimistic</option>
+            <option value="pessimistic">Pessimistic</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <button @click="createPlan" :disabled="creatingPlan || !newPlanName.trim()"
+          class="px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+          {{ creatingPlan ? 'Creating...' : 'Create Plan' }}
+        </button>
       </div>
     </div>
 
@@ -419,7 +512,11 @@ const totalVisibleCols = computed(() => {
     <!-- Main layout: table + optional assumptions sidebar -->
     <div v-else class="flex gap-4">
       <!-- Table area -->
-      <div class="flex-1 min-w-0 relative">
+      <div class="group/table flex-1 min-w-0 relative">
+        <button @click="showProjectionSql = true" class="absolute top-3.5 right-3.5 z-40 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/table:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <SqlViewerModal :open="showProjectionSql" :sql="projectionTableSql" title="Projection Table" :tables="['plan_versions', 'plan_projections', 'actual_snapshots', 'forecasts']" @close="showProjectionSql = false" />
         <!-- Legend -->
         <div class="flex items-center gap-5 mb-3 text-xs">
           <div class="flex items-center gap-1.5">
@@ -577,12 +674,18 @@ const totalVisibleCols = computed(() => {
       </div>
 
       <!-- Assumptions Sidebar -->
-      <div v-if="showAssumptions" class="w-80 flex-shrink-0">
+      <div v-if="showAssumptions" class="group/assumptions w-80 flex-shrink-0 relative">
         <div class="sticky top-6">
           <div class="flex items-center justify-between mb-3">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Assumptions</h3>
-            <button @click="showAssumptions = false" class="text-gray-400 hover:text-gray-600 text-xs">Close</button>
+            <div class="flex items-center gap-2">
+              <button @click="showAssumptionsSql = true" class="p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/assumptions:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              </button>
+              <button @click="showAssumptions = false" class="text-gray-400 hover:text-gray-600 text-xs">Close</button>
+            </div>
           </div>
+          <SqlViewerModal :open="showAssumptionsSql" :sql="assumptionsSql" title="Plan Assumptions" :tables="['plan_assumptions', 'plan_versions']" @close="showAssumptionsSql = false" />
           <div class="max-h-[calc(100vh-200px)] overflow-y-auto">
             <AssumptionPanel :assumptions="assumptions" @update="onAssumptionUpdate" />
           </div>

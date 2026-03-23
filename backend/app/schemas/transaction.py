@@ -1,11 +1,12 @@
-from datetime import date, datetime
+from datetime import date as _date, datetime
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
 
 class TransactionCreate(BaseModel):
     account_id: str
-    date: date
+    date: _date
     amount: float
     merchant: str | None = None
     category: str | None = None
@@ -15,12 +16,23 @@ class TransactionCreate(BaseModel):
     source: str | None = None
 
 
+class TransactionUpdate(BaseModel):
+    account_id: Optional[str] = None
+    date: Optional[_date] = None
+    amount: Optional[float] = None
+    merchant: Optional[str] = None
+    category: Optional[str] = None
+    category_group: Optional[str] = None
+    is_recurring: Optional[bool] = None
+    notes: Optional[str] = None
+
+
 class TransactionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     account_id: str | None = None
-    date: date
+    date: _date
     amount: float | None = None
     merchant: str | None = None
     category: str | None = None
@@ -32,8 +44,8 @@ class TransactionResponse(BaseModel):
 
 
 class TransactionFilter(BaseModel):
-    from_date: date | None = None
-    to_date: date | None = None
+    from_date: _date | None = None
+    to_date: _date | None = None
     category: str | None = None
     category_group: str | None = None
     account_id: str | None = None
@@ -53,7 +65,7 @@ class RecurringExpense(BaseModel):
     category: str
     avg_monthly: float
     months_seen: int
-    last_date: date
+    last_date: _date
 
 
 class MonthlySpending(BaseModel):

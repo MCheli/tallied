@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
+from app.dependencies import get_tenant_db
 from app.models.import_log import ImportLog
 from app.schemas.import_data import ImportPayload, ImportResponse, ImportLogResponse
 from app.services.import_service import (
@@ -16,12 +16,12 @@ from app.services.import_service import (
     reject_import,
 )
 
-router = APIRouter(prefix="/api/import", tags=["import"])
+router = APIRouter(prefix="/import-legacy", tags=["import-legacy"], include_in_schema=False)
 logger = logging.getLogger(__name__)
 
 
 @router.post("/", response_model=ImportResponse, status_code=201)
-def import_data(payload: ImportPayload, db: Session = Depends(get_db)):
+def import_data(payload: ImportPayload, db: Session = Depends(get_tenant_db)):
     log = process_import(
         db=db,
         source=payload.source,
@@ -45,7 +45,7 @@ def import_data(payload: ImportPayload, db: Session = Depends(get_db)):
 
 
 @router.post("/preview", status_code=201)
-def import_preview(payload: ImportPayload, db: Session = Depends(get_db)):
+def import_preview(payload: ImportPayload, db: Session = Depends(get_tenant_db)):
     """Parse raw data and return a preview without writing to data tables."""
     try:
         result = preview_import(
@@ -61,7 +61,7 @@ def import_preview(payload: ImportPayload, db: Session = Depends(get_db)):
 
 
 @router.post("/{import_id}/confirm")
-def import_confirm(import_id: int, db: Session = Depends(get_db)):
+def import_confirm(import_id: int, db: Session = Depends(get_tenant_db)):
     """Confirm a previewed import — writes parsed records to data tables."""
     try:
         result = confirm_import(db=db, import_id=import_id)
@@ -74,7 +74,7 @@ def import_confirm(import_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{import_id}/reject")
-def import_reject(import_id: int, db: Session = Depends(get_db)):
+def import_reject(import_id: int, db: Session = Depends(get_tenant_db)):
     """Reject a previewed import — no data written."""
     try:
         result = reject_import(db=db, import_id=import_id)
@@ -90,7 +90,7 @@ def import_reject(import_id: int, db: Session = Depends(get_db)):
 def list_import_logs(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     stmt = (
         select(ImportLog)
@@ -125,7 +125,7 @@ Return ONLY valid JSON, no markdown or explanation."""
 
 
 @router.post("/parse-screenshot")
-def parse_screenshot(body: dict, db: Session = Depends(get_db)):
+def parse_screenshot(body: dict, db: Session = Depends(get_tenant_db)):
     """Parse a screenshot using Claude Vision to extract financial data."""
     image_data = body.get("image")
     source = body.get("source", "screenshot")

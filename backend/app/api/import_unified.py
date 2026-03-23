@@ -17,15 +17,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
+from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
+from app.services.audit_service import log_event
 from app.models.import_session import ImportSession
 from app.models.income import W2Record
 from app.models.property import Mortgage
 from app.models.retirement import RetirementAccount, RetirementHolding, RetirementSnapshot
 from app.models.import_log import ImportLog
 from app.models.account import Account
+from app.models.investment import RSUGrant, VestEvent
 
-router = APIRouter(prefix="/api/v1/import", tags=["import-v1"])
+router = APIRouter(prefix="/import", tags=["import-v1"])
 
 # ── Context-aware prompts ──────────────────────────────────────────────────────
 
@@ -81,25 +83,63 @@ db_field mapping:
 - Unpaid principal balance → mortgage_balance
 - Interest rate → mortgage_rate
 - Monthly payment / total payment due → mortgage_monthly_payment
-- Original principal balance → mortgage_original_amount
+- Original principal balance / original loan amount → mortgage_original_amount
 - Escrow balance → mortgage_escrow_balance
 - Principal portion of payment → mortgage_principal_payment
 - Interest portion of payment → mortgage_interest_payment
 - Escrow portion of payment → mortgage_escrow_payment
+- Property address (the address of the mortgaged property) → mortgage_property_address
+
+For the property address, set value to the full address string (e.g., "123 Main St, Springfield, MA 01101") and value_numeric to null.
 If nothing found, return: []""",
         "expected_fields": ["mortgage_balance", "mortgage_rate", "mortgage_monthly_payment"],
         "guidance": "Upload your monthly mortgage statement.",
         "examples": ["Monthly mortgage statement from Chase, Wells Fargo, etc."],
     },
     "rsu": {
-        "prompt": """You are analyzing an E-Trade RSU holdings export spreadsheet.
-This contains RSU grant data with vest schedules. Return a JSON summary:
-{"grants_found": N, "description": "Brief summary of what was found"}
-Note: RSU spreadsheet imports use a specialized parser, not this general flow.
-Return the summary so the user knows what was detected.""",
-        "expected_fields": [],
-        "guidance": "Upload E-Trade 'Download by Type (expanded)' .xlsx file.",
-        "examples": ["E-Trade holdings spreadsheet (.xlsx)"],
+        "prompt": """You are analyzing an E-Trade RSU vesting schedule spreadsheet (.xlsx).
+The spreadsheet has a "Restricted Stock" sheet with these row types:
+- "Grant" rows: high-level grant info (Symbol, Grant Date, Granted Qty., Vested Qty., Unvested Qty., Sellable Qty., Est. Market Value, Grant Number)
+- "Vest Schedule" rows: per-period vest details (Grant Number, Vest Period, Vest Date, Vested Qty., Released Qty, Total Taxes Paid, Shares Traded for taxes)
+- "Tax Withholding" rows: tax detail per vest (Grant Number, Vest Period, Tax Description, Taxable Gain, Effective Tax Rate, Withholding Amount)
+
+Extract ALL grants and their vest events. Return ONLY a valid JSON array (no markdown, no explanation):
+[
+  {
+    "grant_number": "094907",
+    "symbol": "MSFT",
+    "grant_date": "2023-05-15",
+    "total_shares": 200,
+    "vested_shares": 150,
+    "unvested_shares": 50,
+    "sellable_shares": 90,
+    "share_price": 95.50,
+    "vest_events": [
+      {
+        "vest_period": 1,
+        "vest_date": "2024-05-15",
+        "shares": 60,
+        "fmv_at_vest": 127.70,
+        "shares_withheld": 22,
+        "shares_released": 60,
+        "total_taxes_paid": 2847.60,
+        "is_actual": true
+      }
+    ]
+  }
+]
+
+Rules:
+- share_price = Est. Market Value / Granted Qty. (compute from Grant row)
+- fmv_at_vest = Taxable Gain / Vested Qty. for that vest period (from Tax Withholding rows)
+- total_taxes_paid = sum of all Withholding Amount values for that vest period
+- is_actual = true if Vested Qty. > 0 for that vest period, false otherwise
+- Convert dates to YYYY-MM-DD format
+- If a field is missing or zero, use null
+- Return [] if no grants found""",
+        "expected_fields": ["symbol", "total_shares", "grant_number"],
+        "guidance": "Upload your E-Trade RSU vesting schedule .xlsx file.",
+        "examples": ["E-Trade RSU vesting schedule spreadsheet (.xlsx)"],
     },
     "general": {
         "prompt": """You are analyzing a financial document. Identify the document type and extract all relevant financial values.
@@ -124,7 +164,12 @@ W2_FIELDS = {
 MORTGAGE_FIELDS = {
     "mortgage_balance": "current_balance", "mortgage_rate": "rate",
     "mortgage_monthly_payment": "monthly_payment", "mortgage_original_amount": "original_amount",
+    "mortgage_property_address": "property_address",
+    "mortgage_escrow_payment": "escrow",  # Monthly escrow payment amount
 }
+
+# Fields that store text (not Decimal)
+TEXT_DB_FIELDS = {"property_address"}
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
@@ -133,7 +178,7 @@ MORTGAGE_FIELDS = {
 def upload_and_process(
     file: UploadFile = File(...),
     context: str = Form("general"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Upload a file and start AI processing. Returns session ID."""
     if not settings.anthropic_api_key:
@@ -159,19 +204,34 @@ def upload_and_process(
     db.flush()
 
     # Send to Claude
-    pdf_b64 = base64.standard_b64encode(file_bytes).decode("utf-8")
-    media_type = "application/pdf" if file_type == "pdf" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if file_type in ("xlsx", "xls") else "text/csv"
-
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     try:
-        content_block = {"type": "document", "source": {"type": "base64", "media_type": media_type, "data": pdf_b64}}
-        if file_type == "csv":
-            # For CSV, send as text
-            content_block = {"type": "text", "text": f"CSV file contents:\n{file_bytes.decode('utf-8', errors='ignore')}"}
+        if file_type == "pdf":
+            # PDFs: send as document block
+            pdf_b64 = base64.standard_b64encode(file_bytes).decode("utf-8")
+            content_block = {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64}}
+        elif file_type in ("xlsx", "xls"):
+            # Excel: convert to text via openpyxl, send as text block
+            import io
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+                text_parts = []
+                for sheet_name in wb.sheetnames:
+                    ws = wb[sheet_name]
+                    text_parts.append(f"=== Sheet: {sheet_name} ===")
+                    for row in ws.iter_rows(values_only=True):
+                        text_parts.append("\t".join(str(c) if c is not None else "" for c in row))
+                content_block = {"type": "text", "text": f"Excel file contents ({filename}):\n" + "\n".join(text_parts)}
+            except ImportError:
+                content_block = {"type": "text", "text": f"Excel file uploaded: {filename} (could not parse — openpyxl not installed)"}
+        else:
+            # CSV and other text: send as text block
+            content_block = {"type": "text", "text": f"File contents ({filename}):\n{file_bytes.decode('utf-8', errors='ignore')}"}
 
         message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=4096,
+            model="claude-sonnet-4-20250514",
+            max_tokens=16384,
             messages=[{"role": "user", "content": [content_block, {"type": "text", "text": config["prompt"]}]}],
         )
     except anthropic.APIError as e:
@@ -179,38 +239,62 @@ def upload_and_process(
         session.raw_ai_response = str(e)
         db.commit()
         raise HTTPException(status_code=502, detail=f"AI processing failed: {e}")
+    except Exception as e:
+        session.status = "error"
+        session.raw_ai_response = str(e)
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Processing error: {e}")
 
-    raw_text = message.content[0].text.strip()
-    session.raw_ai_response = raw_text
+    try:
+        raw_text = message.content[0].text.strip()
+        session.raw_ai_response = raw_text
 
-    # Parse response
-    findings = _parse_ai_response(raw_text, context)
-    session.parsed_findings = json.dumps(findings)
+        # Parse response
+        findings = _parse_ai_response(raw_text, context)
+        session.parsed_findings = json.dumps(findings)
 
-    # Build proposed changes
-    proposed = _build_proposed_changes(findings, context, db, filename=filename)
-    session.proposed_changes = json.dumps(proposed)
+        # Build proposed changes
+        proposed = _build_proposed_changes(findings, context, db, filename=filename)
+        session.proposed_changes = json.dumps(proposed)
 
-    # Identify missing fields
-    found_fields = {f.get("db_field") for f in findings if f.get("db_field")}
-    missing = [
-        {"field": ef, "message": f"Expected but not found: {ef}"}
-        for ef in config["expected_fields"] if ef not in found_fields
-    ]
-    session.missing_fields = json.dumps(missing)
+        # Identify missing fields
+        if context == "retirement" and len(findings) == 1 and isinstance(findings[0], dict):
+            # Retirement findings are a single object with keys as field names
+            found_fields = set(findings[0].keys())
+        elif context == "rsu" and len(findings) > 0 and isinstance(findings[0], dict) and "grant_number" in findings[0]:
+            # RSU findings: collect field names from all grants
+            found_fields = set()
+            for g in findings:
+                found_fields.update(k for k, v in g.items() if v is not None)
+        else:
+            found_fields = {f.get("db_field") for f in findings if f.get("db_field")}
+        missing = [
+            {"field": ef, "message": f"Expected but not found: {ef}"}
+            for ef in config["expected_fields"] if ef not in found_fields
+        ]
+        session.missing_fields = json.dumps(missing)
 
-    # Generate summary
-    session.ai_summary = _generate_summary(findings, proposed, missing, filename, context)
-    session.status = "review"
+        # Generate summary
+        ai_summary = _generate_summary(findings, proposed, missing, filename, context)
+        session.ai_summary = ai_summary
+        session.status = "review"
 
-    db.commit()
+        db.commit()
+    except Exception as e:
+        session.status = "error"
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Error parsing AI response: {e}")
 
+    # Note: after db.commit(), SQLAlchemy expires ORM attributes.  Accessing
+    # them would trigger a lazy-load on a new connection whose search_path
+    # has been reset to 'public', causing "relation does not exist".  We
+    # therefore return only local variables that were computed before commit.
     return {
         "session_id": session_id,
         "status": "review",
         "filename": filename,
         "context": context,
-        "ai_summary": session.ai_summary,
+        "ai_summary": ai_summary,
         "missing_fields": missing,
         "proposed_changes": proposed,
         "findings_count": len(findings),
@@ -218,7 +302,7 @@ def upload_and_process(
 
 
 @router.get("/{session_id}")
-def get_session(session_id: str, db: Session = Depends(get_db)):
+def get_session(session_id: str, db: Session = Depends(get_tenant_db)):
     """Get import session status and data."""
     session = db.get(ImportSession, session_id)
     if not session:
@@ -242,7 +326,7 @@ class AcceptRequest(BaseModel):
 
 
 @router.put("/{session_id}/accept")
-def accept_changes(session_id: str, body: AcceptRequest, db: Session = Depends(get_db)):
+def accept_changes(session_id: str, body: AcceptRequest, db: Session = Depends(get_tenant_db)):
     """Mark which proposed changes to accept."""
     session = db.get(ImportSession, session_id)
     if not session:
@@ -253,7 +337,7 @@ def accept_changes(session_id: str, body: AcceptRequest, db: Session = Depends(g
 
 
 @router.post("/{session_id}/confirm")
-def confirm_import(session_id: str, db: Session = Depends(get_db)):
+def confirm_import(session_id: str, db: Session = Depends(get_tenant_db), ctx: TenantContext = Depends(get_tenant_context)):
     """Apply accepted changes to the database."""
     session = db.get(ImportSession, session_id)
     if not session or session.status != "review":
@@ -269,37 +353,64 @@ def confirm_import(session_id: str, db: Session = Depends(get_db)):
     changes_applied = 0
     results = []
 
-    for change in proposed:
-        if change["id"] not in accepted_ids:
-            continue
+    try:
+        for change in proposed:
+            if change["id"] not in accepted_ids:
+                continue
 
-        table = change["table"]
-        fields = change["fields"]
+            table = change["table"]
+            fields = change["fields"]
 
-        if table == "w2_records":
-            changes_applied += _apply_w2_changes(fields, change.get("tax_year"), db)
-            results.append({"table": "w2_records", "fields": len(fields)})
+            if table == "w2_records":
+                changes_applied += _apply_w2_changes(fields, change.get("tax_year"), db)
+                results.append({"table": "w2_records", "fields": len(fields)})
 
-        elif table == "mortgages":
-            changes_applied += _apply_mortgage_changes(fields, db)
-            results.append({"table": "mortgages", "fields": len(fields)})
+            elif table == "mortgages":
+                changes_applied += _apply_mortgage_changes(fields, db)
+                results.append({"table": "mortgages", "fields": len(fields)})
 
-        elif table == "retirement_accounts":
-            # Retirement uses the full parsed object, stored in change["data"]
-            changes_applied += 1
-            results.append({"table": "retirement_accounts", "fields": len(fields)})
+            elif table == "retirement_accounts":
+                changes_applied += _apply_retirement_changes(fields, db)
+                results.append({"table": "retirement_accounts", "fields": len(fields)})
+                # Also import holdings if present
+                change_data = change.get("data", {})
+                holdings = change_data.get("holdings", []) if isinstance(change_data, dict) else []
+                if holdings:
+                    ret_acct = db.execute(
+                        select(RetirementAccount).order_by(RetirementAccount.updated_at.desc()).limit(1)
+                    ).scalar_one_or_none()
+                    if ret_acct:
+                        h_count = _apply_retirement_holdings(holdings, ret_acct.id, db)
+                        results.append({"table": "retirement_holdings", "count": h_count})
 
-    session.status = "confirmed"
-    session.confirmed_at = datetime.now()
-    session.changes_applied = changes_applied
+            elif table == "rsu_grants":
+                data = change.get("data", {})
+                changes_applied += _apply_rsu_changes(data, db)
+                results.append({"table": "rsu_grants", "grant_number": data.get("grant_number")})
 
-    db.add(ImportLog(
-        source="unified_import", capture_mode="pdf", status="confirmed",
-        raw_data=json.dumps({"session_id": session_id, "filename": session.filename}),
-        parsed_summary=f"Applied {changes_applied} changes",
-        records_created=changes_applied,
-    ))
-    db.commit()
+        session_status = "confirmed"
+        session_confirmed_at = datetime.now()
+
+        db.add(ImportLog(
+            source="unified_import", capture_mode="pdf", status="confirmed",
+            raw_data=json.dumps({"session_id": session_id, "filename": session.filename}),
+            parsed_summary=f"Applied {changes_applied} changes",
+            records_created=changes_applied,
+        ))
+
+        session.status = session_status
+        session.confirmed_at = session_confirmed_at
+        session.changes_applied = changes_applied
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error applying changes: {e}")
+
+    log_event(
+        action="data_import", resource_type="import_session", resource_id=session_id,
+        user_id=ctx.user_id,
+        details={"filename": session.filename, "changes_applied": changes_applied, "results": results},
+    )
 
     return {"status": "confirmed", "changes_applied": changes_applied, "results": results}
 
@@ -309,7 +420,7 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/{session_id}/chat")
-def chat_with_import(session_id: str, body: ChatRequest, db: Session = Depends(get_db)):
+def chat_with_import(session_id: str, body: ChatRequest, db: Session = Depends(get_tenant_db)):
     """Send a message to AI about the import findings."""
     session = db.get(ImportSession, session_id)
     if not session:
@@ -379,7 +490,7 @@ IMPORTANT RULES:
             claude_messages.append({"role": m["role"], "content": m["content"]})
 
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-20250514",
             max_tokens=1024,
             system=system_prompt,
             messages=claude_messages,
@@ -414,7 +525,7 @@ IMPORTANT RULES:
 
 
 @router.post("/{session_id}/apply-action")
-def apply_chat_action(session_id: str, db: Session = Depends(get_db)):
+def apply_chat_action(session_id: str, db: Session = Depends(get_tenant_db)):
     """Apply the most recent chat action (add/modify a proposed change)."""
     session = db.get(ImportSession, session_id)
     if not session:
@@ -457,6 +568,43 @@ def apply_chat_action(session_id: str, db: Session = Depends(get_db)):
         session.proposed_changes = json.dumps(proposed)
         db.commit()
         return {"applied": True, "message": f"Added {column} = {value} to {table}"}
+
+    if action.get("action") == "update_field":
+        # Update an existing field in proposed changes
+        table = action.get("table", "w2_records")
+        column = action["column"]
+        value = action["value"]
+
+        updated = False
+        for change in proposed:
+            if change["table"] == table:
+                for field in change.get("fields", []):
+                    if field["column"] == column:
+                        field["old_value"] = field.get("new_value")
+                        field["new_value"] = value
+                        field["source"] = "user_corrected"
+                        updated = True
+                        break
+                if not updated:
+                    # Field not in proposed yet — add it
+                    change["fields"].append({
+                        "column": column, "old_value": None, "new_value": value,
+                        "is_new": True, "source": "user_corrected",
+                    })
+                    updated = True
+                break
+
+        if not updated:
+            # No matching table change — create one
+            proposed.append({
+                "id": str(uuid.uuid4())[:8],
+                "table": table, "action": "upsert",
+                "fields": [{"column": column, "old_value": None, "new_value": value, "is_new": True, "source": "user_corrected"}],
+            })
+
+        session.proposed_changes = json.dumps(proposed)
+        db.commit()
+        return {"applied": True, "message": f"Updated {column} = {value} in {table}"}
 
     return {"applied": False, "message": "Unknown action type"}
 
@@ -527,6 +675,56 @@ def _build_proposed_changes(findings: list[dict], context: str, db: Session, fil
         })
         return changes
 
+    if context == "rsu" and isinstance(findings, list) and len(findings) > 0 and isinstance(findings[0], dict) and "grant_number" in findings[0]:
+        # RSU findings: array of grant objects with vest_events
+        for grant_data in findings:
+            grant_num = str(grant_data.get("grant_number", ""))
+            symbol = grant_data.get("symbol", "")
+            total = grant_data.get("total_shares")
+            vested = grant_data.get("vested_shares")
+            unvested = grant_data.get("unvested_shares")
+            vest_count = len(grant_data.get("vest_events", []))
+
+            # Check for existing grant
+            existing = db.get(RSUGrant, grant_num) if grant_num else None
+            old_total = existing.total_shares if existing else None
+            old_vested = existing.vested_shares if existing else None
+
+            fields = []
+            for col, val in [
+                ("symbol", symbol),
+                ("grant_date", grant_data.get("grant_date")),
+                ("total_shares", total),
+                ("vested_shares", vested),
+                ("unvested_shares", unvested),
+                ("sellable_shares", grant_data.get("sellable_shares")),
+                ("share_price", grant_data.get("share_price")),
+            ]:
+                if val is not None:
+                    old_val = getattr(existing, col, None) if existing else None
+                    if old_val is not None:
+                        old_val = float(old_val) if isinstance(old_val, Decimal) else old_val
+                        if isinstance(old_val, date):
+                            old_val = old_val.isoformat()
+                    fields.append({
+                        "column": col, "old_value": old_val, "new_value": val,
+                        "is_new": existing is None, "source": "ai_parsed",
+                    })
+
+            grant_label = f"Grant {grant_num} — {symbol}"
+            if total:
+                grant_label += f" ({total} shares)"
+
+            changes.append({
+                "id": str(uuid.uuid4())[:8], "table": "rsu_grants", "action": "upsert",
+                "record_label": grant_label,
+                "record_key": f"grant_number = {grant_num}",
+                "fields": fields,
+                "data": grant_data,  # Full grant data including vest_events for apply step
+            })
+
+        return changes
+
     # Fields that are percentages (stored as decimals, AI reports as whole numbers)
     PERCENTAGE_FIELDS = {"mortgage_rate", "mortgage_escrow_balance"}
     # Fields stored as decimals in DB (rate is 0.0375, AI says 3.75)
@@ -562,7 +760,22 @@ def _build_proposed_changes(findings: list[dict], context: str, db: Session, fil
 
         elif db_field in MORTGAGE_FIELDS:
             col = MORTGAGE_FIELDS[db_field]
+            is_text = col in TEXT_DB_FIELDS
             mortgage = db.execute(select(Mortgage).order_by(Mortgage.updated_at.desc()).limit(1)).scalar_one_or_none()
+
+            if is_text:
+                # Text field (e.g., property_address)
+                old_val = getattr(mortgage, col, None) if mortgage else None
+                new_val_text = f.get("value") or f.get("value_numeric")
+                if new_val_text and str(new_val_text) != str(old_val or ""):
+                    mortgage_fields.append({
+                        "column": col, "old_value": old_val, "new_value": str(new_val_text),
+                        "is_new": old_val is None,
+                        "source": "ai_parsed", "display_name": f.get("field", col),
+                        "format": "text",
+                    })
+                continue
+
             old_val = float(getattr(mortgage, col, None) or 0) if mortgage else None
             new_val = f.get("value_numeric")
             if new_val is not None:
@@ -640,6 +853,10 @@ def _generate_summary(findings: list, proposed: list, missing: list, filename: s
         if context == "retirement" and isinstance(findings[0], dict) and "total_balance" in findings[0]:
             bal = findings[0].get("total_balance", 0)
             parts.append(f"Found retirement account data with balance ${bal:,.2f}")
+        elif context == "rsu" and isinstance(findings[0], dict) and "grant_number" in findings[0]:
+            total_shares = sum(g.get("total_shares", 0) or 0 for g in findings)
+            total_vests = sum(len(g.get("vest_events", [])) for g in findings)
+            parts.append(f"Found {len(findings)} RSU grants ({total_shares} total shares, {total_vests} vest events)")
         else:
             mapped = sum(1 for f in findings if f.get("db_field"))
             parts.append(f"Found {len(findings)} values from {filename} ({mapped} mapped to database fields)")
@@ -659,6 +876,12 @@ def _generate_summary(findings: list, proposed: list, missing: list, filename: s
     if missing:
         names = [m["field"].replace("w2_", "").replace("_", " ") for m in missing]
         parts.append(f"Not found: {', '.join(names)}")
+
+    # If we found data but no changes are needed, say so clearly
+    if findings and not proposed and not missing:
+        mapped = sum(1 for f in findings if f.get("db_field")) if isinstance(findings[0], dict) and "db_field" in findings[0] else len(findings)
+        if mapped > 0:
+            parts.append("All values match existing data — no changes needed")
 
     return ". ".join(parts) if parts else "No financial data found in this document."
 
@@ -687,16 +910,275 @@ def _apply_mortgage_changes(fields: list[dict], db: Session) -> int:
     mortgage = db.execute(select(Mortgage).order_by(Mortgage.updated_at.desc()).limit(1)).scalar_one_or_none()
     if not mortgage:
         acct = db.execute(select(Account).where(Account.account_type == "loan_mortgage").limit(1)).scalar_one_or_none()
-        mortgage = Mortgage(account_id=acct.id if acct else None)
+        if not acct:
+            # Auto-create a mortgage account
+            import uuid
+            acct = Account(
+                id=str(uuid.uuid4()),
+                name="Mortgage",
+                account_type="loan_mortgage",
+                display_group="Home Equity",
+                include_in_nw=True,
+            )
+            db.add(acct)
+            db.flush()
+        mortgage = Mortgage(account_id=acct.id)
         db.add(mortgage)
 
     count = 0
     for f in fields:
         col = f["column"]
-        # Use _store_value if available (already normalized), otherwise new_value
         val = f.get("_store_value", f["new_value"])
         if val is not None:
-            setattr(mortgage, col, Decimal(str(val)))
+            if f.get("format") == "text" or col in TEXT_DB_FIELDS:
+                setattr(mortgage, col, str(val))
+            else:
+                setattr(mortgage, col, Decimal(str(val)))
             count += 1
+    db.flush()
+    return count
+
+
+def _apply_retirement_changes(fields: list[dict], db: Session) -> int:
+    """Apply retirement account field changes to database.
+
+    Handles: account data, holdings, snapshots, and date-aware updates
+    (older statements only create snapshots, don't overwrite current account data).
+    """
+    from datetime import date as date_type
+    from app.models.retirement import RetirementSnapshot, RetirementHolding
+
+    # Field name mapping: AI field name → model column name
+    FIELD_MAP = {
+        "total_employee_contributions_lifetime": "total_employee_contributions",
+        "total_employer_contributions_lifetime": "total_employer_contributions",
+    }
+
+    # Percentage fields (AI sends as whole numbers like 14, DB stores as 0.14)
+    PCT_FIELDS = {"pretax_deferral_rate_pct", "roth_deferral_rate_pct", "account_return_pct"}
+    DATE_FIELDS = {"statement_start", "statement_end", "return_period_start"}
+
+    acct = db.execute(
+        select(RetirementAccount).order_by(RetirementAccount.updated_at.desc()).limit(1)
+    ).scalar_one_or_none()
+
+    is_new = acct is None
+    if is_new:
+        acct = RetirementAccount()
+        db.add(acct)
+
+    # Extract statement_end from fields to determine if this is a newer statement
+    new_stmt_end = None
+    for f in fields:
+        if f["column"] == "statement_end" and f.get("new_value"):
+            try:
+                new_stmt_end = date_type.fromisoformat(str(f["new_value"]))
+            except (ValueError, TypeError):
+                pass
+
+    # Only update account-level data if this statement is newer (or no existing date)
+    is_newer = is_new or not acct.statement_end or (new_stmt_end and new_stmt_end >= acct.statement_end)
+
+    count = 0
+    for f in fields:
+        col = f["column"]
+        val = f.get("_store_value", f["new_value"])
+        if val is None:
+            continue
+
+        # Apply field name mapping
+        db_col = FIELD_MAP.get(col, col)
+
+        if col in PCT_FIELDS:
+            if is_newer:
+                actual_col = col.replace("_pct", "")
+                setattr(acct, actual_col, Decimal(str(val)) / 100)
+                count += 1
+        elif col in DATE_FIELDS:
+            if is_newer:
+                try:
+                    setattr(acct, col, date_type.fromisoformat(str(val)))
+                    count += 1
+                except (ValueError, TypeError):
+                    pass
+        elif hasattr(acct, db_col):
+            if is_newer:
+                try:
+                    setattr(acct, db_col, Decimal(str(val)))
+                except Exception:
+                    setattr(acct, db_col, str(val))
+                count += 1
+
+    db.flush()
+
+    # Create/update balance snapshot for historical tracking
+    stmt_end = new_stmt_end or acct.statement_end
+    total_balance = acct.total_balance
+    if stmt_end and total_balance:
+        existing_snap = db.execute(
+            select(RetirementSnapshot).where(
+                RetirementSnapshot.retirement_account_id == acct.id,
+                RetirementSnapshot.snapshot_date == stmt_end,
+            )
+        ).scalar_one_or_none()
+        if existing_snap:
+            existing_snap.balance = total_balance
+            existing_snap.roth_balance = acct.roth_balance
+            existing_snap.pretax_balance = acct.pretax_balance
+            existing_snap.employer_balance = acct.employer_match_balance
+        else:
+            db.add(RetirementSnapshot(
+                retirement_account_id=acct.id,
+                snapshot_date=stmt_end,
+                balance=total_balance,
+                roth_balance=acct.roth_balance,
+                pretax_balance=acct.pretax_balance,
+                employer_balance=acct.employer_match_balance,
+                source="statement",
+            ))
+        db.flush()
+
+    # Import holdings (from the 'data' field in proposed changes)
+    # This is called from confirm_import which passes fields, but holdings
+    # are in the parent change's 'data' dict. We handle them separately below.
+
+    return count
+
+
+def _apply_retirement_holdings(holdings: list[dict], account_id: int, db: Session) -> int:
+    """Import fund holdings for a retirement account."""
+    from app.models.retirement import RetirementHolding
+
+    if not holdings:
+        return 0
+
+    # Clear existing holdings and replace with new ones
+    existing = db.execute(
+        select(RetirementHolding).where(RetirementHolding.retirement_account_id == account_id)
+    ).scalars().all()
+    for h in existing:
+        db.delete(h)
+
+    count = 0
+    for h in holdings:
+        db.add(RetirementHolding(
+            retirement_account_id=account_id,
+            fund_name=h.get("fund_name", "Unknown Fund"),
+            ticker=h.get("ticker"),
+            balance=Decimal(str(h["balance"])) if h.get("balance") is not None else None,
+            allocation_pct=Decimal(str(h["allocation_pct"])) / 100 if h.get("allocation_pct") is not None else None,
+            gain_loss=Decimal(str(h["gain_loss"])) if h.get("gain_loss") is not None else None,
+        ))
+        count += 1
+    db.flush()
+    return count
+
+
+def _apply_rsu_changes(grant_data: dict, db: Session) -> int:
+    """Apply RSU grant and vest event changes to database."""
+    from sqlalchemy import and_
+
+    grant_num = str(grant_data.get("grant_number", ""))
+    if not grant_num:
+        return 0
+
+    symbol = grant_data.get("symbol", "")
+    company = symbol  # Use symbol as company name (e.g. "MSFT")
+
+    # Parse grant date
+    grant_date_val = None
+    gd = grant_data.get("grant_date")
+    if gd:
+        try:
+            grant_date_val = date.fromisoformat(str(gd))
+        except (ValueError, TypeError):
+            pass
+
+    total_shares = grant_data.get("total_shares")
+    vested_shares = grant_data.get("vested_shares")
+    unvested_shares = grant_data.get("unvested_shares")
+    sellable_shares = grant_data.get("sellable_shares")
+    share_price = grant_data.get("share_price")
+
+    # Upsert grant
+    existing = db.get(RSUGrant, grant_num)
+    if existing:
+        existing.company = company
+        existing.symbol = symbol
+        existing.grant_date = grant_date_val
+        existing.total_shares = total_shares
+        existing.vested_shares = vested_shares
+        existing.unvested_shares = unvested_shares
+        existing.sellable_shares = sellable_shares
+        if share_price is not None:
+            existing.share_price = Decimal(str(share_price))
+    else:
+        db.add(RSUGrant(
+            id=grant_num,
+            company=company,
+            symbol=symbol,
+            grant_date=grant_date_val,
+            total_shares=total_shares,
+            vested_shares=vested_shares,
+            unvested_shares=unvested_shares,
+            sellable_shares=sellable_shares,
+            share_price=Decimal(str(share_price)) if share_price else None,
+        ))
+
+    count = 1  # Grant itself
+
+    # Process vest events
+    for ve_data in grant_data.get("vest_events", []):
+        vp = ve_data.get("vest_period")
+        vd_str = ve_data.get("vest_date")
+        if vp is None or not vd_str:
+            continue
+
+        try:
+            vest_date_val = date.fromisoformat(str(vd_str))
+        except (ValueError, TypeError):
+            continue
+
+        shares = ve_data.get("shares")
+        fmv = ve_data.get("fmv_at_vest")
+        shares_withheld = ve_data.get("shares_withheld")
+        shares_released = ve_data.get("shares_released")
+        total_taxes = ve_data.get("total_taxes_paid")
+        is_actual = ve_data.get("is_actual", False)
+
+        # Check for existing vest event
+        existing_ve = db.execute(
+            select(VestEvent).where(
+                and_(VestEvent.grant_id == grant_num, VestEvent.vest_period == vp)
+            )
+        ).scalar_one_or_none()
+
+        fmv_decimal = Decimal(str(fmv)) if fmv is not None else None
+        taxes_decimal = Decimal(str(total_taxes)) if total_taxes is not None else None
+
+        if existing_ve:
+            existing_ve.vest_date = vest_date_val
+            existing_ve.shares = shares or 0
+            existing_ve.fmv_at_vest = fmv_decimal
+            existing_ve.shares_withheld = shares_withheld if is_actual else None
+            existing_ve.shares_released = shares_released if is_actual else None
+            existing_ve.total_taxes_paid = taxes_decimal if is_actual else None
+            existing_ve.is_actual = is_actual
+            existing_ve.vest_price = fmv_decimal
+        else:
+            db.add(VestEvent(
+                grant_id=grant_num,
+                vest_date=vest_date_val,
+                vest_period=vp,
+                shares=shares or 0,
+                fmv_at_vest=fmv_decimal,
+                shares_withheld=shares_withheld if is_actual else None,
+                shares_released=shares_released if is_actual else None,
+                total_taxes_paid=taxes_decimal if is_actual else None,
+                is_actual=is_actual,
+                vest_price=fmv_decimal,
+            ))
+        count += 1
+
     db.flush()
     return count

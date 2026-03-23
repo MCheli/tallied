@@ -25,14 +25,14 @@ from plaid.model.products import Products
 from plaid.model.country_code import CountryCode
 
 from app.config import settings
-from app.database import get_db
+from app.dependencies import get_tenant_db
 from app.models.plaid_link import PlaidLink
 from app.models.transaction import Transaction
 from app.models.balance import BalanceSnapshot
 from app.models.account import Account
 from decimal import Decimal
 
-router = APIRouter(prefix="/api/plaid", tags=["plaid"])
+router = APIRouter(prefix="/plaid", tags=["plaid"])
 
 # Map Plaid's SCREAMING_SNAKE categories to readable names
 PLAID_CATEGORY_MAP = {
@@ -97,7 +97,7 @@ class ExchangeRequest(BaseModel):
 
 
 @router.post("/exchange")
-def exchange_public_token(body: ExchangeRequest, db: Session = Depends(get_db)):
+def exchange_public_token(body: ExchangeRequest, db: Session = Depends(get_tenant_db)):
     """Exchange a Plaid public token for a permanent access token and store the link."""
     client = _get_plaid_client()
     try:
@@ -129,7 +129,7 @@ def exchange_public_token(body: ExchangeRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/sync")
-def sync_transactions(db: Session = Depends(get_db)):
+def sync_transactions(db: Session = Depends(get_tenant_db)):
     """Sync transactions for all linked Plaid institutions."""
     client = _get_plaid_client()
     links = db.query(PlaidLink).all()
@@ -238,7 +238,7 @@ def sync_transactions(db: Session = Depends(get_db)):
 
 
 @router.get("/links")
-def list_links(db: Session = Depends(get_db)):
+def list_links(db: Session = Depends(get_tenant_db)):
     """List all connected Plaid institutions."""
     links = db.query(PlaidLink).all()
     return [
@@ -254,7 +254,7 @@ def list_links(db: Session = Depends(get_db)):
 
 
 @router.post("/sync-balances")
-def sync_balances(db: Session = Depends(get_db)):
+def sync_balances(db: Session = Depends(get_tenant_db)):
     """Fetch current account balances from all linked Plaid institutions."""
     client = _get_plaid_client()
     links = db.query(PlaidLink).all()

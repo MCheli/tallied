@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func as sa_func
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.dependencies import get_tenant_db
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 from app.models.income import W2Record
@@ -42,7 +42,7 @@ from app.services.planning_service import (
 )
 from app.engine.projection import run_projection, ProjectionAssumptions
 
-router = APIRouter(prefix="/api/plans", tags=["planning"])
+router = APIRouter(prefix="/plans", tags=["planning"])
 
 # Default assumptions for new plans
 DEFAULT_ASSUMPTIONS: list[dict] = [
@@ -85,7 +85,7 @@ def _assumptions_to_engine(assumptions: list[PlanAssumption]) -> ProjectionAssum
 
 
 @router.get("/", response_model=list[PlanListItem])
-def list_plans(db: Session = Depends(get_db)):
+def list_plans(db: Session = Depends(get_tenant_db)):
     plans = db.execute(
         select(PlanVersion).order_by(PlanVersion.created_at.desc())
     ).scalars().all()
@@ -102,7 +102,7 @@ def list_plans(db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=PlanResponse, status_code=201)
-def create_plan_endpoint(payload: PlanCreate, db: Session = Depends(get_db)):
+def create_plan_endpoint(payload: PlanCreate, db: Session = Depends(get_tenant_db)):
     # Merge user-provided assumptions with defaults
     user_keys = {a.key: a for a in payload.assumptions} if payload.assumptions else {}
 
@@ -140,7 +140,7 @@ def create_plan_endpoint(payload: PlanCreate, db: Session = Depends(get_db)):
 @router.get("/compare", response_model=PlanCompareResponse)
 def compare_plans(
     ids: str = Query(..., description="Comma-separated plan IDs"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     plan_ids = [int(x.strip()) for x in ids.split(",")]
     plans = db.execute(
@@ -154,7 +154,7 @@ def compare_plans(
 
 
 @router.get("/forecasts/latest")
-def latest_forecast(db: Session = Depends(get_db)):
+def latest_forecast(db: Session = Depends(get_tenant_db)):
     """Get the latest forecast rows."""
     latest_ts = db.execute(
         select(Forecast.generated_at).order_by(Forecast.generated_at.desc()).limit(1)
@@ -189,7 +189,7 @@ def latest_forecast(db: Session = Depends(get_db)):
 @router.post("/forecasts/generate", status_code=201)
 def generate_forecast_endpoint(
     years_forward: int = Query(5, ge=1, le=30),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Generate a new forecast from historical balance data."""
     # Query balance_snapshots grouped by month and display_group
@@ -200,7 +200,7 @@ def generate_forecast_endpoint(
             sa_func.sum(BalanceSnapshot.balance).label("total"),
         )
         .join(Account, BalanceSnapshot.account_id == Account.id)
-        .where(Account.include_in_nw == True)
+        .where(Account.include_in_nw.is_(True))
         .group_by(BalanceSnapshot.snapshot_date, Account.display_group)
         .order_by(BalanceSnapshot.snapshot_date)
     )
@@ -260,7 +260,7 @@ def generate_forecast_endpoint(
 
 
 @router.get("/{plan_id}", response_model=PlanResponse)
-def get_plan(plan_id: int, db: Session = Depends(get_db)):
+def get_plan(plan_id: int, db: Session = Depends(get_tenant_db)):
     plan = db.get(PlanVersion, plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -268,7 +268,7 @@ def get_plan(plan_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{plan_id}", response_model=PlanResponse)
-def update_plan_endpoint(plan_id: int, payload: PlanUpdate, db: Session = Depends(get_db)):
+def update_plan_endpoint(plan_id: int, payload: PlanUpdate, db: Session = Depends(get_tenant_db)):
     plan = db.get(PlanVersion, plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -288,7 +288,7 @@ def update_plan_endpoint(plan_id: int, payload: PlanUpdate, db: Session = Depend
 
 
 @router.delete("/{plan_id}", status_code=204)
-def delete_plan(plan_id: int, db: Session = Depends(get_db)):
+def delete_plan(plan_id: int, db: Session = Depends(get_tenant_db)):
     plan = db.get(PlanVersion, plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -301,7 +301,7 @@ def delete_plan(plan_id: int, db: Session = Depends(get_db)):
 def sensitivity_analysis(
     plan_id: int,
     target_year: int | None = Query(None),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Run sensitivity analysis: vary each high/medium assumption +/- 20%."""
     plan = db.get(PlanVersion, plan_id)
@@ -360,7 +360,7 @@ def sensitivity_analysis(
 
 
 @router.get("/{plan_id}/variance", response_model=list[VarianceResponse])
-def plan_variance(plan_id: int, db: Session = Depends(get_db)):
+def plan_variance(plan_id: int, db: Session = Depends(get_tenant_db)):
     """Compare plan projections vs actual snapshots."""
     plan = db.get(PlanVersion, plan_id)
     if not plan:
@@ -422,7 +422,7 @@ def plan_variance(plan_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/actuals", response_model=ActualSnapshotResponse, status_code=201)
-def record_actual(payload: ActualSnapshotCreate, db: Session = Depends(get_db)):
+def record_actual(payload: ActualSnapshotCreate, db: Session = Depends(get_tenant_db)):
     snapshot = ActualSnapshot(**payload.model_dump())
     db.add(snapshot)
     db.commit()
@@ -538,7 +538,7 @@ def _balance_metrics(balances: dict[str, float], mortgage_balance: float | None,
 
 
 @router.get("/{plan_id}/table")
-def plan_table(plan_id: int, db: Session = Depends(get_db)):
+def plan_table(plan_id: int, db: Session = Depends(get_tenant_db)):
     """
     Return the full year×metric matrix for a plan.
     - Actuals: years before current year (from W2 records + balance snapshots)

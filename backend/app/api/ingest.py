@@ -19,14 +19,14 @@ from sqlalchemy import select, func as sa_func
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
+from app.dependencies import get_tenant_db
 from app.models.import_log import ImportLog
 from app.models.income import W2Record
 from app.models.balance import BalanceSnapshot
 from app.models.account import Account
 from app.models.property import Mortgage
 
-router = APIRouter(prefix="/api/ingest", tags=["ingest"])
+router = APIRouter(prefix="/ingest", tags=["ingest"], include_in_schema=False)
 
 # ── Prompt ────────────────────────────────────────────────────────────────────
 
@@ -336,7 +336,7 @@ def _enrich(findings: list[dict], db: Session, title: Optional[str]) -> list[dic
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/screenshot")
-def parse_screenshot(body: ScreenshotRequest, db: Session = Depends(get_db)):
+def parse_screenshot(body: ScreenshotRequest, db: Session = Depends(get_tenant_db)):
     """Parse a screenshot with Claude; return enriched, deduplicated findings."""
     if not settings.anthropic_api_key:
         raise HTTPException(status_code=500, detail="FINANCE_ANTHROPIC_API_KEY not configured")
@@ -395,7 +395,7 @@ def parse_screenshot(body: ScreenshotRequest, db: Session = Depends(get_db)):
 @router.post("/w2-upload")
 def parse_w2_pdf(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Parse a W2 PDF with Claude; return enriched findings for confirmation."""
     if not settings.anthropic_api_key:
@@ -469,7 +469,7 @@ def parse_w2_pdf(
 @router.post("/paystub-upload")
 def parse_paystub_pdf(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Parse a pay stub PDF with Claude; return earnings breakdown for confirmation."""
     if not settings.anthropic_api_key:
@@ -539,7 +539,7 @@ def parse_paystub_pdf(
 @router.post("/mortgage-upload")
 def parse_mortgage_pdf(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Parse a mortgage statement PDF with Claude."""
     if not settings.anthropic_api_key:
@@ -617,7 +617,7 @@ def parse_mortgage_pdf(
 
 
 @router.post("/confirm")
-def confirm_findings(body: ConfirmRequest, db: Session = Depends(get_db)):
+def confirm_findings(body: ConfirmRequest, db: Session = Depends(get_tenant_db)):
     """Write confirmed findings to the appropriate DB tables."""
     if not body.findings:
         return {"saved": 0, "results": []}

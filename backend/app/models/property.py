@@ -19,6 +19,8 @@ class Mortgage(Base):
     original_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric)
     original_payoff_date: Mapped[Optional[date]] = mapped_column(Date)
     current_balance: Mapped[Optional[Decimal]] = mapped_column(Numeric)
+    escrow: Mapped[Optional[Decimal]] = mapped_column(Numeric)
+    property_address: Mapped[Optional[str]] = mapped_column(String)  # Full address for Zillow lookup
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )

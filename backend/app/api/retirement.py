@@ -17,11 +17,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
+from app.dependencies import get_tenant_db
 from app.models.retirement import RetirementAccount, RetirementHolding, RetirementSnapshot
 from app.models.import_log import ImportLog
 
-router = APIRouter(prefix="/api/retirement", tags=["retirement"])
+router = APIRouter(prefix="/retirement", tags=["retirement"])
 
 
 RETIREMENT_PARSE_PROMPT = """You are analyzing a 401(k) / retirement account statement PDF.
@@ -76,7 +76,7 @@ If a field is not found, use null."""
 
 
 @router.get("/summary")
-def retirement_summary(db: Session = Depends(get_db)):
+def retirement_summary(db: Session = Depends(get_tenant_db)):
     """Full retirement account summary."""
     account = db.execute(
         select(RetirementAccount).order_by(RetirementAccount.updated_at.desc()).limit(1)
@@ -168,13 +168,62 @@ def retirement_summary(db: Session = Depends(get_db)):
     }
 
 
+class RetirementAccountUpdate(BaseModel):
+    plan_name: Optional[str] = None
+    provider: Optional[str] = None
+    total_balance: Optional[float] = None
+    vested_balance: Optional[float] = None
+    roth_balance: Optional[float] = None
+    pretax_balance: Optional[float] = None
+    employer_match_balance: Optional[float] = None
+
+
+@router.put("/account")
+def update_retirement_account(body: RetirementAccountUpdate, db: Session = Depends(get_tenant_db)):
+    """Update retirement account details (balances, plan info)."""
+    account = db.execute(
+        select(RetirementAccount).limit(1)
+    ).scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(status_code=404, detail="No retirement account found")
+
+    if body.plan_name is not None:
+        account.plan_name = body.plan_name
+    if body.provider is not None:
+        account.provider = body.provider
+    if body.total_balance is not None:
+        account.total_balance = Decimal(str(body.total_balance))
+    if body.vested_balance is not None:
+        account.vested_balance = Decimal(str(body.vested_balance))
+    if body.roth_balance is not None:
+        account.roth_balance = Decimal(str(body.roth_balance))
+    if body.pretax_balance is not None:
+        account.pretax_balance = Decimal(str(body.pretax_balance))
+    if body.employer_match_balance is not None:
+        account.employer_match_balance = Decimal(str(body.employer_match_balance))
+
+    db.commit()
+    db.refresh(account)
+    return {
+        "id": account.id,
+        "plan_name": account.plan_name,
+        "provider": account.provider,
+        "total_balance": float(account.total_balance) if account.total_balance else None,
+        "vested_balance": float(account.vested_balance) if account.vested_balance else None,
+        "roth_balance": float(account.roth_balance) if account.roth_balance else None,
+        "pretax_balance": float(account.pretax_balance) if account.pretax_balance else None,
+        "employer_match_balance": float(account.employer_match_balance) if account.employer_match_balance else None,
+    }
+
+
 class UpdateRatesRequest(BaseModel):
     pretax_deferral_rate: Optional[float] = None  # as decimal, e.g., 0.14
     roth_deferral_rate: Optional[float] = None  # as decimal, e.g., 0.01
 
 
 @router.put("/rates")
-def update_deferral_rates(body: UpdateRatesRequest, db: Session = Depends(get_db)):
+def update_deferral_rates(body: UpdateRatesRequest, db: Session = Depends(get_tenant_db)):
     """Update contribution deferral rates directly (overrides statement values)."""
     account = db.execute(
         select(RetirementAccount).limit(1)
@@ -199,7 +248,7 @@ def update_deferral_rates(body: UpdateRatesRequest, db: Session = Depends(get_db
 @router.post("/upload-statement")
 def upload_statement(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Parse a 401(k) statement PDF with Claude and import the data."""
     if not settings.anthropic_api_key:

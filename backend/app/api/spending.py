@@ -4,18 +4,19 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, case
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import year_month
+from app.dependencies import get_tenant_db
 from app.models.transaction import Transaction
 from app.schemas.transaction import CategorySummary, RecurringExpense, MonthlySpending
 
-router = APIRouter(prefix="/api/spending", tags=["spending"])
+router = APIRouter(prefix="/spending", tags=["spending"])
 
 
 @router.get("/by-category", response_model=list[CategorySummary])
 def spending_by_category(
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Category totals for a date range (expenses only, amount < 0)."""
     stmt = (
@@ -55,7 +56,7 @@ def spending_by_category(
 @router.get("/recurring", response_model=list[RecurringExpense])
 def recurring_expenses(
     months: int = Query(6, ge=1, le=24, description="Lookback months"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Detect recurring expenses by merchant frequency."""
     from datetime import timedelta
@@ -68,7 +69,7 @@ def recurring_expenses(
             Transaction.category,
             func.avg(Transaction.amount).label("avg_amount"),
             func.count(func.distinct(
-                func.strftime("%Y-%m", Transaction.date)
+                year_month(Transaction.date)
             )).label("months_seen"),
             func.max(Transaction.date).label("last_date"),
         )
@@ -79,7 +80,7 @@ def recurring_expenses(
         .group_by(Transaction.merchant, Transaction.category)
         .having(
             func.count(func.distinct(
-                func.strftime("%Y-%m", Transaction.date)
+                year_month(Transaction.date)
             )) >= max(2, months // 3)
         )
         .order_by(func.avg(Transaction.amount))
@@ -103,12 +104,12 @@ def recurring_expenses(
 def monthly_spending_trend(
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Monthly spending totals."""
     stmt = (
         select(
-            func.strftime("%Y-%m", Transaction.date).label("month"),
+            year_month(Transaction.date).label("month"),
             func.sum(Transaction.amount).label("total"),
             func.count().label("count"),
         )

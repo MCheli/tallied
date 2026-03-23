@@ -12,10 +12,13 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from pydantic import BaseModel
+from typing import Optional
+
+from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
 from app.models.investment import RSUGrant, VestEvent, StockPrice
 
-router = APIRouter(prefix="/api/rsu", tags=["rsu"])
+router = APIRouter(prefix="/rsu", tags=["rsu"])
 
 
 def _current_price(db: Session, symbol: str) -> float | None:
@@ -25,7 +28,7 @@ def _current_price(db: Session, symbol: str) -> float | None:
 
 
 @router.get("/grants")
-def list_grants(db: Session = Depends(get_db)):
+def list_grants(db: Session = Depends(get_tenant_db)):
     """All RSU grants with their vest events."""
     grants = db.execute(
         select(RSUGrant).order_by(RSUGrant.grant_date.desc())
@@ -95,8 +98,124 @@ def list_grants(db: Session = Depends(get_db)):
     return {"grants": result, "current_price": price, "symbol": symbol}
 
 
+class RSUGrantCreate(BaseModel):
+    id: Optional[str] = None
+    company: str
+    symbol: Optional[str] = None
+    grant_date: Optional[str] = None
+    total_shares: Optional[int] = None
+    vested_shares: Optional[int] = None
+    unvested_shares: Optional[int] = None
+    sellable_shares: Optional[int] = None
+
+
+class RSUGrantUpdate(BaseModel):
+    company: Optional[str] = None
+    symbol: Optional[str] = None
+    total_shares: Optional[int] = None
+    vested_shares: Optional[int] = None
+    unvested_shares: Optional[int] = None
+    sellable_shares: Optional[int] = None
+
+
+@router.get("/grants/{grant_id}")
+def get_grant(grant_id: str, db: Session = Depends(get_tenant_db)):
+    """Get a single RSU grant by ID."""
+    grant = db.get(RSUGrant, grant_id)
+    if not grant:
+        raise HTTPException(status_code=404, detail="RSU grant not found")
+
+    symbol = grant.symbol or "MSFT"
+    price = _current_price(db, symbol)
+
+    held_shares = (grant.sellable_shares or 0) + (grant.unvested_shares or 0)
+    held_value = round(price * held_shares, 2) if price else None
+
+    return {
+        "id": grant.id,
+        "company": grant.company,
+        "symbol": grant.symbol,
+        "grant_date": grant.grant_date.isoformat() if grant.grant_date else None,
+        "total_shares": grant.total_shares,
+        "vested_shares": grant.vested_shares,
+        "unvested_shares": grant.unvested_shares,
+        "sellable_shares": grant.sellable_shares,
+        "held_value": held_value,
+        "current_price": price,
+    }
+
+
+@router.post("/grants", status_code=201)
+def create_grant(payload: RSUGrantCreate, db: Session = Depends(get_tenant_db)):
+    """Create a new RSU grant."""
+    import uuid
+
+    grant = RSUGrant(
+        id=payload.id or str(uuid.uuid4()),
+        company=payload.company,
+        symbol=payload.symbol,
+        grant_date=date.fromisoformat(payload.grant_date) if payload.grant_date else None,
+        total_shares=payload.total_shares,
+        vested_shares=payload.vested_shares,
+        unvested_shares=payload.unvested_shares,
+        sellable_shares=payload.sellable_shares,
+    )
+    db.add(grant)
+    db.commit()
+    db.refresh(grant)
+    return {
+        "id": grant.id,
+        "company": grant.company,
+        "symbol": grant.symbol,
+        "grant_date": grant.grant_date.isoformat() if grant.grant_date else None,
+        "total_shares": grant.total_shares,
+        "vested_shares": grant.vested_shares,
+        "unvested_shares": grant.unvested_shares,
+        "sellable_shares": grant.sellable_shares,
+    }
+
+
+@router.put("/grants/{grant_id}")
+def update_grant(grant_id: str, payload: RSUGrantUpdate, db: Session = Depends(get_tenant_db)):
+    """Update an RSU grant's details."""
+    grant = db.get(RSUGrant, grant_id)
+    if not grant:
+        raise HTTPException(status_code=404, detail="RSU grant not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(grant, key, value)
+
+    db.commit()
+    db.refresh(grant)
+    return {
+        "id": grant.id,
+        "company": grant.company,
+        "symbol": grant.symbol,
+        "grant_date": grant.grant_date.isoformat() if grant.grant_date else None,
+        "total_shares": grant.total_shares,
+        "vested_shares": grant.vested_shares,
+        "unvested_shares": grant.unvested_shares,
+        "sellable_shares": grant.sellable_shares,
+    }
+
+
+@router.delete("/grants/{grant_id}", status_code=204)
+def delete_grant(grant_id: str, db: Session = Depends(get_tenant_db)):
+    """Delete an RSU grant and its vest events."""
+    grant = db.get(RSUGrant, grant_id)
+    if not grant:
+        raise HTTPException(status_code=404, detail="RSU grant not found")
+    # Delete associated vest events first
+    for ve in grant.vest_events:
+        db.delete(ve)
+    db.delete(grant)
+    db.commit()
+    return None
+
+
 @router.get("/summary")
-def rsu_summary(db: Session = Depends(get_db)):
+def rsu_summary(db: Session = Depends(get_tenant_db)):
     """Aggregate RSU summary for dashboard integration."""
     grants = db.execute(select(RSUGrant)).scalars().all()
     if not grants:
@@ -120,7 +239,7 @@ def rsu_summary(db: Session = Depends(get_db)):
     # Upcoming vests (future, not yet actual)
     future_vests = db.execute(
         select(VestEvent)
-        .where(VestEvent.is_actual == False)  # noqa: E712
+        .where(VestEvent.is_actual.is_(False))
         .order_by(VestEvent.vest_date)
     ).scalars().all()
 
@@ -268,7 +387,7 @@ def rsu_summary(db: Session = Depends(get_db)):
 
 
 @router.get("/price-history")
-def price_history(symbol: str = "MSFT", range: str = "5y"):
+def price_history(symbol: str = "MSFT", range: str = "5y", _ctx: "TenantContext" = Depends(get_tenant_context)):
     """Fetch historical stock prices from Yahoo Finance for charting."""
     import json
     import urllib.request
@@ -301,7 +420,7 @@ def price_history(symbol: str = "MSFT", range: str = "5y"):
 def reload_from_etrade(
     by_type: UploadFile = File(..., description="E-Trade 'Download by Type (expanded)' .xlsx file"),
     by_status: UploadFile = File(None, description="E-Trade 'Download by Status (expanded)' .xlsx file (optional, provides cost basis)"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     """Re-import RSU data from uploaded E-Trade spreadsheet exports."""
     import tempfile

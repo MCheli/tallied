@@ -312,7 +312,7 @@ Brainstorm (down-to-earth, says what it does):
 - **Deployment**: Single container, FastAPI serves Vue SPA + API (Gunicorn + Uvicorn workers)
 - **Auth**: Pre-seeded users only (Mark + Claudius Banks), JWT with httpOnly cookies
 - **Test docs**: Generate fake PDFs with reportlab using Claudius Banks' data
-- **Database**: SQLite for now, volume-mounted in Docker
+- **Database**: PostgreSQL 16 (schema-per-tenant)
 - **URL**: money.your-domain.com
 - **Docker registry**: ghcr.io/your-username/tallied:latest (follows cookbook pattern)
 

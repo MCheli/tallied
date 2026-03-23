@@ -19,7 +19,8 @@ import type {
   ImportResponse,
 } from '../types'
 
-const BASE = '/api'
+const BASE = '/api/v1'
+const API_ROOT = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 function buildQuery(params?: Record<string, unknown>): string {
   if (!params) return ''
@@ -30,11 +31,44 @@ function buildQuery(params?: Record<string, unknown>): string {
   return '?' + qs.toString()
 }
 
+let refreshPromise: Promise<boolean> | null = null
+
+async function tryRefreshToken(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_ROOT}/api/v1/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     ...options,
   })
+  if (res.status === 401) {
+    // Try to refresh the access token once
+    if (!refreshPromise) {
+      refreshPromise = tryRefreshToken().finally(() => { refreshPromise = null })
+    }
+    const refreshed = await refreshPromise
+    if (refreshed) {
+      // Retry the original request
+      const retry = await fetch(`${BASE}${url}`, {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        ...options,
+      })
+      if (!retry.ok) throw new Error(`${retry.status}: ${await retry.text()}`)
+      return retry.json()
+    }
+    throw new Error(`${res.status}: ${await res.text()}`)
+  }
   if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
   return res.json()
 }
