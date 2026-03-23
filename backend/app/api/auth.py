@@ -226,7 +226,9 @@ async def google_callback(request: Request, response: Response, db: Session = De
     user.last_login = datetime.now(timezone.utc)
 
     # In dev, redirect to the frontend origin; in prod, "/" works (same origin)
-    frontend_url = settings.cors_origins[0] if settings.cors_origins else "/"
+    # In production (not dev mode), redirect to "/" since frontend is same origin.
+    # In dev mode, redirect to the frontend dev server (cors_origins[0] = localhost:5173).
+    frontend_url = settings.cors_origins[0] if settings.dev_mode and settings.cors_origins else "/"
 
     # Pending approval users get redirected to the pending page
     if user.status == "pending_approval":
