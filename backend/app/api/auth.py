@@ -188,7 +188,7 @@ async def google_login(request: Request):
     """Redirect to Google consent screen."""
     if not settings.google_client_id:
         raise HTTPException(status_code=501, detail="Google SSO not configured. Set FINANCE_GOOGLE_CLIENT_ID.")
-    redirect_uri = f"{settings.base_url}/api/auth/google/callback"
+    redirect_uri = f"{settings.base_url}/api/v1/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
