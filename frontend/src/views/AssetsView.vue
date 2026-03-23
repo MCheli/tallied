@@ -41,7 +41,7 @@ const vehiclesSql = `SELECT id, year, make, model, trim,
 FROM vehicles
 ORDER BY estimated_value DESC;`
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 // ── State ──
 const loading = ref(true)

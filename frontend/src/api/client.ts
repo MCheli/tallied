@@ -20,7 +20,7 @@ import type {
 } from '../types'
 
 const BASE = '/api/v1'
-const API_ROOT = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_ROOT = import.meta.env.VITE_API_URL || ''
 
 function buildQuery(params?: Record<string, unknown>): string {
   if (!params) return ''

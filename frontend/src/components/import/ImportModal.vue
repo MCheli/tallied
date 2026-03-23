@@ -11,7 +11,7 @@ function renderMd(text: string): string {
   return marked.parse(text) as string
 }
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 const { isOpen, context, closeImport } = useImportModal()
 
 type Step = 'upload' | 'processing' | 'review' | 'done'

@@ -14,7 +14,7 @@ import LayerCard from '../components/dashboard/LayerCard.vue'
 const store = useSnapshotStore()
 const { compact } = useFormatters()
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 const rsuSummary = ref<any>(null)
 const plaidLinks = ref<any[]>([])
 const recentSpending = ref<any>(null)

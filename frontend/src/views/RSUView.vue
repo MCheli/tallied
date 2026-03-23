@@ -15,7 +15,7 @@ use([LineChart, GridComponent, TooltipComponent, MarkLineComponent, CanvasRender
 const { baseOption } = useChartDefaults()
 const { openImport } = useImportModal()
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const summary = ref<any>(null)
 const grants = ref<any[]>([])

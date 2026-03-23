@@ -14,7 +14,7 @@ use([PieChart, LineChart, BarChart, ScatterChart, GridComponent, TooltipComponen
 
 const { baseOption, isDark } = useChartDefaults()
 const { openImport } = useImportModal()
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const loading = ref(true)
 const error = ref('')

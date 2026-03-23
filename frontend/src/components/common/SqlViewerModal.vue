@@ -15,7 +15,7 @@ const emit = defineEmits<{
 
 const copied = ref(false)
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_URL || ''
 
 // Table preview state
 const previewTable = ref<string | null>(null)

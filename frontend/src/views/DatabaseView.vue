@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
 import { highlightSql } from '../composables/useSqlHighlight'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_URL || ''
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
