@@ -148,11 +148,9 @@ def upgrade() -> None:
     with op.batch_alter_table('rsu_grants', schema=None) as batch_op:
         batch_op.add_column(sa.Column('symbol', sa.String(), nullable=True))
 
-    # Direct ALTER for users table (batch mode fails on Postgres due to FK constraints)
-    op.alter_column('users', 'status',
-           existing_type=sa.VARCHAR(),
-           nullable=False,
-           existing_server_default=sa.text("'active'::character varying"))
+    # Skip users.status ALTER — the users table is created by Base.metadata.create_all()
+    # at app startup (not by Alembic), so it already has the correct schema.
+    # On fresh installs, this table doesn't exist yet when migrations run.
 
     with op.batch_alter_table('vest_events', schema=None) as batch_op:
         batch_op.add_column(sa.Column('vest_period', sa.Integer(), nullable=True))
@@ -174,10 +172,7 @@ def downgrade() -> None:
         batch_op.drop_column('fmv_at_vest')
         batch_op.drop_column('vest_period')
 
-    op.alter_column('users', 'status',
-           existing_type=sa.VARCHAR(),
-           nullable=True,
-           existing_server_default=sa.text("'active'::character varying"))
+    # users.status ALTER skipped — see upgrade() comment
 
     with op.batch_alter_table('rsu_grants', schema=None) as batch_op:
         batch_op.drop_column('symbol')
