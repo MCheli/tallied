@@ -261,7 +261,9 @@ const forwardingEmails = ref<ForwardingEmail[]>([])
 const emailReceipts = ref<EmailReceiptItem[]>([])
 const newForwardingEmail = ref('')
 const emailError = ref('')
-const receiptsAddress = `receipts@${window.location.hostname}`
+const hostParts = window.location.hostname.split('.')
+const domain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : window.location.hostname
+const receiptsAddress = `receipts@${domain}`
 
 async function loadForwardingEmails() {
   try {
