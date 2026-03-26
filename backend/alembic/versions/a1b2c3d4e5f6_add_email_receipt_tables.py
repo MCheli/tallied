@@ -19,9 +19,26 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Create email_receipts table in all existing tenant schemas."""
-    # Get all tenant schemas
+    """Create email tables: email_forwarding_addresses (public) + email_receipts (per-tenant)."""
     conn = op.get_bind()
+
+    # Platform table in public schema
+    conn.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS public.email_forwarding_addresses (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+            email VARCHAR NOT NULL UNIQUE,
+            is_active BOOLEAN DEFAULT true,
+            created_at TIMESTAMP DEFAULT now()
+        )
+    """))
+    conn.execute(sa.text("""
+        CREATE INDEX IF NOT EXISTS ix_email_fwd_email
+        ON public.email_forwarding_addresses (email)
+    """))
+
+    # Tenant-scoped table in each tenant schema
     result = conn.execute(sa.text("SELECT schema_name FROM tenants"))
     schemas = [row[0] for row in result]
 
@@ -44,10 +61,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Drop email_receipts from all tenant schemas."""
+    """Drop email tables."""
     conn = op.get_bind()
     result = conn.execute(sa.text("SELECT schema_name FROM tenants"))
     schemas = [row[0] for row in result]
 
     for schema in schemas:
         op.drop_table('email_receipts', schema=schema)
+
+    op.drop_table('email_forwarding_addresses')
