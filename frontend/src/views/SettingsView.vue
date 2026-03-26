@@ -259,7 +259,6 @@ interface EmailReceiptItem { id: number; from_email: string; subject: string; st
 
 const forwardingEmails = ref<ForwardingEmail[]>([])
 const emailReceipts = ref<EmailReceiptItem[]>([])
-const emailLoading = ref(false)
 const newForwardingEmail = ref('')
 const emailError = ref('')
 
