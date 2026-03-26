@@ -7,12 +7,13 @@ import type { AccountWithBalance, W2Record } from '../types'
 const { currency } = useFormatters()
 
 // Tab management
-type Tab = 'accounts' | 'income' | 'plaid' | 'import'
+type Tab = 'accounts' | 'income' | 'plaid' | 'email' | 'import'
 const activeTab = ref<Tab>('accounts')
 const tabs: { key: Tab; label: string }[] = [
   { key: 'accounts', label: 'Accounts' },
   { key: 'income', label: 'Income' },
   { key: 'plaid', label: 'Plaid' },
+  { key: 'email', label: 'Email' },
   { key: 'import', label: 'Import' },
 ]
 
@@ -252,12 +253,66 @@ async function syncPlaid() {
   }
 }
 
+// ── Email Forwarding ──
+interface ForwardingEmail { id: number; email: string; is_active: boolean; created_at: string | null }
+interface EmailReceiptItem { id: number; from_email: string; subject: string; status: string; transaction_id: string | null; parsed_data: any; error_message: string | null; created_at: string | null }
+
+const forwardingEmails = ref<ForwardingEmail[]>([])
+const emailReceipts = ref<EmailReceiptItem[]>([])
+const emailLoading = ref(false)
+const newForwardingEmail = ref('')
+const emailError = ref('')
+
+async function loadForwardingEmails() {
+  try {
+    const res = await fetch(`${API}/api/v1/email-forwarding`, { credentials: 'include' })
+    if (res.ok) forwardingEmails.value = await res.json()
+  } catch { /* ignore */ }
+}
+
+async function addForwardingEmail() {
+  emailError.value = ''
+  const email = newForwardingEmail.value.trim()
+  if (!email) return
+  try {
+    const res = await fetch(`${API}/api/v1/email-forwarding`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      emailError.value = err.detail || 'Failed to add email'
+      return
+    }
+    newForwardingEmail.value = ''
+    await loadForwardingEmails()
+  } catch (e: any) {
+    emailError.value = e.message
+  }
+}
+
+async function deleteForwardingEmail(id: number) {
+  await fetch(`${API}/api/v1/email-forwarding/${id}`, { method: 'DELETE', credentials: 'include' })
+  await loadForwardingEmails()
+}
+
+async function loadEmailReceipts() {
+  try {
+    const res = await fetch(`${API}/api/v1/email-import/receipts?limit=20`, { credentials: 'include' })
+    if (res.ok) emailReceipts.value = await res.json()
+  } catch { /* ignore */ }
+}
+
 // Load data on mount
 onMounted(() => {
   loadAccounts()
   loadIncome()
   loadPlaidLinks()
   loadImportLog()
+  loadForwardingEmails()
+  loadEmailReceipts()
 })
 </script>
 
@@ -584,6 +639,87 @@ onMounted(() => {
               <td class="px-5 py-2.5 font-medium text-gray-900 dark:text-white">{{ link.institution_name || 'Unknown' }}</td>
               <td class="px-3 py-2.5 text-gray-500 dark:text-gray-400">{{ new Date(link.created_at).toLocaleDateString() }}</td>
               <td class="px-3 py-2.5 text-gray-500 dark:text-gray-400">{{ link.cursor ? 'Yes' : 'Never' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ Email Tab ═══ -->
+    <div v-if="activeTab === 'email'" class="space-y-4">
+      <!-- Instructions -->
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Email Receipt Import</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          Forward receipts from Amazon, PayPal, or any merchant to <span class="font-mono text-indigo-600 dark:text-indigo-400">receipts@tallied.dev</span> and they'll be automatically parsed into transactions.
+        </p>
+      </div>
+
+      <!-- Registered Emails -->
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Forwarding Addresses</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Register the email addresses you'll forward receipts from. Only emails from registered addresses will be processed.</p>
+
+        <!-- Add form -->
+        <div class="flex gap-2 mb-3">
+          <input v-model="newForwardingEmail" type="email" placeholder="your.email@gmail.com"
+            class="flex-1 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400"
+            @keyup.enter="addForwardingEmail" />
+          <button @click="addForwardingEmail"
+            class="px-4 py-2 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+            Add
+          </button>
+        </div>
+        <div v-if="emailError" class="text-xs text-red-500 mb-3">{{ emailError }}</div>
+
+        <!-- List -->
+        <div v-if="forwardingEmails.length === 0" class="text-xs text-gray-400 py-2">
+          No forwarding addresses registered yet.
+        </div>
+        <div v-else class="space-y-2">
+          <div v-for="addr in forwardingEmails" :key="addr.id"
+            class="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <span class="text-sm text-gray-900 dark:text-white">{{ addr.email }}</span>
+            <button @click="deleteForwardingEmail(addr.id)"
+              class="text-xs text-red-500 hover:text-red-700">Remove</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Receipts -->
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Recent Receipts</h3>
+        </div>
+        <div v-if="emailReceipts.length === 0" class="px-5 py-8 text-center text-sm text-gray-400">
+          No email receipts yet. Forward a receipt to get started.
+        </div>
+        <table v-else class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400">
+              <th class="text-left px-5 py-2.5 font-medium">Date</th>
+              <th class="text-left px-3 py-2.5 font-medium">From</th>
+              <th class="text-left px-3 py-2.5 font-medium">Subject</th>
+              <th class="text-left px-3 py-2.5 font-medium">Merchant</th>
+              <th class="text-right px-3 py-2.5 font-medium">Amount</th>
+              <th class="text-left px-5 py-2.5 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in emailReceipts" :key="r.id" class="border-b border-gray-50 dark:border-gray-800 last:border-0">
+              <td class="px-5 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ r.created_at ? new Date(r.created_at).toLocaleDateString() : '\u2014' }}</td>
+              <td class="px-3 py-2.5 text-gray-600 dark:text-gray-400 truncate max-w-[150px]">{{ r.from_email }}</td>
+              <td class="px-3 py-2.5 text-gray-900 dark:text-white truncate max-w-[200px]">{{ r.subject }}</td>
+              <td class="px-3 py-2.5 text-gray-900 dark:text-white">{{ r.parsed_data?.merchant || '\u2014' }}</td>
+              <td class="px-3 py-2.5 text-right text-gray-900 dark:text-white">{{ r.parsed_data?.amount ? currency(r.parsed_data.amount) : '\u2014' }}</td>
+              <td class="px-5 py-2.5">
+                <span :class="[
+                  'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+                  r.status === 'parsed' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
+                  r.status === 'failed' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
+                  'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300'
+                ]">{{ r.status }}</span>
+              </td>
             </tr>
           </tbody>
         </table>

@@ -26,3 +26,5 @@ from app.models.db_credential import DbCredential
 from app.models.webhook import WebhookSubscription
 from app.models.audit_log import AuditLog
 from app.models.property_value_history import PropertyValueHistory
+from app.models.email_forwarding_address import EmailForwardingAddress
+from app.models.email_receipt import EmailReceipt

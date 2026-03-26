@@ -1,0 +1,8 @@
+name = "tallied-email-receipt"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+
+[vars]
+TALLIED_API_URL = "https://money.markcheli.com"
+
+# Set EMAIL_WEBHOOK_SECRET via `wrangler secret put EMAIL_WEBHOOK_SECRET`

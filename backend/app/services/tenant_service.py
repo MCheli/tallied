@@ -4,7 +4,7 @@ from sqlalchemy import text
 from app.database import Base, engine
 
 # Tables that live in the public schema (not per-tenant)
-PLATFORM_TABLES = {"users", "tenants", "tenant_memberships", "api_keys", "api_usage_logs", "db_credentials", "webhook_subscriptions", "audit_logs", "alembic_version"}
+PLATFORM_TABLES = {"users", "tenants", "tenant_memberships", "api_keys", "api_usage_logs", "db_credentials", "webhook_subscriptions", "audit_logs", "alembic_version", "email_forwarding_addresses"}
 
 
 def create_tenant_schema(schema_name: str):

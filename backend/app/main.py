@@ -110,6 +110,8 @@ from app.api import (  # noqa: E402
     db_credentials,
     platform_admin,
     webhooks,
+    email_import,
+    email_forwarding,
 )
 
 # ── v1 API (versioned, with OpenAPI docs) ─────────────────────────────────────
@@ -138,6 +140,7 @@ v1 = FastAPI(
         {"name": "db-credentials", "description": "Direct database credential management for psql, DBeaver, Excel"},
         {"name": "schema", "description": "Database schema introspection and SQL runner"},
         {"name": "webhooks", "description": "Webhook subscription management for event delivery"},
+        {"name": "email-import", "description": "Email receipt import and forwarding address management"},
     ],
 )
 v1.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax", https_only=not settings.dev_mode)
@@ -206,6 +209,8 @@ v1.include_router(db_credentials.router)
 v1.include_router(webhooks.router)
 v1.include_router(mock.router)
 v1.include_router(platform_admin.router)
+v1.include_router(email_import.router)
+v1.include_router(email_forwarding.router)
 
 
 @v1.get("/health")
