@@ -449,6 +449,7 @@ def auth_config():
     return {
         "dev_mode": settings.dev_mode,
         "google_sso": bool(settings.google_client_id),
+        "email_receipts_address": settings.email_receipts_address or None,
     }
 
 

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     plaid_secret_production: str = ""
     plaid_env: str = "sandbox"  # "sandbox" or "production"
     email_webhook_secret: str = ""  # Shared secret for Cloudflare Email Worker
+    email_receipts_address: str = ""  # e.g. receipts@markcheli.com
 
     # Auth
     secret_key: str = "tallied-dev-secret-change-in-production"
