@@ -202,6 +202,7 @@ async function connectPlaid() {
   try {
     const res = await fetch(`${API}/api/v1/plaid/link-token`, { credentials: 'include' })
     const { link_token } = await res.json()
+    sessionStorage.setItem('plaid_link_token', link_token)
 
     const handler = (window as any).Plaid.create({
       token: link_token,

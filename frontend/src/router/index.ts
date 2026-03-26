@@ -101,6 +101,12 @@ const router = createRouter({
       meta: { title: 'Guide' },
     },
     {
+      path: '/plaid-oauth-callback',
+      name: 'plaid-oauth-callback',
+      component: () => import('../views/PlaidOAuthCallbackView.vue'),
+      meta: { title: 'Connecting Bank...' },
+    },
+    {
       path: '/admin-portal',
       name: 'admin-portal',
       component: () => import('../views/AdminPortalView.vue'),

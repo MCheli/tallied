@@ -61,12 +61,24 @@ def _normalize_plaid_category(raw: str | None) -> str:
     return PLAID_CATEGORY_MAP.get(raw, raw.replace("_", " ").title())
 
 
+PLAID_ENV_MAP = {
+    "sandbox": plaid.Environment.Sandbox,
+    "production": plaid.Environment.Production,
+}
+
+
 def _get_plaid_client() -> plaid_api.PlaidApi:
+    host = PLAID_ENV_MAP.get(settings.plaid_env, plaid.Environment.Sandbox)
+    secret = (
+        settings.plaid_secret_production
+        if settings.plaid_env == "production"
+        else settings.plaid_secret_sandbox
+    )
     configuration = plaid.Configuration(
-        host=plaid.Environment.Sandbox,
+        host=host,
         api_key={
             "clientId": settings.plaid_client_id,
-            "secret": settings.plaid_secret,
+            "secret": secret,
         },
     )
     api_client = plaid.ApiClient(configuration)
@@ -77,13 +89,25 @@ def _get_plaid_client() -> plaid_api.PlaidApi:
 def create_link_token():
     """Generate a Plaid Link token to initiate the account connection flow."""
     client = _get_plaid_client()
-    request = LinkTokenCreateRequest(
+
+    # Production OAuth-based banks require an HTTPS redirect URI.
+    # Only set it when running in actual production (not local dev mode),
+    # since Plaid rejects http:// redirect URIs.
+    redirect_uri = None
+    if settings.plaid_env == "production" and not settings.dev_mode:
+        redirect_uri = f"{settings.base_url}/plaid-oauth-callback"
+
+    link_kwargs: dict = dict(
         products=[Products("transactions")],
-        client_name="Personal Finance",
+        client_name="Tallied",
         country_codes=[CountryCode("US")],
         language="en",
         user=LinkTokenCreateRequestUser(client_user_id="local-user"),
     )
+    if redirect_uri:
+        link_kwargs["redirect_uri"] = redirect_uri
+
+    request = LinkTokenCreateRequest(**link_kwargs)
     try:
         response = client.link_token_create(request)
         return {"link_token": response["link_token"]}

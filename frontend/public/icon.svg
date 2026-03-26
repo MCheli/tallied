@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e3a5f"/>
+      <stop offset="100%" style="stop-color:#0f2440"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#22d3ee"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#34d399"/>
+      <stop offset="100%" style="stop-color:#10b981"/>
+    </linearGradient>
+    <linearGradient id="bar3" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#a78bfa"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#10b981"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect width="1024" height="1024" rx="220" ry="220" fill="url(#bg)"/>
+
+  <!-- Subtle grid lines for financial feel -->
+  <line x1="200" y1="720" x2="824" y2="720" stroke="#ffffff" stroke-opacity="0.06" stroke-width="2"/>
+  <line x1="200" y1="580" x2="824" y2="580" stroke="#ffffff" stroke-opacity="0.06" stroke-width="2"/>
+  <line x1="200" y1="440" x2="824" y2="440" stroke="#ffffff" stroke-opacity="0.06" stroke-width="2"/>
+  <line x1="200" y1="300" x2="824" y2="300" stroke="#ffffff" stroke-opacity="0.06" stroke-width="2"/>
+
+  <!-- Bar chart - 4 ascending bars -->
+  <rect x="230" y="560" width="100" height="160" rx="12" fill="url(#bar1)" opacity="0.85"/>
+  <rect x="370" y="430" width="100" height="290" rx="12" fill="url(#bar2)" opacity="0.9"/>
+  <rect x="510" y="340" width="100" height="380" rx="12" fill="url(#bar1)" opacity="0.85"/>
+  <rect x="650" y="240" width="100" height="480" rx="12" fill="url(#bar2)" opacity="0.9"/>
+
+  <!-- Trend line connecting bar tops -->
+  <polyline points="280,555 420,425 560,335 700,235"
+    fill="none" stroke="url(#accent)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+
+  <!-- Dots on trend line -->
+  <circle cx="280" cy="555" r="10" fill="#22d3ee"/>
+  <circle cx="420" cy="425" r="10" fill="#34d399"/>
+  <circle cx="560" cy="335" r="10" fill="#22d3ee"/>
+  <circle cx="700" cy="235" r="10" fill="#34d399"/>
+
+  <!-- Checkmark / tally mark accent in top-right area -->
+  <polyline points="720,140 750,175 810,100"
+    fill="none" stroke="#34d399" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+
+  <!-- "T" lettermark -->
+  <text x="512" y="920" font-family="system-ui, -apple-system, 'Helvetica Neue', sans-serif" font-size="120" font-weight="700" fill="#ffffff" text-anchor="middle" letter-spacing="16" opacity="0.95">TALLIED</text>
+</svg>

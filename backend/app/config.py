@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     rapidapi_key: str = ""  # RapidAPI key for Realtor.com property data
     plaid_client_id: str = ""
-    plaid_secret: str = ""
+    plaid_secret_sandbox: str = ""
+    plaid_secret_production: str = ""
+    plaid_env: str = "sandbox"  # "sandbox", "development", or "production"
 
     # Auth
     secret_key: str = "tallied-dev-secret-change-in-production"
