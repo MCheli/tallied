@@ -261,17 +261,7 @@ const forwardingEmails = ref<ForwardingEmail[]>([])
 const emailReceipts = ref<EmailReceiptItem[]>([])
 const newForwardingEmail = ref('')
 const emailError = ref('')
-const receiptsAddress = ref<string | null>(null)
-
-async function loadReceiptsAddress() {
-  try {
-    const res = await fetch(`${API}/api/v1/auth/config`, { credentials: 'include' })
-    if (res.ok) {
-      const config = await res.json()
-      receiptsAddress.value = config.email_receipts_address || null
-    }
-  } catch { /* ignore */ }
-}
+const receiptsAddress = `receipts@${window.location.hostname}`
 
 async function loadForwardingEmails() {
   try {
@@ -323,7 +313,6 @@ onMounted(() => {
   loadImportLog()
   loadForwardingEmails()
   loadEmailReceipts()
-  loadReceiptsAddress()
 })
 </script>
 
@@ -662,10 +651,7 @@ onMounted(() => {
       <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
         <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Email Receipt Import</h3>
         <p class="text-xs text-gray-500 dark:text-gray-400">
-          Forward receipts from Amazon, PayPal, or any merchant to
-          <span v-if="receiptsAddress" class="font-mono text-indigo-600 dark:text-indigo-400">{{ receiptsAddress }}</span>
-          <span v-else class="text-gray-400 italic">not configured</span>
-          and they'll be automatically parsed into transactions.
+          Forward receipts from Amazon, PayPal, or any merchant to <span class="font-mono text-indigo-600 dark:text-indigo-400">{{ receiptsAddress }}</span> and they'll be automatically parsed into transactions.
         </p>
       </div>
 
