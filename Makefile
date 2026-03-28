@@ -1,3 +1,4 @@
+SHELL := /bin/bash
 .PHONY: dev dev-backend dev-frontend test test-e2e test-all seed-test lint build clean db-start db-migrate pre-commit typecheck setup-db-roles
 
 # Development
