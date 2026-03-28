@@ -54,7 +54,23 @@ else
   green "[setup] frontend/node_modules already exists — skipping"
 fi
 
-# ── 4. PostgreSQL via Docker Compose ────────────────────────────────────────
+# ── 4. Docker daemon (start if installed but not running) ───────────────────
+if command -v docker &>/dev/null && ! docker info &>/dev/null 2>&1; then
+  yellow "[setup] Docker installed but daemon not running — starting dockerd..."
+  dockerd &>/var/log/dockerd.log &
+  for i in $(seq 1 15); do
+    if docker info &>/dev/null 2>&1; then
+      green "[setup] Docker daemon started"
+      break
+    fi
+    sleep 1
+    if [ "$i" -eq 15 ]; then
+      yellow "[setup] Could not start Docker daemon"
+    fi
+  done
+fi
+
+# ── 5. PostgreSQL via Docker Compose ────────────────────────────────────────
 if ! command -v docker &>/dev/null || ! docker info &>/dev/null 2>&1; then
   yellow "[setup] Docker not available — skipping PostgreSQL, migrations, and seed"
   yellow "[setup] Backend tests use SQLite (no Docker needed)"
@@ -82,14 +98,14 @@ else
   done
 fi
 
-# ── 5. Run Alembic migrations (only if DB is available) ─────────────────────
+# ── 6. Run Alembic migrations (only if DB is available) ─────────────────────
 if [ "${DB_READY:-false}" = "true" ]; then
   yellow "[setup] Running database migrations..."
   (cd backend && source .venv/bin/activate && PYTHONPATH=. alembic upgrade head 2>/dev/null) && \
     green "[setup] Migrations applied" || \
     yellow "[setup] Migrations skipped (may need manual attention)"
 
-  # ── 6. Seed test data ────────────────────────────────────────────────────
+  # ── 7. Seed test data ────────────────────────────────────────────────────
   yellow "[setup] Seeding test data (Claudius Banks)..."
   (cd backend && source .venv/bin/activate && PYTHONPATH=. python ../scripts/seed_test_data.py --reset 2>/dev/null) && \
     green "[setup] Test data seeded" || \
