@@ -13,7 +13,8 @@ const error = ref('')
 const loading = ref(false)
 
 // Auth config from server
-const devMode = ref(true)
+const configLoaded = ref(false)
+const devMode = ref(false)
 const googleSso = ref(false)
 
 onMounted(async () => {
@@ -30,7 +31,9 @@ onMounted(async () => {
     const config = await res.json()
     devMode.value = config.dev_mode
     googleSso.value = config.google_sso
-  } catch {}
+  } catch {} finally {
+    configLoaded.value = true
+  }
 })
 
 async function handleDevLogin() {
@@ -58,6 +61,13 @@ function handleGoogleLogin() {
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Tallied</h1>
           <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Your finances, tallied.</p>
         </div>
+
+        <!-- Loading state while fetching auth config -->
+        <div v-if="!configLoaded" class="flex justify-center py-8">
+          <div class="h-6 w-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+
+        <template v-else>
 
         <!-- Google SSO button -->
         <div v-if="googleSso" class="mb-6">
@@ -117,6 +127,8 @@ function handleGoogleLogin() {
             Dev mode &middot; claudius@tallied.dev / demo123 &middot; admin account also available
           </p>
         </div>
+
+        </template>
       </div>
     </div>
   </div>
