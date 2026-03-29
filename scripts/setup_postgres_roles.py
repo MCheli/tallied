@@ -123,8 +123,23 @@ def main():
                 f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema_name}" '
                 f'GRANT USAGE, SELECT ON SEQUENCES TO tallied_app'
             ))
-            # Transfer ownership so tallied_app can GRANT to db-credential roles
+            # Transfer ownership of schema AND all objects inside it so
+            # tallied_app can GRANT to db-credential roles
             conn.execute(text(f'ALTER SCHEMA "{schema_name}" OWNER TO tallied_app'))
+            # Reassign all objects (tables, sequences, etc.) owned by the
+            # superuser in this schema to tallied_app
+            tables = conn.execute(text(
+                "SELECT tablename FROM pg_tables "
+                "WHERE schemaname = :schema AND tableowner != 'tallied_app'"
+            ), {"schema": schema_name}).fetchall()
+            for (table,) in tables:
+                conn.execute(text(f'ALTER TABLE "{schema_name}"."{table}" OWNER TO tallied_app'))
+            sequences = conn.execute(text(
+                "SELECT sequencename FROM pg_sequences "
+                "WHERE schemaname = :schema AND sequenceowner != 'tallied_app'"
+            ), {"schema": schema_name}).fetchall()
+            for (seq,) in sequences:
+                conn.execute(text(f'ALTER SEQUENCE "{schema_name}"."{seq}" OWNER TO tallied_app'))
 
         # ------------------------------------------------------------------
         # 7. Lock down public schema from the PUBLIC pseudo-role
