@@ -21,3 +21,4 @@ class DbCredential(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)  # user-chosen label
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

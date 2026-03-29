@@ -85,9 +85,11 @@ def main():
         ))
 
         # ------------------------------------------------------------------
-        # 4. Allow CREATE SCHEMA (tenant provisioning)
+        # 4. Allow CREATE SCHEMA (tenant provisioning) and CREATEROLE
+        #    (needed by db_credentials service to create per-user PG roles)
         # ------------------------------------------------------------------
         conn.execute(text(f'GRANT CREATE ON DATABASE "{database}" TO tallied_app'))
+        conn.execute(text("ALTER ROLE tallied_app CREATEROLE"))
 
         # ------------------------------------------------------------------
         # 5. Allow GRANT on schemas tallied_app creates (for db_credentials)

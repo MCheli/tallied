@@ -11,11 +11,15 @@ logger = logging.getLogger("tallied")
 
 
 def _parse_db_host_port() -> tuple[str, int, str]:
-    """Extract host, port, database from the database URL."""
+    """Extract public-facing host, port, database for user connection strings.
+
+    Uses FINANCE_DB_PUBLIC_HOST / FINANCE_DB_PUBLIC_PORT when set (production),
+    otherwise falls back to the values in FINANCE_DATABASE_URL (local dev).
+    """
     from urllib.parse import urlparse
     parsed = urlparse(settings.database_url)
-    host = parsed.hostname or "localhost"
-    port = parsed.port or 5432
+    host = settings.db_public_host or parsed.hostname or "localhost"
+    port = settings.db_public_port or parsed.port or 5432
     database = (parsed.path or "/tallied").lstrip("/")
     return host, port, database
 

@@ -1,5 +1,6 @@
 """Database credential management endpoints for direct Postgres access."""
 import logging
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -15,10 +16,14 @@ logger = logging.getLogger("tallied")
 
 router = APIRouter(prefix="/db-credentials", tags=["db-credentials"])
 
+DEFAULT_EXPIRES_DAYS = 90
+MAX_EXPIRES_DAYS = 365
+
 
 class CreateDbCredentialRequest(BaseModel):
     name: str
     access_level: str = "read"  # read, readwrite
+    expires_in_days: int = DEFAULT_EXPIRES_DAYS  # 0 = no expiry (max 365)
 
 
 class DbCredentialResponse(BaseModel):
@@ -28,6 +33,7 @@ class DbCredentialResponse(BaseModel):
     access_level: str
     is_active: bool
     created_at: str | None = None
+    expires_at: str | None = None
 
 
 class DbCredentialCreatedResponse(DbCredentialResponse):
@@ -45,13 +51,26 @@ def list_db_credentials(
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ):
-    """List all database credentials for the current user's active tenant."""
+    """List all database credentials for the current user's active tenant.
+
+    Automatically revokes expired credentials on read.
+    """
     creds = db.execute(
         select(DbCredential).where(
             DbCredential.user_id == ctx.user_id,
             DbCredential.tenant_id == ctx.tenant_id,
         ).order_by(DbCredential.created_at.desc())
     ).scalars().all()
+
+    now = datetime.now(timezone.utc)
+    for c in creds:
+        if c.is_active and c.expires_at and c.expires_at <= now:
+            try:
+                revoke_db_credential(c.pg_username)
+            except Exception as e:
+                logger.error(f"Failed to revoke expired credential {c.pg_username}: {e}")
+            c.is_active = False
+    db.commit()
 
     return [
         DbCredentialResponse(
@@ -61,6 +80,7 @@ def list_db_credentials(
             access_level=c.access_level,
             is_active=c.is_active,
             created_at=c.created_at.isoformat() if c.created_at else None,
+            expires_at=c.expires_at.isoformat() if c.expires_at else None,
         )
         for c in creds
     ]
@@ -79,6 +99,13 @@ def create_db_credential_endpoint(
     if not body.name.strip():
         raise HTTPException(status_code=400, detail="Name is required")
 
+    if body.expires_in_days < 0 or body.expires_in_days > MAX_EXPIRES_DAYS:
+        raise HTTPException(status_code=400, detail=f"expires_in_days must be 0-{MAX_EXPIRES_DAYS}")
+
+    expires_at = None
+    if body.expires_in_days > 0:
+        expires_at = datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
+
     try:
         result = create_db_credential(ctx.tenant_schema, body.access_level)
     except Exception as e:
@@ -91,6 +118,7 @@ def create_db_credential_endpoint(
         pg_username=result["username"],
         access_level=body.access_level,
         name=body.name.strip(),
+        expires_at=expires_at,
     )
     db.add(credential)
     db.commit()
@@ -103,6 +131,7 @@ def create_db_credential_endpoint(
         access_level=credential.access_level,
         is_active=True,
         created_at=credential.created_at.isoformat() if credential.created_at else None,
+        expires_at=credential.expires_at.isoformat() if credential.expires_at else None,
         password=result["password"],
         host=result["host"],
         port=result["port"],

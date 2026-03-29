@@ -67,6 +67,7 @@ interface DbCredentialResponse {
   access_level: string
   is_active: boolean
   created_at: string | null
+  expires_at: string | null
 }
 
 interface DbCredentialCreatedResponse extends DbCredentialResponse {
@@ -243,6 +244,7 @@ const credRevoking = ref<number | null>(null)
 const credError = ref<string | null>(null)
 const credName = ref('')
 const credAccessLevel = ref('read')
+const credExpiresInDays = ref(90)
 const newCredential = ref<DbCredentialCreatedResponse | null>(null)
 const showCredentialModal = computed(() => newCredential.value !== null)
 const copiedField = ref<string | null>(null)
@@ -664,11 +666,12 @@ async function createCredential() {
   try {
     const result = await apiFetch<DbCredentialCreatedResponse>('/api/v1/db-credentials/', {
       method: 'POST',
-      body: JSON.stringify({ name: credName.value.trim(), access_level: credAccessLevel.value }),
+      body: JSON.stringify({ name: credName.value.trim(), access_level: credAccessLevel.value, expires_in_days: credExpiresInDays.value }),
     })
     newCredential.value = result
     credName.value = ''
     credAccessLevel.value = 'read'
+    credExpiresInDays.value = 90
     await loadCredentials()
   } catch (e) {
     credError.value = e instanceof Error ? e.message : 'Failed to create credential'
@@ -694,6 +697,13 @@ function formatCredDate(dateStr: string | null): string {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function isCredExpiringSoon(dateStr: string | null): boolean {
+  if (!dateStr) return false
+  const d = new Date(dateStr)
+  const daysLeft = (d.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+  return daysLeft > 0 && daysLeft <= 14
 }
 
 async function copyToClipboard(text: string, field?: string) {
@@ -1381,6 +1391,20 @@ onUnmounted(() => {
                       <option value="readwrite">Read-write</option>
                     </select>
                   </div>
+                  <div class="w-32">
+                    <label class="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Expires</label>
+                    <select
+                      v-model.number="credExpiresInDays"
+                      class="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                    >
+                      <option :value="7">7 days</option>
+                      <option :value="30">30 days</option>
+                      <option :value="90">90 days</option>
+                      <option :value="180">180 days</option>
+                      <option :value="365">1 year</option>
+                      <option :value="0">Never</option>
+                    </select>
+                  </div>
                   <button
                     @click="createCredential"
                     :disabled="!credName.trim() || credCreating"
@@ -1421,6 +1445,7 @@ onUnmounted(() => {
                       <th class="text-left py-2 pr-4 font-medium text-gray-500 dark:text-gray-400">Username</th>
                       <th class="text-left py-2 pr-4 font-medium text-gray-500 dark:text-gray-400">Access</th>
                       <th class="text-left py-2 pr-4 font-medium text-gray-500 dark:text-gray-400">Created</th>
+                      <th class="text-left py-2 pr-4 font-medium text-gray-500 dark:text-gray-400">Expires</th>
                       <th class="text-right py-2 font-medium text-gray-500 dark:text-gray-400"></th>
                     </tr>
                   </thead>
@@ -1437,6 +1462,7 @@ onUnmounted(() => {
                         ]">{{ cred.access_level === 'read' ? 'Read-only' : 'Read-write' }}</span>
                       </td>
                       <td class="py-2.5 pr-4 text-gray-500 dark:text-gray-400">{{ formatCredDate(cred.created_at) }}</td>
+                      <td class="py-2.5 pr-4" :class="isCredExpiringSoon(cred.expires_at) ? 'text-amber-500 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'">{{ cred.expires_at ? formatCredDate(cred.expires_at) : 'Never' }}</td>
                       <td class="py-2.5 text-right">
                         <button
                           v-if="cred.is_active"

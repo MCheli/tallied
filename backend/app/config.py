@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # App
     base_url: str = "http://localhost:8000"  # Used for OAuth redirect URLs
 
+    # Public-facing DB host/port for connection strings shown to users.
+    # Defaults to values parsed from database_url (works for local dev).
+    # In production, set these to the externally reachable host/port.
+    db_public_host: str = ""
+    db_public_port: int = 0
+
     model_config = {"env_prefix": "FINANCE_", "env_file": ".env"}
 
 
