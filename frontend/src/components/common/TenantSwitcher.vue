@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useAuthStore } from '../../stores/auth'
+import { Users } from 'lucide-vue-next'
+
+const props = withDefaults(defineProps<{ collapsed?: boolean }>(), { collapsed: false })
 
 const auth = useAuthStore()
 const open = ref(false)
@@ -22,16 +25,24 @@ async function switchTo(tenantId: number) {
   <div v-if="auth.user?.tenants && auth.user.tenants.length > 1" class="relative px-3 py-2 border-b border-gray-100 dark:border-gray-800">
     <button
       @click="open = !open"
-      class="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+      :title="collapsed ? auth.user.current_tenant?.display_name : undefined"
+      :aria-label="collapsed ? `Switch tenant (${auth.user.current_tenant?.display_name})` : undefined"
+      :class="[
+        'w-full flex items-center rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors',
+        collapsed ? 'justify-center px-0 py-2' : 'justify-between gap-2 px-2 py-1.5',
+      ]"
     >
-      <span class="truncate">{{ auth.user.current_tenant?.display_name }}</span>
-      <svg
-        class="w-3 h-3 text-gray-400 flex-shrink-0 transition-transform"
-        :class="{ 'rotate-180': open }"
-        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-      >
-        <polyline points="6 9 12 15 18 9"/>
-      </svg>
+      <Users v-if="collapsed" class="w-4 h-4 flex-shrink-0" />
+      <template v-else>
+        <span class="truncate">{{ auth.user.current_tenant?.display_name }}</span>
+        <svg
+          class="w-3 h-3 text-gray-400 flex-shrink-0 transition-transform"
+          :class="{ 'rotate-180': open }"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </template>
     </button>
 
     <!-- Dropdown -->
@@ -56,8 +67,8 @@ async function switchTo(tenantId: number) {
     </div>
   </div>
 
-  <!-- Single tenant: just show the name -->
-  <div v-else-if="auth.user?.current_tenant" class="px-3 py-1.5 border-b border-gray-100 dark:border-gray-800">
+  <!-- Single tenant: just show the name (hide when collapsed since there's nothing to switch) -->
+  <div v-else-if="auth.user?.current_tenant && !collapsed" class="px-3 py-1.5 border-b border-gray-100 dark:border-gray-800">
     <span class="text-[10px] text-gray-400 dark:text-gray-500 truncate block">{{ auth.user.current_tenant.display_name }}</span>
   </div>
 </template>

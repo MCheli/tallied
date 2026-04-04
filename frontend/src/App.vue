@@ -26,6 +26,7 @@ import {
   X,
   PanelLeftClose,
   PanelLeftOpen,
+  LogIn,
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -36,7 +37,7 @@ const dark = ref(localStorage.getItem('theme') === 'dark')
 // Sidebar state
 const mobileOpen = ref(false)
 const collapsed = ref(localStorage.getItem('sidebar-collapsed') === 'true')
-const isMobile = ref(false)
+const isMobile = ref(typeof window !== 'undefined' ? window.innerWidth < 768 : false)
 
 function checkMobile() {
   isMobile.value = window.innerWidth < 768
@@ -146,6 +147,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
     <div class="md:hidden fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 h-14">
       <button
         @click="mobileOpen = true"
+        aria-label="Open navigation menu"
         class="p-1.5 -ml-1.5 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
         <Menu class="w-5 h-5" />
@@ -179,6 +181,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
         <button
           v-if="isMobile"
           @click="mobileOpen = false"
+          aria-label="Close navigation menu"
           class="p-1 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
           <X class="w-5 h-5" />
@@ -189,6 +192,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
           @click="toggleCollapsed"
           class="p-1 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           :title="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+          :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
         >
           <PanelLeftClose v-if="!collapsed" class="w-4 h-4" />
           <PanelLeftOpen v-else class="w-4 h-4" />
@@ -206,6 +210,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
             :key="item.name"
             :to="item.to"
             :title="collapsed && !isMobile ? item.label : undefined"
+            :aria-label="collapsed && !isMobile ? item.label : undefined"
             :class="[
               'flex items-center rounded-lg text-sm font-medium transition-colors',
               collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-1.5',
@@ -224,6 +229,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
         <button
           @click="toggleDark"
           :title="collapsed && !isMobile ? (dark ? 'Light Mode' : 'Dark Mode') : undefined"
+          :aria-label="dark ? 'Switch to light mode' : 'Switch to dark mode'"
           :class="[
             'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors',
             collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-1.5',
@@ -232,11 +238,12 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
           <component :is="dark ? Sun : Moon" class="w-4 h-4 flex-shrink-0" />
           <span v-if="showLabels">{{ dark ? 'Light Mode' : 'Dark Mode' }}</span>
         </button>
-        <TenantSwitcher v-if="showLabels" />
+        <TenantSwitcher :collapsed="!showLabels" />
         <div v-if="auth.authenticated">
           <button
             @click="auth.logout(); router.push('/login')"
             :title="collapsed && !isMobile ? 'Sign out' : undefined"
+            aria-label="Sign out"
             :class="[
               'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-colors',
               collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-1.5',
@@ -250,11 +257,14 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
           </div>
         </div>
         <RouterLink v-else to="/login"
+          aria-label="Sign in"
+          :title="collapsed && !isMobile ? 'Sign in' : undefined"
           :class="[
             'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors',
             collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-1.5',
           ]"
         >
+          <LogIn class="w-4 h-4 flex-shrink-0" />
           <span v-if="showLabels">Sign in</span>
         </RouterLink>
       </div>
