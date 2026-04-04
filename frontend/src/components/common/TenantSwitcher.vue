@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import { Users } from 'lucide-vue-next'
 
-const props = withDefaults(defineProps<{ collapsed?: boolean }>(), { collapsed: false })
+withDefaults(defineProps<{ collapsed?: boolean }>(), { collapsed: false })
 
 const auth = useAuthStore()
 const open = ref(false)
@@ -26,7 +26,7 @@ async function switchTo(tenantId: number) {
     <button
       @click="open = !open"
       :title="collapsed ? auth.user.current_tenant?.display_name : undefined"
-      :aria-label="collapsed ? `Switch tenant (${auth.user.current_tenant?.display_name})` : undefined"
+      :aria-label="collapsed ? `Switch tenant${auth.user.current_tenant?.display_name ? ` (${auth.user.current_tenant.display_name})` : ''}` : undefined"
       :class="[
         'w-full flex items-center rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors',
         collapsed ? 'justify-center px-0 py-2' : 'justify-between gap-2 px-2 py-1.5',
@@ -48,7 +48,12 @@ async function switchTo(tenantId: number) {
     <!-- Dropdown -->
     <div
       v-if="open"
-      class="absolute left-3 right-3 bottom-full mb-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 py-1"
+      :class="[
+        'absolute bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 py-1',
+        collapsed
+          ? 'left-full bottom-0 ml-2 min-w-[10rem]'
+          : 'left-3 right-3 bottom-full mb-1',
+      ]"
     >
       <button
         v-for="t in auth.user.tenants"
