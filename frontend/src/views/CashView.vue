@@ -122,9 +122,21 @@ const filteredHistory = computed(() => {
 async function syncBalances() {
   syncing.value = true; syncResult.value = null
   try {
-    const res = await fetch(`${API}/api/v1/plaid/sync-balances`, { method: 'POST', credentials: 'include' })
-    if (!res.ok) throw new Error('Sync failed')
-    syncResult.value = await res.json()
+    // Sync from both Plaid and Monarch in parallel
+    const [plaidRes, monarchRes] = await Promise.allSettled([
+      fetch(`${API}/api/v1/plaid/sync-balances`, { method: 'POST', credentials: 'include' }),
+      fetch(`${API}/api/v1/monarch/sync-balances`, { method: 'POST', credentials: 'include' }),
+    ])
+    let totalSynced = 0
+    if (plaidRes.status === 'fulfilled' && plaidRes.value.ok) {
+      const data = await plaidRes.value.json()
+      totalSynced += (data.accounts?.length ?? data.synced ?? 0)
+    }
+    if (monarchRes.status === 'fulfilled' && monarchRes.value.ok) {
+      const data = await monarchRes.value.json()
+      totalSynced += (data.synced ?? 0)
+    }
+    syncResult.value = { synced: totalSynced }
     snapshot.value = await fetch(`${API}/api/v1/snapshot`, { credentials: 'include' }).then(r => r.json())
   } catch (e: any) { error.value = e.message }
   finally { syncing.value = false }

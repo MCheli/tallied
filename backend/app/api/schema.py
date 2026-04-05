@@ -148,6 +148,118 @@ def preview_table(
     }
 
 
+class RowData(BaseModel):
+    data: dict
+
+
+@router.post("/tables/{table_name}/rows")
+def create_row(
+    table_name: str,
+    body: RowData,
+    db: Session = Depends(get_tenant_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Insert a new row into a table."""
+    inspector = inspect(db.get_bind())
+    valid_tables = inspector.get_table_names(schema=ctx.tenant_schema)
+    if table_name not in valid_tables:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+
+    valid_columns = {col["name"] for col in inspector.get_columns(table_name, schema=ctx.tenant_schema)}
+    filtered = {k: v for k, v in body.data.items() if k in valid_columns and v is not None and v != ""}
+
+    if not filtered:
+        raise HTTPException(status_code=400, detail="No valid columns provided")
+
+    cols = ", ".join(f'"{c}"' for c in filtered)
+    params = ", ".join(f":{c}" for c in filtered)
+    sql = f'INSERT INTO "{table_name}" ({cols}) VALUES ({params}) RETURNING *'
+
+    try:
+        result = db.execute(text(sql), filtered)
+        row = result.fetchone()
+        db.commit()
+        columns = list(result.keys())
+        return {"row": dict(zip(columns, row)) if row else {}}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/tables/{table_name}/rows/{row_id}")
+def update_row(
+    table_name: str,
+    row_id: str,
+    body: RowData,
+    db: Session = Depends(get_tenant_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Update an existing row by its primary key."""
+    inspector = inspect(db.get_bind())
+    valid_tables = inspector.get_table_names(schema=ctx.tenant_schema)
+    if table_name not in valid_tables:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+
+    pk = inspector.get_pk_constraint(table_name, schema=ctx.tenant_schema)
+    pk_col = pk["constrained_columns"][0] if pk and pk.get("constrained_columns") else "id"
+
+    valid_columns = {col["name"] for col in inspector.get_columns(table_name, schema=ctx.tenant_schema)}
+    # Allow empty strings and nulls for clearing fields, but filter out pk/auto columns
+    auto_cols = {pk_col, "created_at", "updated_at"}
+    filtered = {k: (None if v == "" else v) for k, v in body.data.items() if k in valid_columns and k not in auto_cols}
+
+    if not filtered:
+        raise HTTPException(status_code=400, detail="No valid columns to update")
+
+    set_clause = ", ".join(f'"{c}" = :{c}' for c in filtered)
+    sql = f'UPDATE "{table_name}" SET {set_clause} WHERE "{pk_col}" = :_pk_val RETURNING *'
+    params = {**filtered, "_pk_val": row_id}
+
+    try:
+        result = db.execute(text(sql), params)
+        row = result.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Row not found")
+        db.commit()
+        columns = list(result.keys())
+        return {"row": dict(zip(columns, row))}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/tables/{table_name}/rows/{row_id}")
+def delete_row(
+    table_name: str,
+    row_id: str,
+    db: Session = Depends(get_tenant_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Delete a row by its primary key."""
+    inspector = inspect(db.get_bind())
+    valid_tables = inspector.get_table_names(schema=ctx.tenant_schema)
+    if table_name not in valid_tables:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+
+    pk = inspector.get_pk_constraint(table_name, schema=ctx.tenant_schema)
+    pk_col = pk["constrained_columns"][0] if pk and pk.get("constrained_columns") else "id"
+
+    sql = f'DELETE FROM "{table_name}" WHERE "{pk_col}" = :pk_val'
+    try:
+        result = db.execute(text(sql), {"pk_val": row_id})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Row not found")
+        db.commit()
+        return {"deleted": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 class SQLQuery(BaseModel):
     sql: str
     limit: int = 100

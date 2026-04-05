@@ -7,12 +7,13 @@ import type { AccountWithBalance, W2Record } from '../types'
 const { currency } = useFormatters()
 
 // Tab management
-type Tab = 'accounts' | 'income' | 'plaid' | 'email' | 'import'
+type Tab = 'accounts' | 'income' | 'plaid' | 'monarch' | 'email' | 'import'
 const activeTab = ref<Tab>('accounts')
 const tabs: { key: Tab; label: string }[] = [
   { key: 'accounts', label: 'Accounts' },
   { key: 'income', label: 'Income' },
   { key: 'plaid', label: 'Plaid' },
+  { key: 'monarch', label: 'Monarch' },
   { key: 'email', label: 'Email' },
   { key: 'import', label: 'Import' },
 ]
@@ -307,11 +308,135 @@ async function loadEmailReceipts() {
   } catch { /* ignore */ }
 }
 
+// ── Monarch ──
+interface MonarchStatus { connected: boolean; email?: string; last_synced_at?: string; created_at?: string }
+interface MonarchAccountConfig { id: number; monarch_account_id: string; account_name: string; account_type: string; institution: string; sync_balances: boolean; sync_transactions: boolean; local_account_id: string | null }
+
+const monarchStatus = ref<MonarchStatus>({ connected: false })
+const monarchAccounts = ref<MonarchAccountConfig[]>([])
+const monarchLoading = ref(false)
+const monarchEmail = ref('')
+const monarchPassword = ref('')
+const monarchConnecting = ref(false)
+const monarchStatusMsg = ref('')
+const monarchSyncing = ref(false)
+const monarchMfaRequired = ref(false)
+const monarchMfaCode = ref('')
+const monarchUseToken = ref(false)
+const monarchToken = ref('')
+
+async function loadMonarchStatus() {
+  try {
+    const res = await fetch(`${API}/api/v1/monarch/status`, { credentials: 'include' })
+    if (res.ok) monarchStatus.value = await res.json()
+  } catch { /* ignore */ }
+}
+
+async function loadMonarchAccounts() {
+  monarchLoading.value = true
+  try {
+    const res = await fetch(`${API}/api/v1/monarch/accounts`, { credentials: 'include' })
+    if (res.ok) monarchAccounts.value = await res.json()
+  } catch { /* ignore */ }
+  monarchLoading.value = false
+}
+
+async function connectMonarch() {
+  if (!monarchEmail.value) return
+  if (!monarchUseToken.value && !monarchPassword.value) return
+  if (monarchUseToken.value && !monarchToken.value) return
+  monarchConnecting.value = true
+  monarchStatusMsg.value = monarchMfaRequired.value ? 'Verifying MFA code...' : 'Connecting to Monarch Money...'
+  try {
+    const payload: Record<string, string> = { email: monarchEmail.value }
+    if (monarchUseToken.value) {
+      payload.token = monarchToken.value
+    } else {
+      payload.password = monarchPassword.value
+      if (monarchMfaRequired.value && monarchMfaCode.value) {
+        payload.mfa_code = monarchMfaCode.value
+      }
+    }
+    const res = await fetch(`${API}/api/v1/monarch/connect`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const err = await res.text()
+      if (res.status === 429) {
+        monarchStatusMsg.value = 'Rate limited by Monarch. Use the session token method instead, or wait and try again later.'
+        monarchUseToken.value = true
+      } else {
+        monarchStatusMsg.value = `Error: ${err}`
+      }
+      return
+    }
+    const data = await res.json()
+    if (data.mfa_required) {
+      monarchMfaRequired.value = true
+      monarchStatusMsg.value = 'MFA required — enter the code from your authenticator app.'
+      return
+    }
+    monarchStatusMsg.value = `Connected! Found ${data.accounts_found} accounts.`
+    monarchPassword.value = ''
+    monarchMfaCode.value = ''
+    monarchMfaRequired.value = false
+    await loadMonarchStatus()
+    await loadMonarchAccounts()
+  } catch (e: any) {
+    monarchStatusMsg.value = `Error: ${e.message}`
+  } finally {
+    monarchConnecting.value = false
+  }
+}
+
+async function toggleMonarchSync(configId: number, field: 'sync_balances' | 'sync_transactions', value: boolean) {
+  try {
+    await fetch(`${API}/api/v1/monarch/accounts/${configId}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value }),
+    })
+  } catch { /* ignore */ }
+}
+
+async function syncMonarch() {
+  monarchSyncing.value = true
+  monarchStatusMsg.value = 'Syncing balances...'
+  try {
+    const balRes = await fetch(`${API}/api/v1/monarch/sync-balances`, { method: 'POST', credentials: 'include' })
+    const balData = await balRes.json()
+    monarchStatusMsg.value = `Synced ${balData.synced} account balances. Syncing transactions...`
+    const txnRes = await fetch(`${API}/api/v1/monarch/sync`, { method: 'POST', credentials: 'include' })
+    const txnData = await txnRes.json()
+    monarchStatusMsg.value = `Done! Balances: ${balData.synced} synced. Transactions: ${txnData.added} added, ${txnData.updated} updated.`
+    await loadMonarchStatus()
+  } catch (e: any) {
+    monarchStatusMsg.value = `Sync error: ${e.message}`
+  } finally {
+    monarchSyncing.value = false
+  }
+}
+
+async function disconnectMonarch() {
+  try {
+    await fetch(`${API}/api/v1/monarch/disconnect`, { method: 'DELETE', credentials: 'include' })
+    monarchStatus.value = { connected: false }
+    monarchAccounts.value = []
+    monarchStatusMsg.value = ''
+  } catch { /* ignore */ }
+}
+
 // Load data on mount
 onMounted(() => {
   loadAccounts()
   loadIncome()
   loadPlaidLinks()
+  loadMonarchStatus()
+  loadMonarchAccounts()
   loadImportLog()
   loadForwardingEmails()
   loadEmailReceipts()
@@ -645,6 +770,134 @@ onMounted(() => {
           </tbody>
         </table>
       </div>
+    </div>
+
+    <!-- ═══ Monarch Tab ═══ -->
+    <div v-if="activeTab === 'monarch'" class="space-y-4">
+      <!-- Not connected: login form -->
+      <div v-if="!monarchStatus.connected" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Connect Monarch Money</h3>
+        <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">Enter your Monarch Money credentials to sync account balances and transactions.</p>
+        <div class="max-w-sm space-y-3">
+          <input v-model="monarchEmail" type="email" placeholder="Email" :disabled="monarchMfaRequired"
+            class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 disabled:opacity-50" />
+
+          <!-- Token auth mode -->
+          <template v-if="monarchUseToken">
+            <div class="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+              <p class="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                To get your session token: log into <a href="https://app.monarchmoney.com" target="_blank" class="underline font-medium">app.monarchmoney.com</a>,
+                open DevTools (F12) &rarr; Network tab &rarr; find any request to <code class="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded">api.monarchmoney.com</code>
+                &rarr; look at the request headers &rarr; copy the value after <code class="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded">Authorization: Token</code>.
+              </p>
+            </div>
+            <input v-model="monarchToken" type="text" placeholder="Session token" autofocus
+              class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 font-mono text-[11px]"
+              @keyup.enter="connectMonarch" />
+          </template>
+
+          <!-- Password auth mode -->
+          <template v-else>
+            <input v-model="monarchPassword" type="password" placeholder="Password" :disabled="monarchMfaRequired"
+              class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 disabled:opacity-50"
+              @keyup.enter="!monarchMfaRequired && connectMonarch()" />
+            <input v-if="monarchMfaRequired" v-model="monarchMfaCode" type="text" inputmode="numeric" placeholder="MFA Code" autofocus
+              class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 font-mono tracking-widest"
+              @keyup.enter="connectMonarch" />
+          </template>
+
+          <div class="flex items-center gap-2">
+            <button @click="connectMonarch"
+              :disabled="monarchConnecting || !monarchEmail || (!monarchUseToken && !monarchPassword) || (monarchUseToken && !monarchToken) || (monarchMfaRequired && !monarchUseToken && !monarchMfaCode)"
+              class="px-4 py-2 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+              {{ monarchConnecting ? 'Connecting...' : monarchMfaRequired && !monarchUseToken ? 'Verify' : 'Connect' }}
+            </button>
+            <button v-if="monarchMfaRequired || monarchUseToken"
+              @click="monarchMfaRequired = false; monarchMfaCode = ''; monarchUseToken = false; monarchToken = ''; monarchStatusMsg = ''"
+              class="px-3 py-2 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+              Cancel
+            </button>
+            <button v-if="!monarchUseToken && !monarchMfaRequired"
+              @click="monarchUseToken = true; monarchStatusMsg = ''"
+              class="px-3 py-2 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+              Use session token instead
+            </button>
+          </div>
+        </div>
+        <div v-if="monarchStatusMsg" class="mt-3 text-xs" :class="monarchStatusMsg.startsWith('Error') ? 'text-red-500' : 'text-green-600 dark:text-green-400'">
+          {{ monarchStatusMsg }}
+        </div>
+      </div>
+
+      <!-- Connected: status + sync -->
+      <template v-else>
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Monarch Money Connected</h3>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                {{ monarchStatus.email }}
+                <span v-if="monarchStatus.last_synced_at"> &middot; Last synced: {{ new Date(monarchStatus.last_synced_at).toLocaleString() }}</span>
+                <span v-else> &middot; Never synced</span>
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button @click="syncMonarch" :disabled="monarchSyncing"
+                class="px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                {{ monarchSyncing ? 'Syncing...' : 'Sync All' }}
+              </button>
+              <button @click="disconnectMonarch"
+                class="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors">
+                Disconnect
+              </button>
+            </div>
+          </div>
+          <div v-if="monarchStatusMsg" class="mt-3 text-xs" :class="monarchStatusMsg.startsWith('Error') || monarchStatusMsg.startsWith('Sync error') ? 'text-red-500' : 'text-green-600 dark:text-green-400'">
+            {{ monarchStatusMsg }}
+          </div>
+        </div>
+
+        <!-- Account Configuration -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Account Sync Configuration</h3>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Choose which accounts to sync balances and transactions for.</p>
+          </div>
+          <div v-if="monarchLoading" class="px-5 py-8 text-center text-sm text-gray-400">Loading...</div>
+          <div v-else-if="monarchAccounts.length === 0" class="px-5 py-8 text-center text-sm text-gray-400">
+            No accounts found. Try syncing again.
+          </div>
+          <table v-else class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400">
+                <th class="text-left px-5 py-2.5 font-medium">Account</th>
+                <th class="text-left px-3 py-2.5 font-medium">Institution</th>
+                <th class="text-left px-3 py-2.5 font-medium">Type</th>
+                <th class="text-center px-3 py-2.5 font-medium">Balances</th>
+                <th class="text-center px-3 py-2.5 font-medium">Transactions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="acct in monarchAccounts" :key="acct.id"
+                class="border-b border-gray-50 dark:border-gray-800 last:border-0">
+                <td class="px-5 py-2.5 font-medium text-gray-900 dark:text-white">{{ acct.account_name }}</td>
+                <td class="px-3 py-2.5 text-gray-500 dark:text-gray-400">{{ acct.institution || '—' }}</td>
+                <td class="px-3 py-2.5 text-gray-500 dark:text-gray-400">{{ acct.account_type || '—' }}</td>
+                <td class="px-3 py-2.5 text-center">
+                  <input type="checkbox" :checked="acct.sync_balances"
+                    @change="acct.sync_balances = !acct.sync_balances; toggleMonarchSync(acct.id, 'sync_balances', acct.sync_balances)"
+                    class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 dark:bg-gray-800" />
+                </td>
+                <td class="px-3 py-2.5 text-center">
+                  <input type="checkbox" :checked="acct.sync_transactions"
+                    @change="acct.sync_transactions = !acct.sync_transactions; toggleMonarchSync(acct.id, 'sync_transactions', acct.sync_transactions)"
+                    class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 dark:bg-gray-800" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
     </div>
 
     <!-- ═══ Email Tab ═══ -->

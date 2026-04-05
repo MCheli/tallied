@@ -55,7 +55,15 @@ async def lifespan(app: FastAPI):
     logger.info(f"Creating {len(platform_tables)} platform tables: {[t.name for t in platform_tables]}")
     Base.metadata.create_all(bind=engine, tables=platform_tables)
     logger.info("Platform tables created successfully")
+
+    # Start background Monarch sync scheduler
+    from app.services.sync_scheduler import start_scheduler, stop_scheduler
+    start_scheduler()
+
     yield
+
+    # Shutdown background tasks
+    stop_scheduler()
 
 
 # ── Main application ──────────────────────────────────────────────────────────
@@ -97,6 +105,7 @@ from app.api import (  # noqa: E402
     mock,
     admin,
     plaid_routes,
+    monarch_routes,
     ingest,
     rsu,
     property,
@@ -191,6 +200,7 @@ v1.include_router(planning.router)
 v1.include_router(import_data.router)
 v1.include_router(import_unified.router)
 v1.include_router(plaid_routes.router)
+v1.include_router(monarch_routes.router)
 v1.include_router(ingest.router)
 v1.include_router(rsu.router)
 v1.include_router(property.router)

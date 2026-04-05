@@ -14,6 +14,7 @@ from app.models.planning import (
 )
 from app.models.import_log import ImportLog
 from app.models.plaid_link import PlaidLink
+from app.models.monarch_link import MonarchLink, MonarchAccountConfig
 from app.models.asset import Vehicle
 from app.models.asset_value_history import AssetValueHistory
 from app.models.retirement import RetirementAccount, RetirementHolding, RetirementSnapshot

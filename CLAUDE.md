@@ -90,6 +90,31 @@ npm run dev  # Runs on port 5173
 - Reset with test data: `make seed-test`
 - Tests use in-memory SQLite for speed (no Docker needed for CI)
 
+### Database Migrations (IMPORTANT)
+**Any change to the database schema MUST include an Alembic migration.** This includes:
+- Adding new tables
+- Adding/removing/renaming columns
+- Changing column types, constraints, or defaults
+- Adding indexes
+
+Migration files live in `backend/alembic/versions/`. Because this is a **multi-tenant app with schema-per-tenant**, migrations must iterate all tenant schemas:
+
+```python
+def upgrade() -> None:
+    conn = op.get_bind()
+    schemas = conn.execute(
+        sa.text("SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'tenant_%'")
+    ).fetchall()
+    for (schema,) in schemas:
+        conn.execute(sa.text(f'SET search_path TO "{schema}"'))
+        # ... DDL statements with IF NOT EXISTS ...
+    conn.execute(sa.text('SET search_path TO public'))
+```
+
+New tenants get tables automatically via `create_tenant_schema()` → `Base.metadata.create_all()`, but **existing tenants only get schema changes through migrations**.
+
+Also register new models in `backend/app/models/__init__.py` so SQLAlchemy discovers them.
+
 ## Multi-Tenancy
 
 ### Schema-Per-Tenant
