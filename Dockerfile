@@ -62,8 +62,9 @@ COPY --from=frontend-builder /build/dist ./static/
 COPY scripts/ ./scripts/
 COPY fixtures/ ./fixtures/
 
-# Copy alembic config for migrations
+# Copy alembic config and entrypoint
 COPY backend/alembic.ini ./backend/alembic.ini
+COPY backend/entrypoint.sh ./backend/entrypoint.sh
 
 # Create non-root user
 RUN groupadd --gid 1000 tallied && \
@@ -83,11 +84,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 
 EXPOSE 8000
 
-# Run with Gunicorn + Uvicorn workers
-CMD ["gunicorn", "app.main:app", \
-     "-k", "uvicorn.workers.UvicornWorker", \
-     "-w", "2", \
-     "-b", "0.0.0.0:8000", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-", \
-     "--chdir", "/app/backend"]
+# Run migrations then start Gunicorn
+CMD ["bash", "/app/backend/entrypoint.sh"]
