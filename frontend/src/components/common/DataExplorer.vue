@@ -68,7 +68,7 @@ const PAGE_SIZE = 20
 
 // Entry form state
 const mode = ref<'browse' | 'create' | 'edit'>('browse')
-const formData = ref<Record<string, unknown>>({})
+const formData = ref<Record<string, any>>({})
 const editingId = ref<string | null>(null)
 const saving = ref(false)
 const saveError = ref<string | null>(null)
