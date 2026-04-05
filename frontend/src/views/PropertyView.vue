@@ -9,11 +9,14 @@ import InfoTooltip from '../components/common/InfoTooltip.vue'
 import SqlViewerModal from '../components/common/SqlViewerModal.vue'
 import { useChartDefaults } from '../composables/useChartDefaults'
 import { useImportModal } from '../composables/useImportModal'
+import { useDataExplorer } from '../composables/useDataExplorer'
+import DataExplorer from '../components/common/DataExplorer.vue'
 
 use([PieChart, LineChart, BarChart, ScatterChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, MarkAreaComponent, CanvasRenderer])
 
 const { baseOption, isDark } = useChartDefaults()
 const { openImport } = useImportModal()
+const { openData } = useDataExplorer()
 const API = import.meta.env.VITE_API_URL || ''
 
 const loading = ref(true)
@@ -653,6 +656,10 @@ const paymentPieOption = computed(() => {
         </p>
       </div>
       <div class="flex items-center gap-3">
+        <button @click="openData('property')"
+          class="px-4 py-2 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+          Data
+        </button>
         <button @click="openImport({ context: 'property', onComplete: refreshData })"
           class="px-4 py-2 text-xs font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700">
           Import
@@ -975,5 +982,7 @@ const paymentPieOption = computed(() => {
         </div>
       </div>
     </template>
+
+    <DataExplorer />
   </div>
 </template>

@@ -6,11 +6,14 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, MarkLineComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { useChartDefaults } from '../composables/useChartDefaults'
+import { useDataExplorer } from '../composables/useDataExplorer'
+import DataExplorer from '../components/common/DataExplorer.vue'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
 import SqlViewerModal from '../components/common/SqlViewerModal.vue'
 
 use([LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer])
 const { baseOption, COLORS } = useChartDefaults()
+const { openData } = useDataExplorer()
 
 // SQL transparency state
 const showTotalValueSql = ref(false)
@@ -529,13 +532,19 @@ function vehicleHasHistory(vehicleId: number): boolean {
           Fixed capital assets — vehicles, equipment, and valuables
         </p>
       </div>
-      <button
-        v-if="!showAddForm"
-        @click="showAddForm = true; resetAddForm()"
-        class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
-      >
-        Add Vehicle
-      </button>
+      <div class="flex items-center gap-2">
+        <button @click="openData('assets')"
+          class="px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+          Data
+        </button>
+        <button
+          v-if="!showAddForm"
+          @click="showAddForm = true; resetAddForm()"
+          class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+        >
+          Add Vehicle
+        </button>
+      </div>
     </div>
 
     <!-- Loading / Error -->
@@ -839,5 +848,7 @@ function vehicleHasHistory(vehicleId: number): boolean {
         </button>
       </div>
     </template>
+
+    <DataExplorer />
   </div>
 </template>

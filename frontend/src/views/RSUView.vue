@@ -7,6 +7,8 @@ import { GridComponent, TooltipComponent, MarkLineComponent } from 'echarts/comp
 import { CanvasRenderer } from 'echarts/renderers'
 import { useChartDefaults } from '../composables/useChartDefaults'
 import { useImportModal } from '../composables/useImportModal'
+import { useDataExplorer } from '../composables/useDataExplorer'
+import DataExplorer from '../components/common/DataExplorer.vue'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
 import SqlViewerModal from '../components/common/SqlViewerModal.vue'
 
@@ -14,6 +16,7 @@ use([LineChart, GridComponent, TooltipComponent, MarkLineComponent, CanvasRender
 
 const { baseOption } = useChartDefaults()
 const { openImport } = useImportModal()
+const { openData } = useDataExplorer()
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -234,6 +237,10 @@ const priceChartOption = computed(() => {
           class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
           E-Trade Holdings
         </a>
+        <button @click="openData('rsu')"
+          class="px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+          Data
+        </button>
         <button @click="openImport({ context: 'rsu', onComplete: fetchData })"
           class="px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
           Import
@@ -600,5 +607,7 @@ const priceChartOption = computed(() => {
         </div>
       </div>
     </template>
+
+    <DataExplorer />
   </div>
 </template>

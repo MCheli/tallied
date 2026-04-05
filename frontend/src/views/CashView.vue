@@ -5,6 +5,8 @@ import { use } from 'echarts/core'
 import { LineChart, BarChart, PieChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, MarkPointComponent, MarkLineComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { useDataExplorer } from '../composables/useDataExplorer'
+import DataExplorer from '../components/common/DataExplorer.vue'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
 import SqlViewerModal from '../components/common/SqlViewerModal.vue'
 import { useChartDefaults } from '../composables/useChartDefaults'
@@ -13,6 +15,7 @@ import { ChevronDown, ChevronRight } from 'lucide-vue-next'
 use([LineChart, BarChart, PieChart, GridComponent, TooltipComponent, LegendComponent, MarkPointComponent, MarkLineComponent, CanvasRenderer])
 
 const { baseOption, isDark } = useChartDefaults()
+const { openData } = useDataExplorer()
 const API = import.meta.env.VITE_API_URL || ''
 
 // Consistent account colors
@@ -313,6 +316,10 @@ function fmtDate(d: string | null | undefined): string { if (!d) return '--'; re
             {{ opt.label }}
           </button>
         </div>
+        <button @click="openData('cash')"
+          class="px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+          Data
+        </button>
         <button @click="syncBalances" :disabled="syncing"
           class="px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50">
           {{ syncing ? 'Syncing...' : 'Sync' }}
@@ -507,5 +514,7 @@ function fmtDate(d: string | null | undefined): string { if (!d) return '--'; re
         </div>
       </div>
     </template>
+
+    <DataExplorer />
   </div>
 </template>

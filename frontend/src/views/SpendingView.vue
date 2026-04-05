@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useTransactionStore } from '../stores/transactions'
+import { useDataExplorer } from '../composables/useDataExplorer'
+import DataExplorer from '../components/common/DataExplorer.vue'
 import ChartContainer from '../components/common/ChartContainer.vue'
 import SqlViewerModal from '../components/common/SqlViewerModal.vue'
 import TransactionTable from '../components/spending/TransactionTable.vue'
@@ -9,6 +11,7 @@ import RecurringList from '../components/spending/RecurringList.vue'
 import MonthlyTrend from '../components/spending/MonthlyTrend.vue'
 
 const store = useTransactionStore()
+const { openData } = useDataExplorer()
 
 const showRecurringSql = ref(false)
 const showTransactionsSql = ref(false)
@@ -132,7 +135,12 @@ const presets: { key: DatePreset; label: string }[] = [
   <div>
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-lg font-bold text-gray-900 dark:text-white">Spending</h2>
-      <div class="flex gap-2">
+      <div class="flex items-center gap-2">
+        <button @click="openData('spending')"
+          class="px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+          Data
+        </button>
+        <span class="w-px h-5 bg-gray-200 dark:bg-gray-700"></span>
         <button
           v-for="p in presets"
           :key="p.key"
@@ -188,5 +196,7 @@ const presets: { key: DatePreset; label: string }[] = [
     <ChartContainer title="Monthly Spending Trend" info="Monthly total spending over time. Shows how your spending has trended month over month. Only includes expenses, not income. Useful for spotting seasonal patterns or lifestyle changes.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; Transactions table, summed by month (expenses only)." :loading="store.monthlyTrend.length === 0 && store.loading" :sql="monthlyTrendSql" :sqlTables="['transactions']">
       <MonthlyTrend :data="store.monthlyTrend" />
     </ChartContainer>
+
+    <DataExplorer />
   </div>
 </template>
