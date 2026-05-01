@@ -61,6 +61,33 @@ def test_status_with_no_jobs_returns_none(db_session, client):
     assert r.json() == {"job_id": None, "status": "none"}
 
 
+@pytest.mark.asyncio
+async def test_sync_all_tenants_passes_int_not_tuple_to_run_sync():
+    """Regression: create_job_row returns (id, bool); sync_all_tenants must
+    destructure it. If the tuple leaks through, run_sync_with_job receives
+    `(8, False)` as the job_id and Postgres rejects the WHERE clause with
+    'operator does not exist: integer = record', leaving the row stuck."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.services import sync_scheduler
+
+    fake_link = MagicMock()
+    fake_db = MagicMock()
+    fake_db.query.return_value.first.return_value = fake_link
+
+    with patch.object(sync_scheduler, "_get_tenant_schemas", return_value=["tenant_x"]), \
+         patch.object(sync_scheduler, "_get_tenant_session", return_value=fake_db), \
+         patch.object(sync_scheduler, "create_job_row", return_value=(7, True)) as cj, \
+         patch.object(sync_scheduler, "run_sync_with_job",
+                      new_callable=AsyncMock) as rs:
+        await sync_scheduler.sync_all_tenants()
+
+    cj.assert_called_once_with("tenant_x", trigger="scheduled")
+    rs.assert_awaited_once_with("tenant_x", 7)
+    # Specifically the second arg must be a plain int, not a tuple.
+    args = rs.await_args.args
+    assert isinstance(args[1], int), f"expected int, got {type(args[1])}: {args[1]!r}"
+
+
 def test_status_returns_latest_job(db_session, client):
     from datetime import datetime, timedelta
     older = MonarchSyncJob(

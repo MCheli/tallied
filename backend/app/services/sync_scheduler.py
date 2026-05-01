@@ -445,7 +445,15 @@ def reap_stuck_jobs() -> None:
 
 
 async def sync_all_tenants():
-    """Run Monarch sync across all tenant schemas, recording a job row each."""
+    """Run Monarch sync across all tenant schemas, recording a job row each.
+
+    Tolerates schemas where monarch_sync_jobs hasn't been created yet — that
+    can happen when a tenant exists from before the migration shipped, or in
+    dev DBs that didn't go through alembic. The next migration run will
+    create the table; until then, the schema just gets skipped.
+    """
+    from sqlalchemy.exc import ProgrammingError
+
     schemas = _get_tenant_schemas()
     results = []
     for schema in schemas:
@@ -457,7 +465,11 @@ async def sync_all_tenants():
             db.close()
         if not link:
             continue
-        job_id = create_job_row(schema, trigger="scheduled")
+        try:
+            job_id, _created = create_job_row(schema, trigger="scheduled")
+        except ProgrammingError:
+            logger.warning("Skipping %s: monarch_sync_jobs missing (migration pending?)", schema)
+            continue
         await run_sync_with_job(schema, job_id)
         results.append({"schema": schema, "job_id": job_id})
     return results

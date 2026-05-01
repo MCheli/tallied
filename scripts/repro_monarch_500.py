@@ -242,6 +242,46 @@ def scenario_unique_running_index():
           f"{'OK' if n >= 1 else 'FAIL'}")
 
 
+async def scenario_sync_all_tenants_path():
+    """Regression for the tuple-vs-int bug at sync_scheduler.py:460.
+
+    sync_all_tenants is what the 12-hour scheduler loop calls. If the
+    create_job_row tuple isn't destructured, run_sync_with_job receives
+    a tuple as job_id, the WHERE id = (n, bool) query errors out, and
+    the row stays stuck in 'running' forever. This test asserts the row
+    reaches a terminal state.
+    """
+    from app.services.sync_scheduler import sync_all_tenants
+    from app.models.monarch_sync_job import MonarchSyncJob
+
+    db = _session()
+    try:
+        _reset(db); _seed_link(db)
+    finally:
+        db.close()
+
+    txns = [_txn(id="sched-1"), _txn(id="sched-2", date="2026-04-16")]
+    mm = _mock_client(txns)
+    with patch("app.services.sync_scheduler._get_monarch_client", return_value=mm):
+        results = await sync_all_tenants()
+
+    db = _session()
+    try:
+        # Pick out the run we just kicked off (latest 'scheduled' job for
+        # this tenant). It must NOT still be 'running'.
+        job = (
+            db.query(MonarchSyncJob)
+            .filter(MonarchSyncJob.trigger == "scheduled")
+            .order_by(MonarchSyncJob.id.desc())
+            .first()
+        )
+        ok = job and job.status == "succeeded" and job.txn_added == 2
+        print(f"[scheduled-path] status={job.status if job else 'MISSING'} "
+              f"added={job.txn_added if job else '?'} → {'OK' if ok else 'FAIL'}")
+    finally:
+        db.close()
+
+
 async def main():
     try:
         await scenario_happy_path()
@@ -249,6 +289,7 @@ async def main():
         await scenario_failure_lands_in_failed()
         scenario_watchdog_reaps_stuck()
         scenario_unique_running_index()
+        await scenario_sync_all_tenants_path()
     except Exception:
         traceback.print_exc()
 
