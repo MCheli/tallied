@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
 
 # ── Main application ──────────────────────────────────────────────────────────
 
-app = FastAPI(title="Tallied", docs_url=None, redoc_url=None)
+app = FastAPI(title="Tallied", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -129,7 +129,6 @@ v1 = FastAPI(
     title="Tallied API",
     version="1.0.0",
     description="Personal finance data platform API. Authenticate with a JWT cookie (browser) or X-API-Key header (programmatic).",
-    lifespan=lifespan,
     openapi_tags=[
         {"name": "accounts", "description": "Financial accounts management"},
         {"name": "transactions", "description": "Transaction history and search"},

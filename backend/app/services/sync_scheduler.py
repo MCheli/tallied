@@ -205,6 +205,14 @@ async def _sync_tenant(schema: str) -> dict:
             except Exception as e:
                 logger.error("Failed to fetch Monarch transactions for %s: %s", schema, e)
 
+            # Dedupe — Monarch pagination can return the same txn twice when
+            # rows shift mid-iteration; collapse to one entry per id (last
+            # write wins) to avoid PK violations on commit.
+            deduped: dict[str, dict] = {}
+            for txn in all_transactions:
+                deduped[str(txn.get("id", ""))] = txn
+            all_transactions = list(deduped.values())
+
             for txn in all_transactions:
                 txn_account = txn.get("account") or {}
                 txn_account_id = str(txn_account.get("id", ""))

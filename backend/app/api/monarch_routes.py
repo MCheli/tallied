@@ -11,6 +11,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
@@ -407,7 +408,15 @@ async def sync_monarch_balances(
             logger.info("Backfilled %d balance snapshots for %s", history_added, acct_name)
 
     link.last_synced_at = datetime.utcnow()
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        logger.exception("Monarch balance sync commit failed")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Database constraint violation during sync: {e.orig}",
+        )
 
     return {"synced": synced}
 
@@ -459,7 +468,14 @@ async def sync_monarch_transactions(
 
     added = 0
     updated = 0
-    transactions = all_transactions
+
+    # Monarch's limit/offset pagination can return the same txn twice when
+    # rows shift mid-iteration. Dedupe by id (last write wins) so we don't
+    # try to INSERT the same primary key twice and trip a UniqueViolation.
+    deduped: dict[str, dict] = {}
+    for txn in all_transactions:
+        deduped[str(txn.get("id", ""))] = txn
+    transactions = list(deduped.values())
 
     for txn in transactions:
         txn_account = txn.get("account") or {}
@@ -533,7 +549,15 @@ async def sync_monarch_transactions(
             added += 1
 
     link.last_synced_at = datetime.utcnow()
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        logger.exception("Monarch sync commit failed")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Database constraint violation during sync: {e.orig}",
+        )
 
     return {"added": added, "updated": updated}
 
