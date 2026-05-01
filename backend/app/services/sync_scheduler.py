@@ -16,6 +16,7 @@ from app.database import SessionLocal, engine
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 from app.models.monarch_link import MonarchAccountConfig, MonarchLink
+from app.models.monarch_sync_job import MonarchSyncJob
 from app.models.transaction import Transaction
 from app.parsers.monarch import ACCOUNT_TYPE_MAP, DISPLAY_GROUP_MAP
 
@@ -23,6 +24,9 @@ logger = logging.getLogger("tallied.sync")
 
 # Sync interval: 12 hours (twice per day)
 SYNC_INTERVAL_SECONDS = 12 * 60 * 60
+
+# Watchdog: jobs stuck in 'running' longer than this are marked failed at boot.
+WATCHDOG_STUCK_MINUTES = 15
 
 
 def _classify_account_type(monarch_type: str) -> tuple[str, str]:
@@ -222,6 +226,23 @@ async def _sync_tenant(schema: str) -> dict:
 
                 if not cfg.local_account_id:
                     local_id = f"monarch-{txn_account_id}"
+                    # Ensure the Account row exists — txn-only syncs (where
+                    # sync_balances=False) never went through the balance
+                    # branch above that creates Accounts.
+                    local_acct = db.query(Account).filter(Account.id == local_id).first()
+                    if not local_acct:
+                        acct_name = (txn_account.get("displayName")
+                                     or cfg.account_name or "Unknown")
+                        raw_type = cfg.account_type or ""
+                        acct_type, display_group = _classify_account_type(raw_type)
+                        local_acct = Account(
+                            id=local_id, name=acct_name,
+                            institution=cfg.institution or "",
+                            account_type=acct_type, display_group=display_group,
+                            include_in_nw=True,
+                        )
+                        db.add(local_acct)
+                        db.flush()
                     cfg.local_account_id = local_id
 
                 monarch_txn_id = str(txn.get("id", ""))
@@ -279,36 +300,154 @@ async def _sync_tenant(schema: str) -> dict:
         db.close()
 
 
+async def run_sync_with_job(schema: str, job_id: int) -> None:
+    """Execute a sync against `schema` and update the existing job row.
+
+    Used by the route handler (which inserts the job row before returning 202)
+    and by the scheduler (which inserts a row per cycle). Always lands in a
+    terminal state — never leaves a row in 'running'.
+    """
+    try:
+        result = await _sync_tenant(schema)
+        _finalize_job(schema, job_id, result)
+    except Exception as e:
+        logger.exception("Monarch sync crashed for %s job=%d", schema, job_id)
+        _finalize_job(schema, job_id, {"error": str(e)})
+
+
+def _finalize_job(schema: str, job_id: int, result: dict) -> None:
+    db = _get_tenant_session(schema)
+    try:
+        job = db.query(MonarchSyncJob).filter(MonarchSyncJob.id == job_id).first()
+        if not job:
+            logger.warning("Job %d not found in %s when finalizing", job_id, schema)
+            return
+        job.finished_at = datetime.utcnow()
+        if "error" in result:
+            job.status = "failed"
+            job.error = (result.get("error") or "")[:4000]
+        elif result.get("skipped"):
+            job.status = "succeeded"
+        else:
+            job.status = "succeeded"
+            job.balances_synced = int(result.get("balances_synced", 0))
+            job.txn_added = int(result.get("txn_added", 0))
+            job.txn_updated = int(result.get("txn_updated", 0))
+        db.commit()
+    finally:
+        db.close()
+
+
+def create_job_row(schema: str, trigger: str) -> int:
+    """Insert a new monarch_sync_jobs row with status='running'. Returns the id.
+
+    Captures the autoincrement id via flush() before commit — the engine's
+    pool-checkout handler resets search_path to public on the next checkout,
+    so a post-commit refresh would query the wrong schema.
+    """
+    db = _get_tenant_session(schema)
+    try:
+        job = MonarchSyncJob(status="running", trigger=trigger)
+        db.add(job)
+        db.flush()
+        job_id = job.id
+        db.commit()
+        return job_id
+    finally:
+        db.close()
+
+
+def find_running_job(schema: str) -> int | None:
+    """Return the id of the in-flight job for this tenant, if any."""
+    db = _get_tenant_session(schema)
+    try:
+        job = (
+            db.query(MonarchSyncJob)
+            .filter(MonarchSyncJob.status == "running")
+            .order_by(MonarchSyncJob.started_at.desc())
+            .first()
+        )
+        return job.id if job else None
+    finally:
+        db.close()
+
+
+def reap_stuck_jobs() -> None:
+    """Mark any 'running' job older than WATCHDOG_STUCK_MINUTES as failed.
+
+    Runs once at boot before the scheduler starts. A worker SIGTERM mid-sync
+    leaves the job row stuck in 'running' forever; this is the safety net.
+    """
+    from sqlalchemy.exc import ProgrammingError
+
+    cutoff = datetime.utcnow() - timedelta(minutes=WATCHDOG_STUCK_MINUTES)
+    schemas = _get_tenant_schemas()
+    total = 0
+    for schema in schemas:
+        db = _get_tenant_session(schema)
+        try:
+            stuck = (
+                db.query(MonarchSyncJob)
+                .filter(
+                    MonarchSyncJob.status == "running",
+                    MonarchSyncJob.started_at < cutoff,
+                )
+                .all()
+            )
+            for j in stuck:
+                j.status = "failed"
+                j.error = "worker died (watchdog reaped at startup)"
+                j.finished_at = datetime.utcnow()
+                total += 1
+            if stuck:
+                db.commit()
+        except ProgrammingError:
+            # Table doesn't exist in this schema yet (migration not applied).
+            # Skip silently — the migration will add it on the next deploy.
+            db.rollback()
+        except Exception:
+            logger.exception("Watchdog reap failed for %s", schema)
+            db.rollback()
+        finally:
+            db.close()
+    if total:
+        logger.warning("Watchdog reaped %d stuck Monarch sync job(s)", total)
+
+
 async def sync_all_tenants():
-    """Run Monarch sync across all tenant schemas."""
+    """Run Monarch sync across all tenant schemas, recording a job row each."""
     schemas = _get_tenant_schemas()
     results = []
     for schema in schemas:
-        result = await _sync_tenant(schema)
-        if not result.get("skipped"):
-            results.append(result)
+        # Skip tenants with no Monarch connection — don't pollute job table.
+        db = _get_tenant_session(schema)
+        try:
+            link = db.query(MonarchLink).first()
+        finally:
+            db.close()
+        if not link:
+            continue
+        job_id = create_job_row(schema, trigger="scheduled")
+        await run_sync_with_job(schema, job_id)
+        results.append({"schema": schema, "job_id": job_id})
     return results
 
 
 async def _scheduler_loop():
-    """Background loop that runs Monarch sync on a fixed interval."""
+    """Background loop that runs Monarch sync on a fixed interval.
+
+    Runs an immediate sync on startup, then sleeps the full interval between
+    runs. Without the immediate sync, every container restart (e.g. Watchtower
+    auto-update) would defer the next sync by 12 hours.
+    """
     logger.info("Monarch sync scheduler started (interval: %ds)", SYNC_INTERVAL_SECONDS)
     while True:
-        await asyncio.sleep(SYNC_INTERVAL_SECONDS)
         try:
             logger.info("Starting scheduled Monarch sync...")
-            results = await sync_all_tenants()
-            for r in results:
-                if "error" in r:
-                    logger.error("Sync failed for %s: %s", r["schema"], r["error"])
-                else:
-                    logger.info(
-                        "Synced %s: %d balances, %d txn added, %d txn updated",
-                        r["schema"], r.get("balances_synced", 0),
-                        r.get("txn_added", 0), r.get("txn_updated", 0),
-                    )
+            await sync_all_tenants()
         except Exception as e:
             logger.error("Scheduled Monarch sync error: %s", e)
+        await asyncio.sleep(SYNC_INTERVAL_SECONDS)
 
 
 _scheduler_task: asyncio.Task | None = None

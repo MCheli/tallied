@@ -403,16 +403,60 @@ async function toggleMonarchSync(configId: number, field: 'sync_balances' | 'syn
   } catch { /* ignore */ }
 }
 
+async function _safeJson(res: Response): Promise<any> {
+  // The backend can return an HTML error page (e.g. nginx 502) before our
+  // app ever runs. response.json() on HTML throws an unhelpful syntax error,
+  // so handle that explicitly.
+  const ct = res.headers.get('content-type') || ''
+  if (!ct.includes('application/json')) {
+    const body = await res.text()
+    throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`)
+  }
+  return res.json()
+}
+
 async function syncMonarch() {
   monarchSyncing.value = true
   monarchStatusMsg.value = 'Syncing balances...'
   try {
     const balRes = await fetch(`${API}/api/v1/monarch/sync-balances`, { method: 'POST', credentials: 'include' })
-    const balData = await balRes.json()
-    monarchStatusMsg.value = `Synced ${balData.synced} account balances. Syncing transactions...`
-    const txnRes = await fetch(`${API}/api/v1/monarch/sync`, { method: 'POST', credentials: 'include' })
-    const txnData = await txnRes.json()
-    monarchStatusMsg.value = `Done! Balances: ${balData.synced} synced. Transactions: ${txnData.added} added, ${txnData.updated} updated.`
+    if (!balRes.ok) {
+      const body = await _safeJson(balRes).catch(() => ({ detail: balRes.statusText }))
+      throw new Error(body.detail || `HTTP ${balRes.status}`)
+    }
+    const balData = await _safeJson(balRes)
+    monarchStatusMsg.value = `Synced ${balData.synced} account balances. Queuing transaction sync...`
+
+    // POST /sync now returns 202 immediately with a job_id; the actual sync
+    // runs in a background task. Poll /sync/status until it reaches a
+    // terminal state.
+    const enqueueRes = await fetch(`${API}/api/v1/monarch/sync`, { method: 'POST', credentials: 'include' })
+    if (!enqueueRes.ok && enqueueRes.status !== 202) {
+      const body = await _safeJson(enqueueRes).catch(() => ({ detail: enqueueRes.statusText }))
+      throw new Error(body.detail || `HTTP ${enqueueRes.status}`)
+    }
+    monarchStatusMsg.value = 'Syncing transactions... this can take a few minutes.'
+
+    const POLL_INTERVAL_MS = 2000
+    const MAX_POLL_MS = 10 * 60 * 1000  // 10 min hard ceiling
+    const started = Date.now()
+    let last: any = null
+    while (Date.now() - started < MAX_POLL_MS) {
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS))
+      const sRes = await fetch(`${API}/api/v1/monarch/sync/status`, { credentials: 'include' })
+      if (!sRes.ok) continue
+      last = await _safeJson(sRes).catch(() => null)
+      if (!last) continue
+      if (last.status !== 'running') break
+    }
+
+    if (!last || last.status === 'running') {
+      monarchStatusMsg.value = 'Sync still running in background — refresh later to see results.'
+    } else if (last.status === 'failed') {
+      monarchStatusMsg.value = `Sync failed: ${last.error || 'unknown error'}`
+    } else {
+      monarchStatusMsg.value = `Done! Balances: ${balData.synced} synced. Transactions: ${last.txn_added} added, ${last.txn_updated} updated.`
+    }
     await loadMonarchStatus()
   } catch (e: any) {
     monarchStatusMsg.value = `Sync error: ${e.message}`

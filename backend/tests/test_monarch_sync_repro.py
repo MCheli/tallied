@@ -1,48 +1,16 @@
-"""Reproduction test for the 500 on POST /api/v1/monarch/sync.
+"""Tests for the fire-and-forget Monarch sync route + status endpoint.
 
-Mocks the Monarch client to feed the route a variety of realistic payload
-shapes, so we can find which one trips the 500 we see in production logs.
+The actual Monarch API integration logic in sync_scheduler._sync_tenant is
+exercised by scripts/repro_monarch_500.py against real Postgres (which the
+CI SQLite setup can't simulate due to FK/constraint differences). These
+tests focus on the route boundary: 202 contract, idempotency, and status.
 """
-import logging
-from datetime import date
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from app.models.account import Account
-from app.models.monarch_link import MonarchAccountConfig, MonarchLink
-
-
-def _seed_link(db, *, sync_transactions=True, local_account_id=None):
-    link = MonarchLink(email="claudius@tallied.dev", token="fake-token")
-    db.add(link)
-    db.flush()
-    cfg = MonarchAccountConfig(
-        monarch_link_id=link.id,
-        monarch_account_id="999",
-        account_name="Test Checking",
-        account_type="Checking",
-        institution="Test Bank",
-        sync_balances=False,
-        sync_transactions=sync_transactions,
-        local_account_id=local_account_id,
-    )
-    db.add(cfg)
-    db.flush()
-    return link, cfg
-
-
-def _mock_client(transactions):
-    mm = AsyncMock()
-    mm.set_token = lambda *a, **k: None
-    mm._headers = {}
-    mm.get_transactions = AsyncMock(return_value={
-        "allTransactions": {
-            "results": transactions,
-            "totalCount": len(transactions),
-        }
-    })
-    return mm
+from app.models.monarch_link import MonarchLink
+from app.models.monarch_sync_job import MonarchSyncJob
 
 
 @pytest.fixture
@@ -52,183 +20,69 @@ def client(db_session):
     return TestClient(app)
 
 
-def _post_sync(client):
-    return client.post("/api/v1/monarch/sync")
+def _seed_link(db):
+    db.add(MonarchLink(email="claudius@tallied.dev", token="fake"))
+    db.commit()
 
 
-# ── Scenario 1: well-formed transaction ───────────────────────────────────────
+def test_sync_no_connection_returns_skipped(db_session, client):
+    r = client.post("/api/v1/monarch/sync")
+    assert r.status_code == 200
+    assert r.json()["status"] == "skipped"
 
-def test_well_formed_transaction(db_session, client, caplog):
+
+def test_sync_enqueues_job_and_returns_202(db_session, client):
     _seed_link(db_session)
-    db_session.commit()
-
-    txns = [{
-        "id": "txn-1",
-        "date": "2026-04-15",
-        "amount": -42.50,
-        "merchant": {"name": "Starbucks"},
-        "category": {"name": "Coffee", "group": {"name": "Food"}},
-        "isRecurring": False,
-        "account": {"id": "999", "displayName": "Test Checking"},
-    }]
-
-    with patch("app.api.monarch_routes._get_monarch_client",
-               return_value=_mock_client(txns)):
-        with caplog.at_level(logging.ERROR):
-            r = _post_sync(client)
-    print(f"\n[well-formed] status={r.status_code} body={r.text[:200]}")
-    assert r.status_code == 200, f"Unexpected: {r.text}"
+    with patch("app.services.sync_scheduler.create_job_row", return_value=42) as cj, \
+         patch("app.services.sync_scheduler.find_running_job", return_value=None), \
+         patch("app.services.sync_scheduler.run_sync_with_job") as rs, \
+         patch("app.api.monarch_routes.asyncio.create_task") as ct:
+        r = client.post("/api/v1/monarch/sync")
+    assert r.status_code == 202
+    body = r.json()
+    assert body == {"job_id": 42, "status": "running", "queued": True}
+    cj.assert_called_once()
+    ct.assert_called_once()
 
 
-# ── Scenario 2: category is a string instead of dict (Monarch API drift) ──────
-
-def test_category_as_string(db_session, client, caplog):
+def test_sync_returns_existing_running_job(db_session, client):
     _seed_link(db_session)
+    with patch("app.services.sync_scheduler.create_job_row") as cj, \
+         patch("app.services.sync_scheduler.find_running_job", return_value=99), \
+         patch("app.api.monarch_routes.asyncio.create_task") as ct:
+        r = client.post("/api/v1/monarch/sync")
+    assert r.status_code == 202
+    assert r.json() == {"job_id": 99, "status": "running", "queued": False}
+    cj.assert_not_called()
+    ct.assert_not_called()
+
+
+def test_status_with_no_jobs_returns_none(db_session, client):
+    r = client.get("/api/v1/monarch/sync/status")
+    assert r.status_code == 200
+    assert r.json() == {"job_id": None, "status": "none"}
+
+
+def test_status_returns_latest_job(db_session, client):
+    from datetime import datetime, timedelta
+    older = MonarchSyncJob(
+        status="succeeded", trigger="scheduled",
+        started_at=datetime.utcnow() - timedelta(hours=1),
+        finished_at=datetime.utcnow() - timedelta(hours=1),
+        balances_synced=2, txn_added=5, txn_updated=1,
+    )
+    newer = MonarchSyncJob(
+        status="failed", trigger="manual",
+        started_at=datetime.utcnow(),
+        finished_at=datetime.utcnow(),
+        error="boom",
+    )
+    db_session.add_all([older, newer])
     db_session.commit()
 
-    txns = [{
-        "id": "txn-2",
-        "date": "2026-04-15",
-        "amount": -10.0,
-        "merchant": {"name": "X"},
-        "category": "Coffee",  # string instead of dict
-        "account": {"id": "999"},
-    }]
-
-    with patch("app.api.monarch_routes._get_monarch_client",
-               return_value=_mock_client(txns)):
-        with caplog.at_level(logging.ERROR):
-            r = _post_sync(client)
-    print(f"\n[cat-string] status={r.status_code} body={r.text[:300]}")
-
-
-# ── Scenario 3: category.group is a string ────────────────────────────────────
-
-def test_category_group_as_string(db_session, client, caplog):
-    _seed_link(db_session)
-    db_session.commit()
-
-    txns = [{
-        "id": "txn-3",
-        "date": "2026-04-15",
-        "amount": -10.0,
-        "merchant": {"name": "X"},
-        "category": {"name": "Coffee", "group": "Food"},  # group as str
-        "account": {"id": "999"},
-    }]
-
-    with patch("app.api.monarch_routes._get_monarch_client",
-               return_value=_mock_client(txns)):
-        with caplog.at_level(logging.ERROR):
-            r = _post_sync(client)
-    print(f"\n[group-string] status={r.status_code} body={r.text[:300]}")
-
-
-# ── Scenario 4: duplicate txn id within same payload (PK violation) ──────────
-
-def test_duplicate_txn_in_payload(db_session, client, caplog):
-    _seed_link(db_session)
-    db_session.commit()
-
-    txn = {
-        "id": "dup-1",
-        "date": "2026-04-15",
-        "amount": -10.0,
-        "merchant": {"name": "X"},
-        "category": {"name": "Coffee", "group": {"name": "Food"}},
-        "account": {"id": "999"},
-    }
-    txns = [txn, dict(txn)]  # same id twice
-
-    with patch("app.api.monarch_routes._get_monarch_client",
-               return_value=_mock_client(txns)):
-        with caplog.at_level(logging.ERROR):
-            r = _post_sync(client)
-    print(f"\n[duplicate-pk] status={r.status_code} body={r.text[:300]}")
-
-
-# ── Scenario 5: account FK doesn't exist + cfg has stale local_account_id ────
-
-def test_stale_local_account_id(db_session, client, caplog):
-    """cfg.local_account_id points at an Account that doesn't exist.
-
-    The route skips creating the Account because cfg.local_account_id is
-    truthy (line 473), so on commit the Transaction FK fails.
-    """
-    _seed_link(db_session, local_account_id="ghost-account")
-    db_session.commit()
-
-    txns = [{
-        "id": "stale-1",
-        "date": "2026-04-15",
-        "amount": -10.0,
-        "merchant": {"name": "X"},
-        "category": {"name": "Coffee", "group": {"name": "Food"}},
-        "account": {"id": "999"},
-    }]
-
-    with patch("app.api.monarch_routes._get_monarch_client",
-               return_value=_mock_client(txns)):
-        with caplog.at_level(logging.ERROR):
-            r = _post_sync(client)
-    print(f"\n[stale-fk] status={r.status_code} body={r.text[:500]}")
-
-
-# ── Scenario 6: amount is None for one txn (skipped) but rest commit ─────────
-
-def test_none_amount(db_session, client, caplog):
-    _seed_link(db_session)
-    db_session.commit()
-
-    txns = [{
-        "id": "none-amt",
-        "date": "2026-04-15",
-        "amount": None,
-        "merchant": {"name": "X"},
-        "category": {"name": "Coffee", "group": {"name": "Food"}},
-        "account": {"id": "999"},
-    }]
-
-    with patch("app.api.monarch_routes._get_monarch_client",
-               return_value=_mock_client(txns)):
-        with caplog.at_level(logging.ERROR):
-            r = _post_sync(client)
-    print(f"\n[none-amt] status={r.status_code} body={r.text[:200]}")
-
-
-# ── Scenario 7: account dict missing entirely ────────────────────────────────
-
-def test_account_missing(db_session, client, caplog):
-    _seed_link(db_session)
-    db_session.commit()
-
-    txns = [{
-        "id": "no-acct",
-        "date": "2026-04-15",
-        "amount": -10.0,
-        "merchant": {"name": "X"},
-        "category": {"name": "Coffee", "group": {"name": "Food"}},
-    }]
-
-    with patch("app.api.monarch_routes._get_monarch_client",
-               return_value=_mock_client(txns)):
-        with caplog.at_level(logging.ERROR):
-            r = _post_sync(client)
-    print(f"\n[no-acct] status={r.status_code} body={r.text[:200]}")
-
-
-# ── Scenario 8: monarch client raises on get_transactions ────────────────────
-
-def test_get_transactions_raises(db_session, client, caplog):
-    _seed_link(db_session)
-    db_session.commit()
-
-    mm = AsyncMock()
-    mm.set_token = lambda *a, **k: None
-    mm._headers = {}
-    mm.get_transactions = AsyncMock(side_effect=Exception("boom"))
-
-    with patch("app.api.monarch_routes._get_monarch_client", return_value=mm):
-        with caplog.at_level(logging.ERROR):
-            r = _post_sync(client)
-    print(f"\n[client-raises] status={r.status_code} body={r.text[:200]}")
+    r = client.get("/api/v1/monarch/sync/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "failed"
+    assert body["trigger"] == "manual"
+    assert body["error"] == "boom"

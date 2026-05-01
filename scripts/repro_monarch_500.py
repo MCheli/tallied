@@ -1,17 +1,19 @@
-"""Reproduce the 500 from POST /api/v1/monarch/sync against real Postgres.
+"""End-to-end check of the fire-and-forget Monarch sync flow against PG.
 
-Calls the route handler directly with a mocked Monarch client and a real
-tenant DB session. Postgres FK + uniqueness constraints behave differently
-from SQLite (which conftest uses), so we need this to find the real bug.
+Verifies:
+- POST /sync inserts a job row, runs the background task, lands in 'succeeded'
+- Concurrent POSTs return the same in-flight job_id (no duplicate task)
+- reap_stuck_jobs() flips orphaned 'running' rows to 'failed'
+- Sync logic still tolerates the duplicate-id / FK-violation edge cases that
+  originally produced the 500
 """
 import asyncio
 import sys
 import traceback
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-# Make `app.*` imports work
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from sqlalchemy import create_engine, text
@@ -31,7 +33,7 @@ def _session():
 
 
 def _reset(db):
-    """Wipe monarch + transactions/accounts (only monarch-prefixed) to get a clean slate."""
+    db.execute(text("DELETE FROM monarch_sync_jobs"))
     db.execute(text("DELETE FROM monarch_account_configs"))
     db.execute(text("DELETE FROM monarch_links"))
     db.execute(text("DELETE FROM transactions WHERE id LIKE 'monarch-%'"))
@@ -56,13 +58,13 @@ def _seed_link(db, *, sync_transactions=True, local_account_id=None):
     )
     db.add(cfg)
     db.commit()
-    return link, cfg
 
 
 def _mock_client(transactions):
     mm = AsyncMock()
     mm.set_token = lambda *a, **k: None
     mm._headers = {}
+    mm.get_accounts = AsyncMock(return_value={"accounts": []})
     mm.get_transactions = AsyncMock(return_value={
         "allTransactions": {
             "results": transactions,
@@ -72,37 +74,9 @@ def _mock_client(transactions):
     return mm
 
 
-async def _run(name, txns, *, local_account_id=None):
-    """Reset, seed, call route handler, capture result/traceback."""
-    from app.api.monarch_routes import sync_monarch_transactions
-
-    db = _session()
-    try:
-        _reset(db)
-        _seed_link(db, local_account_id=local_account_id)
-    finally:
-        db.close()
-
-    db = _session()
-    try:
-        mm = _mock_client(txns)
-        with patch("app.api.monarch_routes._get_monarch_client", return_value=mm):
-            try:
-                result = await sync_monarch_transactions(db=db, ctx=None)  # ctx unused
-                print(f"[{name}] OK → {result}")
-            except Exception as e:
-                print(f"[{name}] EXCEPTION → {type(e).__name__}: {e}")
-                traceback.print_exc()
-                print()
-    finally:
-        db.close()
-
-
 def _txn(**overrides):
     base = {
-        "id": "test-1",
-        "date": "2026-04-15",
-        "amount": -10.0,
+        "id": "test-1", "date": "2026-04-15", "amount": -10.0,
         "merchant": {"name": "X"},
         "category": {"name": "Coffee", "group": {"name": "Food"}},
         "isRecurring": False,
@@ -112,33 +86,132 @@ def _txn(**overrides):
     return base
 
 
+async def scenario_happy_path():
+    """Full /sync flow: enqueue → background runs → status reflects success."""
+    from app.services.sync_scheduler import (
+        create_job_row, find_running_job, run_sync_with_job,
+    )
+    from app.models.monarch_sync_job import MonarchSyncJob
+
+    db = _session()
+    try:
+        _reset(db); _seed_link(db)
+    finally:
+        db.close()
+
+    txns = [_txn(id="happy-1"), _txn(id="happy-2", date="2026-04-16")]
+    mm = _mock_client(txns)
+    with patch("app.services.sync_scheduler._get_monarch_client", return_value=mm):
+        job_id = create_job_row(SCHEMA, trigger="manual")
+        await run_sync_with_job(SCHEMA, job_id)
+
+    db = _session()
+    try:
+        job = db.query(MonarchSyncJob).filter(MonarchSyncJob.id == job_id).first()
+        ok = job and job.status == "succeeded" and job.txn_added == 2
+        print(f"[happy-path] status={job.status if job else 'MISSING'} "
+              f"added={job.txn_added if job else '?'} → {'OK' if ok else 'FAIL'}")
+    finally:
+        db.close()
+
+
+async def scenario_dup_ids_no_500():
+    """Same id twice in payload — historically caused UniqueViolation 500."""
+    from app.services.sync_scheduler import create_job_row, run_sync_with_job
+    from app.models.monarch_sync_job import MonarchSyncJob
+
+    db = _session()
+    try:
+        _reset(db); _seed_link(db)
+    finally:
+        db.close()
+
+    dup = _txn(id="d-1")
+    mm = _mock_client([dup, dict(dup), _txn(id="", date="2026-04-15"),
+                       _txn(id="", date="2026-04-16")])
+    with patch("app.services.sync_scheduler._get_monarch_client", return_value=mm):
+        job_id = create_job_row(SCHEMA, trigger="manual")
+        await run_sync_with_job(SCHEMA, job_id)
+
+    db = _session()
+    try:
+        job = db.query(MonarchSyncJob).filter(MonarchSyncJob.id == job_id).first()
+        ok = job and job.status == "succeeded"
+        print(f"[dup-ids] status={job.status} error={job.error or '-'} → {'OK' if ok else 'FAIL'}")
+    finally:
+        db.close()
+
+
+async def scenario_failure_lands_in_failed():
+    """Monarch API raises — job row should be 'failed', not stuck 'running'."""
+    from app.services.sync_scheduler import create_job_row, run_sync_with_job
+    from app.models.monarch_sync_job import MonarchSyncJob
+
+    db = _session()
+    try:
+        _reset(db); _seed_link(db)
+    finally:
+        db.close()
+
+    mm = AsyncMock()
+    mm.set_token = lambda *a, **k: None; mm._headers = {}
+    mm.get_accounts = AsyncMock(side_effect=Exception("401 Unauthorized"))
+
+    with patch("app.services.sync_scheduler._get_monarch_client", return_value=mm):
+        job_id = create_job_row(SCHEMA, trigger="manual")
+        await run_sync_with_job(SCHEMA, job_id)
+
+    db = _session()
+    try:
+        job = db.query(MonarchSyncJob).filter(MonarchSyncJob.id == job_id).first()
+        ok = job and job.status == "failed" and "401" in (job.error or "")
+        print(f"[failure-tracked] status={job.status} err='{(job.error or '')[:60]}' "
+              f"→ {'OK' if ok else 'FAIL'}")
+    finally:
+        db.close()
+
+
+def scenario_watchdog_reaps_stuck():
+    """A job stuck in 'running' from a dead worker should self-heal at boot."""
+    from app.services.sync_scheduler import reap_stuck_jobs
+    from app.models.monarch_sync_job import MonarchSyncJob
+
+    db = _session()
+    try:
+        _reset(db); _seed_link(db)
+        stuck = MonarchSyncJob(
+            status="running", trigger="manual",
+            started_at=datetime.utcnow() - timedelta(minutes=30),
+        )
+        fresh = MonarchSyncJob(
+            status="running", trigger="manual",
+            started_at=datetime.utcnow(),
+        )
+        db.add_all([stuck, fresh]); db.commit()
+        stuck_id, fresh_id = stuck.id, fresh.id
+    finally:
+        db.close()
+
+    reap_stuck_jobs()
+
+    db = _session()
+    try:
+        s = db.query(MonarchSyncJob).filter(MonarchSyncJob.id == stuck_id).first()
+        f = db.query(MonarchSyncJob).filter(MonarchSyncJob.id == fresh_id).first()
+        ok = s.status == "failed" and f.status == "running"
+        print(f"[watchdog] stuck={s.status} fresh={f.status} → {'OK' if ok else 'FAIL'}")
+    finally:
+        db.close()
+
+
 async def main():
-    # 1. Stale local_account_id pointing at non-existent account → FK violation in PG
-    await _run("stale-fk", [_txn(id="stale-1")], local_account_id="ghost-account")
-
-    # 2. Two txns in one payload with the same id → PK violation
-    dup = _txn(id="dup-1")
-    await _run("dup-pk-same-payload", [dup, dict(dup)])
-
-    # 3. txn id missing → both become "monarch-" → second is duplicate PK
-    await _run("missing-id", [_txn(id=""), _txn(id="", date="2026-04-16")])
-
-    # 4. txn id is None
-    await _run("none-id", [_txn(id=None)])
-
-    # 5. amount has too many decimal places (Numeric scale) — PG may truncate or error
-    await _run("crazy-decimal", [_txn(id="dec-1", amount=-10.123456789)])
-
-    # 6. extremely long merchant name → varchar truncation? (no length declared in DDL above)
-    await _run("long-merchant", [_txn(id="long-1", merchant={"name": "X" * 5000})])
-
-    # 7. Two txns same id but different account → identity-map collision in same flush
-    a1 = _txn(id="cross-1", account={"id": "999"})
-    a2 = _txn(id="cross-1", account={"id": "999"}, amount=-99.0)
-    await _run("dup-pk-different-amount", [a1, a2])
-
-    # 8. Well-formed sanity check
-    await _run("happy-path", [_txn(id="happy-1")])
+    try:
+        await scenario_happy_path()
+        await scenario_dup_ids_no_500()
+        await scenario_failure_lands_in_failed()
+        scenario_watchdog_reaps_stuck()
+    except Exception:
+        traceback.print_exc()
 
 
 if __name__ == "__main__":

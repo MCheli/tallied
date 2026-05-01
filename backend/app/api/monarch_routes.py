@@ -4,12 +4,13 @@ Monarch Money integration — connect, sync balances, sync transactions.
 Mirrors the Plaid integration pattern but uses Monarch's API via the
 monarchmoney Python package.
 """
+import asyncio
 import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -18,6 +19,7 @@ from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 from app.models.monarch_link import MonarchAccountConfig, MonarchLink
+from app.models.monarch_sync_job import MonarchSyncJob
 from app.models.transaction import Transaction
 from app.parsers.monarch import ACCOUNT_TYPE_MAP, DISPLAY_GROUP_MAP
 
@@ -451,146 +453,63 @@ async def sync_monarch_balances(
     return {"synced": synced}
 
 
-@router.post("/sync")
+@router.post("/sync", status_code=202)
 async def sync_monarch_transactions(
+    response: Response,
     db: Session = Depends(get_tenant_db),
     ctx: TenantContext = Depends(get_tenant_context),
 ):
-    """Sync transactions from Monarch for configured accounts."""
+    """Enqueue a Monarch sync. Returns immediately with a job_id.
+
+    Idempotent: if a sync is already running for this tenant, returns the
+    existing job. The actual sync runs in a background asyncio task and
+    writes its result to monarch_sync_jobs. Poll GET /monarch/sync/status
+    for completion.
+    """
+    from app.services.sync_scheduler import (
+        create_job_row, find_running_job, run_sync_with_job,
+    )
+
     link = db.query(MonarchLink).first()
     if not link:
-        return {"added": 0, "detail": "No Monarch connection"}
+        response.status_code = 200
+        return {"status": "skipped", "detail": "No Monarch connection"}
 
-    mm = _get_monarch_client()
-    mm.set_token(link.token)
-    mm._headers["Authorization"] = f"Token {link.token}"
+    schema = ctx.tenant_schema
 
-    # Fetch all transactions from Jan 2025 onward, paginating through results
-    start_date = date(2000, 1, 1)  # Fetch all available history
-    all_transactions: list[dict] = []
-    offset = 0
-    page_size = 100
+    existing = find_running_job(schema)
+    if existing is not None:
+        return {"job_id": existing, "status": "running", "queued": False}
 
-    try:
-        while True:
-            txn_data = await mm.get_transactions(
-                limit=page_size,
-                offset=offset,
-                start_date=start_date.isoformat(),
-                end_date=date.today().isoformat(),
-            )
-            results = txn_data.get("allTransactions", {}).get("results", [])
-            all_transactions.extend(results)
-            total = txn_data.get("allTransactions", {}).get("totalCount", 0)
-            offset += page_size
-            if offset >= total or len(results) == 0:
-                break
-    except Exception as e:
-        logger.exception("Monarch get_transactions failed during /sync")
-        raise _raise_monarch_http_error(e, "transaction sync")
+    job_id = create_job_row(schema, trigger="manual")
+    asyncio.create_task(run_sync_with_job(schema, job_id))
+    return {"job_id": job_id, "status": "running", "queued": True}
 
-    configs = {
-        c.monarch_account_id: c
-        for c in db.query(MonarchAccountConfig).filter(
-            MonarchAccountConfig.monarch_link_id == link.id,
-            MonarchAccountConfig.sync_transactions == True,  # noqa: E712
-        ).all()
+
+@router.get("/sync/status")
+def monarch_sync_status(
+    db: Session = Depends(get_tenant_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Return the most recent Monarch sync job for this tenant."""
+    job = (
+        db.query(MonarchSyncJob)
+        .order_by(MonarchSyncJob.started_at.desc())
+        .first()
+    )
+    if not job:
+        return {"job_id": None, "status": "none"}
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "trigger": job.trigger,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        "balances_synced": job.balances_synced or 0,
+        "txn_added": job.txn_added or 0,
+        "txn_updated": job.txn_updated or 0,
+        "error": job.error,
     }
-
-    added = 0
-    updated = 0
-
-    # Monarch's limit/offset pagination can return the same txn twice when
-    # rows shift mid-iteration. Dedupe by id (last write wins) so we don't
-    # try to INSERT the same primary key twice and trip a UniqueViolation.
-    deduped: dict[str, dict] = {}
-    for txn in all_transactions:
-        deduped[str(txn.get("id", ""))] = txn
-    transactions = list(deduped.values())
-
-    for txn in transactions:
-        txn_account = txn.get("account") or {}
-        txn_account_id = str(txn_account.get("id", ""))
-
-        cfg = configs.get(txn_account_id)
-        if not cfg:
-            continue
-
-        # Ensure local account exists
-        if not cfg.local_account_id:
-            local_id = f"monarch-{txn_account_id}"
-            acct_name = txn_account.get("displayName") or "Unknown"
-            raw_type = cfg.account_type or ""
-            acct_type, display_group = _classify_account_type(raw_type)
-
-            local_acct = db.query(Account).filter(Account.id == local_id).first()
-            if not local_acct:
-                local_acct = Account(
-                    id=local_id,
-                    name=acct_name,
-                    institution=cfg.institution or "",
-                    account_type=acct_type,
-                    display_group=display_group,
-                    include_in_nw=True,
-                )
-                db.add(local_acct)
-                db.flush()
-            cfg.local_account_id = local_id
-
-        monarch_txn_id = str(txn.get("id", ""))
-        local_txn_id = f"monarch-{monarch_txn_id}"
-
-        txn_date_str = txn.get("date", "")
-        try:
-            txn_date = datetime.strptime(txn_date_str[:10], "%Y-%m-%d").date()
-        except (ValueError, TypeError):
-            continue
-
-        amount = txn.get("amount")
-        if amount is None:
-            continue
-
-        merchant = txn.get("merchant") or {}
-        merchant_name = merchant.get("name", "") if isinstance(merchant, dict) else str(merchant)
-        if not merchant_name:
-            merchant_name = txn.get("name", txn.get("originalName", ""))
-
-        category, category_group = _extract_category(txn)
-        is_recurring = bool(txn.get("isRecurring", False))
-
-        existing = db.query(Transaction).filter(Transaction.id == local_txn_id).first()
-        if existing:
-            existing.amount = Decimal(str(amount))
-            existing.merchant = merchant_name
-            existing.category = category
-            existing.category_group = category_group
-            updated += 1
-        else:
-            db.add(Transaction(
-                id=local_txn_id,
-                account_id=cfg.local_account_id,
-                date=txn_date,
-                amount=Decimal(str(amount)),
-                merchant=merchant_name,
-                category=category,
-                category_group=category_group,
-                is_recurring=is_recurring,
-                source="monarch",
-            ))
-            added += 1
-
-    link.last_synced_at = datetime.utcnow()
-    try:
-        db.commit()
-    except IntegrityError as e:
-        db.rollback()
-        logger.exception("Monarch sync commit failed")
-        raise HTTPException(
-            status_code=409,
-            detail=f"Database constraint violation during sync: {e.orig}",
-        )
-
-    return {"added": added, "updated": updated}
 
 
 @router.delete("/disconnect")

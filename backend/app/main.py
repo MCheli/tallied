@@ -76,8 +76,19 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine, tables=platform_tables)
     logger.info("Platform tables created successfully")
 
+    # Reap any Monarch sync jobs left in 'running' from a previous worker
+    # that died mid-sync (SIGTERM on deploy, OOM, etc). Must run before the
+    # scheduler starts so a stuck row doesn't make POST /sync return a fake
+    # in-flight job_id.
+    from app.services.sync_scheduler import (
+        reap_stuck_jobs, start_scheduler, stop_scheduler,
+    )
+    try:
+        reap_stuck_jobs()
+    except Exception:
+        logger.exception("Watchdog reap_stuck_jobs failed at startup")
+
     # Start background Monarch sync scheduler
-    from app.services.sync_scheduler import start_scheduler, stop_scheduler
     start_scheduler()
 
     yield
