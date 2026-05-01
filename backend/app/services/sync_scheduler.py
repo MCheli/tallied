@@ -28,6 +28,11 @@ SYNC_INTERVAL_SECONDS = 12 * 60 * 60
 # Watchdog: jobs stuck in 'running' longer than this are marked failed at boot.
 WATCHDOG_STUCK_MINUTES = 15
 
+# Postgres advisory lock key for the scheduler. Hashed to a stable bigint so
+# only one process across the cluster runs the scheduler loop. Released
+# automatically when the holding connection closes (process exit).
+SCHEDULER_LOCK_KEY = 0x6D6F6E6172636873  # "monarchs" as ASCII bytes, fits in bigint
+
 
 def _classify_account_type(monarch_type: str) -> tuple[str, str]:
     key = monarch_type.lower().replace(" ", "_")
@@ -338,21 +343,46 @@ def _finalize_job(schema: str, job_id: int, result: dict) -> None:
         db.close()
 
 
-def create_job_row(schema: str, trigger: str) -> int:
-    """Insert a new monarch_sync_jobs row with status='running'. Returns the id.
+def create_job_row(schema: str, trigger: str) -> tuple[int, bool]:
+    """Insert a new monarch_sync_jobs row with status='running'.
+
+    Returns (job_id, created): created=True if we inserted a new row,
+    False if a 'running' row already existed and we returned its id
+    instead. The unique partial index uq_monarch_sync_jobs_one_running
+    enforces at most one running row per schema, so a TOCTOU race
+    between a find_running_job check and the insert lands here as an
+    IntegrityError that we catch and recover from.
 
     Captures the autoincrement id via flush() before commit — the engine's
     pool-checkout handler resets search_path to public on the next checkout,
     so a post-commit refresh would query the wrong schema.
     """
+    from sqlalchemy.exc import IntegrityError
+
     db = _get_tenant_session(schema)
     try:
         job = MonarchSyncJob(status="running", trigger=trigger)
         db.add(job)
-        db.flush()
-        job_id = job.id
-        db.commit()
-        return job_id
+        try:
+            db.flush()
+            job_id = job.id
+            db.commit()
+            return job_id, True
+        except IntegrityError:
+            db.rollback()
+            # Rollback returns the connection to the pool, which fires the
+            # checkout handler and resets search_path to public. Re-set it
+            # before the recovery query.
+            db.execute(text(f'SET search_path TO "{schema}"'))
+            existing = (
+                db.query(MonarchSyncJob)
+                .filter(MonarchSyncJob.status == "running")
+                .order_by(MonarchSyncJob.started_at.desc())
+                .first()
+            )
+            if existing:
+                return existing.id, False
+            raise
     finally:
         db.close()
 
@@ -433,21 +463,79 @@ async def sync_all_tenants():
     return results
 
 
+def mark_running_jobs_failed(reason: str) -> int:
+    """Flip every 'running' job in every tenant schema to 'failed'.
+
+    Called from the lifespan shutdown path so a graceful stop (deploy,
+    docker compose down) marks in-flight jobs failed immediately, instead
+    of waiting up to 15 minutes for the next-boot watchdog to catch them.
+    SIGKILL still skips this — the watchdog is the backstop for that case.
+    """
+    from sqlalchemy.exc import ProgrammingError
+
+    schemas = _get_tenant_schemas()
+    total = 0
+    for schema in schemas:
+        db = _get_tenant_session(schema)
+        try:
+            running = (
+                db.query(MonarchSyncJob)
+                .filter(MonarchSyncJob.status == "running")
+                .all()
+            )
+            for j in running:
+                j.status = "failed"
+                j.error = reason
+                j.finished_at = datetime.utcnow()
+                total += 1
+            if running:
+                db.commit()
+        except ProgrammingError:
+            db.rollback()
+        except Exception:
+            logger.exception("Shutdown mark-failed query failed for %s", schema)
+            db.rollback()
+        finally:
+            db.close()
+    return total
+
+
 async def _scheduler_loop():
     """Background loop that runs Monarch sync on a fixed interval.
 
+    Guards against multi-worker duplication via a Postgres advisory lock —
+    gunicorn -w N spawns N processes that each run lifespan(), so without the
+    lock every tenant gets N concurrent syncs. The lock-loser exits cleanly
+    and the route handler / watchdog still work in that worker.
+
     Runs an immediate sync on startup, then sleeps the full interval between
-    runs. Without the immediate sync, every container restart (e.g. Watchtower
-    auto-update) would defer the next sync by 12 hours.
+    runs. Without the immediate sync, every container restart would defer
+    the next sync by 12 hours.
     """
-    logger.info("Monarch sync scheduler started (interval: %ds)", SYNC_INTERVAL_SECONDS)
-    while True:
-        try:
-            logger.info("Starting scheduled Monarch sync...")
-            await sync_all_tenants()
-        except Exception as e:
-            logger.error("Scheduled Monarch sync error: %s", e)
-        await asyncio.sleep(SYNC_INTERVAL_SECONDS)
+    # Hold a dedicated connection open for the lifetime of the loop — the
+    # advisory lock is released when this connection closes (i.e. process
+    # exit), so we can't release it back to the pool.
+    conn = engine.connect()
+    try:
+        got_lock = conn.execute(
+            text("SELECT pg_try_advisory_lock(:k)"), {"k": SCHEDULER_LOCK_KEY}
+        ).scalar()
+        if not got_lock:
+            logger.info(
+                "Monarch sync scheduler: another worker holds the lock; this worker is idle"
+            )
+            return
+
+        logger.info("Monarch sync scheduler started (interval: %ds)", SYNC_INTERVAL_SECONDS)
+        while True:
+            try:
+                logger.info("Starting scheduled Monarch sync...")
+                await sync_all_tenants()
+            except Exception as e:
+                logger.error("Scheduled Monarch sync error: %s", e)
+            await asyncio.sleep(SYNC_INTERVAL_SECONDS)
+    finally:
+        conn.close()
 
 
 _scheduler_task: asyncio.Task | None = None

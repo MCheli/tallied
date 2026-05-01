@@ -466,24 +466,21 @@ async def sync_monarch_transactions(
     writes its result to monarch_sync_jobs. Poll GET /monarch/sync/status
     for completion.
     """
-    from app.services.sync_scheduler import (
-        create_job_row, find_running_job, run_sync_with_job,
-    )
+    from app.services.sync_scheduler import create_job_row, run_sync_with_job
 
     link = db.query(MonarchLink).first()
     if not link:
         response.status_code = 200
         return {"status": "skipped", "detail": "No Monarch connection"}
 
-    schema = ctx.tenant_schema
-
-    existing = find_running_job(schema)
-    if existing is not None:
-        return {"job_id": existing, "status": "running", "queued": False}
-
-    job_id = create_job_row(schema, trigger="manual")
-    asyncio.create_task(run_sync_with_job(schema, job_id))
-    return {"job_id": job_id, "status": "running", "queued": True}
+    # The unique partial index on (status) WHERE status='running' makes this
+    # atomic: create_job_row inserts and returns (id, True), or — if another
+    # request beat us to the punch — returns (existing_id, False) without
+    # raising. No separate find_running_job check needed.
+    job_id, created = create_job_row(ctx.tenant_schema, trigger="manual")
+    if created:
+        asyncio.create_task(run_sync_with_job(ctx.tenant_schema, job_id))
+    return {"job_id": job_id, "status": "running", "queued": created}
 
 
 @router.get("/sync/status")

@@ -102,7 +102,7 @@ async def scenario_happy_path():
     txns = [_txn(id="happy-1"), _txn(id="happy-2", date="2026-04-16")]
     mm = _mock_client(txns)
     with patch("app.services.sync_scheduler._get_monarch_client", return_value=mm):
-        job_id = create_job_row(SCHEMA, trigger="manual")
+        job_id, _created = create_job_row(SCHEMA, trigger="manual")
         await run_sync_with_job(SCHEMA, job_id)
 
     db = _session()
@@ -130,7 +130,7 @@ async def scenario_dup_ids_no_500():
     mm = _mock_client([dup, dict(dup), _txn(id="", date="2026-04-15"),
                        _txn(id="", date="2026-04-16")])
     with patch("app.services.sync_scheduler._get_monarch_client", return_value=mm):
-        job_id = create_job_row(SCHEMA, trigger="manual")
+        job_id, _created = create_job_row(SCHEMA, trigger="manual")
         await run_sync_with_job(SCHEMA, job_id)
 
     db = _session()
@@ -158,7 +158,7 @@ async def scenario_failure_lands_in_failed():
     mm.get_accounts = AsyncMock(side_effect=Exception("401 Unauthorized"))
 
     with patch("app.services.sync_scheduler._get_monarch_client", return_value=mm):
-        job_id = create_job_row(SCHEMA, trigger="manual")
+        job_id, _created = create_job_row(SCHEMA, trigger="manual")
         await run_sync_with_job(SCHEMA, job_id)
 
     db = _session()
@@ -172,7 +172,11 @@ async def scenario_failure_lands_in_failed():
 
 
 def scenario_watchdog_reaps_stuck():
-    """A job stuck in 'running' from a dead worker should self-heal at boot."""
+    """A job stuck in 'running' from a dead worker should self-heal at boot.
+
+    The unique partial index allows only one running row at a time, so we
+    test the stuck and fresh cases sequentially rather than simultaneously.
+    """
     from app.services.sync_scheduler import reap_stuck_jobs
     from app.models.monarch_sync_job import MonarchSyncJob
 
@@ -183,12 +187,24 @@ def scenario_watchdog_reaps_stuck():
             status="running", trigger="manual",
             started_at=datetime.utcnow() - timedelta(minutes=30),
         )
+        db.add(stuck); db.commit()
+        stuck_id = stuck.id
+    finally:
+        db.close()
+
+    reap_stuck_jobs()
+
+    db = _session()
+    try:
+        s = db.query(MonarchSyncJob).filter(MonarchSyncJob.id == stuck_id).first()
+        # After reaping, slot is free — insert a fresh running row and
+        # confirm a second reap doesn't touch it.
         fresh = MonarchSyncJob(
             status="running", trigger="manual",
             started_at=datetime.utcnow(),
         )
-        db.add_all([stuck, fresh]); db.commit()
-        stuck_id, fresh_id = stuck.id, fresh.id
+        db.add(fresh); db.commit()
+        fresh_id = fresh.id
     finally:
         db.close()
 
@@ -204,12 +220,35 @@ def scenario_watchdog_reaps_stuck():
         db.close()
 
 
+def scenario_unique_running_index():
+    """A second create_job_row while one is running returns the same id."""
+    from app.services.sync_scheduler import create_job_row, mark_running_jobs_failed
+
+    db = _session()
+    try:
+        _reset(db); _seed_link(db)
+    finally:
+        db.close()
+
+    a, a_created = create_job_row(SCHEMA, trigger="manual")
+    b, b_created = create_job_row(SCHEMA, trigger="manual")
+    ok = a_created is True and b_created is False and a == b
+    print(f"[unique-running] first=({a},{a_created}) second=({b},{b_created}) → "
+          f"{'OK' if ok else 'FAIL'}")
+
+    # Cleanup so subsequent runs of this script start fresh.
+    n = mark_running_jobs_failed("test cleanup")
+    print(f"[shutdown-mark-failed] flipped {n} running → failed → "
+          f"{'OK' if n >= 1 else 'FAIL'}")
+
+
 async def main():
     try:
         await scenario_happy_path()
         await scenario_dup_ids_no_500()
         await scenario_failure_lands_in_failed()
         scenario_watchdog_reaps_stuck()
+        scenario_unique_running_index()
     except Exception:
         traceback.print_exc()
 

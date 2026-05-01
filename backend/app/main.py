@@ -33,6 +33,14 @@ _root.setLevel(_log_level)
 for _name in ("tallied", "tallied.sync", "app"):
     logging.getLogger(_name).setLevel(_log_level)
 
+# Damp third-party loggers that flood stdout at INFO. gql.transport.aiohttp
+# logs every GraphQL request body (full schema fragments) — 2.6MB in 22s on
+# the first sync. aiohttp/urllib3 chatter is similarly noisy. Pin these to
+# WARNING so only real issues land in container logs.
+for _noisy in ("gql", "gql.transport.aiohttp", "aiohttp", "aiohttp.access",
+               "urllib3", "asyncio"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
+
 # Import all models to register them
 import app.models  # noqa
 
@@ -81,7 +89,7 @@ async def lifespan(app: FastAPI):
     # scheduler starts so a stuck row doesn't make POST /sync return a fake
     # in-flight job_id.
     from app.services.sync_scheduler import (
-        reap_stuck_jobs, start_scheduler, stop_scheduler,
+        mark_running_jobs_failed, reap_stuck_jobs, start_scheduler, stop_scheduler,
     )
     try:
         reap_stuck_jobs()
@@ -93,7 +101,17 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown background tasks
+    # Graceful shutdown — flip any 'running' jobs to 'failed' so the UI
+    # doesn't show a 14-min stale "syncing" state until the watchdog fires
+    # on the next boot. SIGKILL still skips this; the watchdog is the
+    # backstop for that case.
+    try:
+        n = mark_running_jobs_failed("worker shutdown")
+        if n:
+            logger.info("Shutdown: marked %d running Monarch sync job(s) as failed", n)
+    except Exception:
+        logger.exception("Shutdown mark_running_jobs_failed errored")
+
     stop_scheduler()
 
 

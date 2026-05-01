@@ -33,9 +33,7 @@ def test_sync_no_connection_returns_skipped(db_session, client):
 
 def test_sync_enqueues_job_and_returns_202(db_session, client):
     _seed_link(db_session)
-    with patch("app.services.sync_scheduler.create_job_row", return_value=42) as cj, \
-         patch("app.services.sync_scheduler.find_running_job", return_value=None), \
-         patch("app.services.sync_scheduler.run_sync_with_job") as rs, \
+    with patch("app.services.sync_scheduler.create_job_row", return_value=(42, True)) as cj, \
          patch("app.api.monarch_routes.asyncio.create_task") as ct:
         r = client.post("/api/v1/monarch/sync")
     assert r.status_code == 202
@@ -45,15 +43,15 @@ def test_sync_enqueues_job_and_returns_202(db_session, client):
     ct.assert_called_once()
 
 
-def test_sync_returns_existing_running_job(db_session, client):
+def test_sync_returns_existing_running_job_on_race(db_session, client):
+    """create_job_row hits the unique partial index, returns (existing_id, False)."""
     _seed_link(db_session)
-    with patch("app.services.sync_scheduler.create_job_row") as cj, \
-         patch("app.services.sync_scheduler.find_running_job", return_value=99), \
+    with patch("app.services.sync_scheduler.create_job_row", return_value=(99, False)) as cj, \
          patch("app.api.monarch_routes.asyncio.create_task") as ct:
         r = client.post("/api/v1/monarch/sync")
     assert r.status_code == 202
     assert r.json() == {"job_id": 99, "status": "running", "queued": False}
-    cj.assert_not_called()
+    cj.assert_called_once()
     ct.assert_not_called()
 
 
