@@ -75,6 +75,34 @@ def _classify_account_type(monarch_type: str) -> tuple[str, str]:
     return acct_type, display_group
 
 
+def _raise_monarch_http_error(e: Exception, action: str) -> "HTTPException":
+    """Translate a Monarch/GraphQL transport error into an HTTPException.
+
+    Surfaces the real upstream status (401 expired token, 403 forbidden,
+    429 rate-limited) instead of blanket-500ing every Monarch failure —
+    so the UI can show "reconnect Monarch" instead of a generic error.
+    """
+    code = getattr(e, "code", None)
+    msg = str(e)
+    # Fall back to substring match when the lib didn't populate `.code`
+    if code is None:
+        for c in (401, 403, 404, 429, 500, 502, 503):
+            if f"{c}," in msg or f" {c} " in msg:
+                code = c
+                break
+    if code in (401, 403):
+        detail = f"Monarch session is no longer valid ({code}). Reconnect in Settings → Monarch."
+        return HTTPException(status_code=401, detail=detail)
+    if code == 429:
+        return HTTPException(
+            status_code=429,
+            detail="Monarch rate-limited this request. Wait 15-30 minutes before retrying.",
+        )
+    if code and 400 <= code < 600:
+        return HTTPException(status_code=code, detail=f"Monarch {action} failed ({code}): {msg}")
+    return HTTPException(status_code=502, detail=f"Monarch {action} failed: {msg}")
+
+
 def _extract_category(txn: dict) -> tuple[str, str]:
     """Extract category and category_group from a Monarch transaction."""
     cat = txn.get("category") or {}
@@ -143,7 +171,8 @@ async def connect_monarch(
     try:
         accounts_data = await mm.get_accounts()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch accounts: {e}")
+        logger.exception("Monarch get_accounts failed during /connect")
+        raise _raise_monarch_http_error(e, "account fetch")
 
     # Upsert MonarchLink
     existing_link = db.query(MonarchLink).filter(MonarchLink.email == body.email).first()
@@ -299,7 +328,8 @@ async def sync_monarch_balances(
     try:
         accounts_data = await mm.get_accounts()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Monarch API error: {e}")
+        logger.exception("Monarch get_accounts failed during /sync-balances")
+        raise _raise_monarch_http_error(e, "balance sync")
 
     configs = {
         c.monarch_account_id: c
@@ -456,7 +486,8 @@ async def sync_monarch_transactions(
             if offset >= total or len(results) == 0:
                 break
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Monarch API error: {e}")
+        logger.exception("Monarch get_transactions failed during /sync")
+        raise _raise_monarch_http_error(e, "transaction sync")
 
     configs = {
         c.monarch_account_id: c

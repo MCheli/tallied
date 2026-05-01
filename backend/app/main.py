@@ -1,4 +1,6 @@
+import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -12,6 +14,24 @@ from starlette.responses import Response as StarletteResponse
 
 from app.config import settings
 from app.database import engine, Base
+
+# ── Logging config ────────────────────────────────────────────────────────────
+# Under gunicorn, app loggers don't propagate to the gunicorn error logger
+# unless we explicitly attach a stdout handler. Without this, info-level
+# messages from the scheduler and Monarch sync routes never reach container
+# logs. Configure once at module load — before any logger.getLogger() call
+# that needs to emit during startup.
+_log_level = os.environ.get("FINANCE_LOG_LEVEL", "INFO").upper()
+_log_handler = logging.StreamHandler(sys.stdout)
+_log_handler.setFormatter(
+    logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+)
+_root = logging.getLogger()
+if not any(isinstance(h, logging.StreamHandler) for h in _root.handlers):
+    _root.addHandler(_log_handler)
+_root.setLevel(_log_level)
+for _name in ("tallied", "tallied.sync", "app"):
+    logging.getLogger(_name).setLevel(_log_level)
 
 # Import all models to register them
 import app.models  # noqa
