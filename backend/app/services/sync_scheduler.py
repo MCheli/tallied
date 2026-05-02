@@ -33,6 +33,12 @@ WATCHDOG_STUCK_MINUTES = 15
 # automatically when the holding connection closes (process exit).
 SCHEDULER_LOCK_KEY = 0x6D6F6E6172636873  # "monarchs" as ASCII bytes, fits in bigint
 
+# LISTEN/NOTIFY channel — the web tier inserts a 'running' job row and
+# NOTIFY's this channel with the tenant schema name; the scheduler container's
+# notify_listener_loop wakes and runs the sync. Decouples the long-running
+# sync from gunicorn's request lifecycle.
+NOTIFY_CHANNEL = "monarch_sync"
+
 
 def _classify_account_type(monarch_type: str) -> tuple[str, str]:
     key = monarch_type.lower().replace(" ", "_")
@@ -165,6 +171,18 @@ async def _sync_tenant(schema: str) -> dict:
             except Exception:
                 history = []
 
+            # Bulk-load existing snapshot dates for this account so the
+            # per-row uniqueness check is an in-memory set lookup instead
+            # of N separate SELECTs (the same N+1 anti-pattern the txn
+            # loop had).
+            existing_snap_dates = {
+                r[0] for r in db.execute(
+                    text("SELECT snapshot_date FROM balance_snapshots "
+                         "WHERE account_id = :aid AND source = 'monarch'"),
+                    {"aid": local_id},
+                ).fetchall()
+            }
+
             for snap in history:
                 snap_date_str = snap.get("date", "")
                 try:
@@ -176,16 +194,13 @@ async def _sync_tenant(schema: str) -> dict:
                 snap_balance = snap.get("signedBalance")
                 if snap_balance is None:
                     continue
-                exists = db.query(BalanceSnapshot).filter(
-                    BalanceSnapshot.account_id == local_id,
-                    BalanceSnapshot.snapshot_date == snap_date,
-                    BalanceSnapshot.source == "monarch",
-                ).first()
-                if not exists:
-                    db.add(BalanceSnapshot(
-                        account_id=local_id, snapshot_date=snap_date,
-                        balance=Decimal(str(snap_balance)), source="monarch",
-                    ))
+                if snap_date in existing_snap_dates:
+                    continue
+                db.add(BalanceSnapshot(
+                    account_id=local_id, snapshot_date=snap_date,
+                    balance=Decimal(str(snap_balance)), source="monarch",
+                ))
+                existing_snap_dates.add(snap_date)
 
         # ── Sync transactions ─────────────────────────────────────────────
         txn_configs = {k: v for k, v in configs.items() if v.sync_transactions}
@@ -221,6 +236,24 @@ async def _sync_tenant(schema: str) -> dict:
             for txn in all_transactions:
                 deduped[str(txn.get("id", ""))] = txn
             all_transactions = list(deduped.values())
+
+            # Bulk existence check — for a tenant with thousands of
+            # transactions, the per-row db.query().first() pattern below
+            # used to fire N synchronous queries (the dominant cost in the
+            # sync loop and the reason gunicorn workers timed out). One
+            # SELECT IN replaces them all and the subsequent loop is a
+            # pure in-memory dict lookup.
+            candidate_ids = [
+                f"monarch-{str(t.get('id', ''))}" for t in all_transactions
+            ]
+            existing_txns: dict[str, Transaction] = {}
+            if candidate_ids:
+                for t in (
+                    db.query(Transaction)
+                    .filter(Transaction.id.in_(candidate_ids))
+                    .all()
+                ):
+                    existing_txns[t.id] = t
 
             for txn in all_transactions:
                 txn_account = txn.get("account") or {}
@@ -271,7 +304,7 @@ async def _sync_tenant(schema: str) -> dict:
                 category, category_group = _extract_category(txn)
                 is_recurring = bool(txn.get("isRecurring", False))
 
-                existing_txn = db.query(Transaction).filter(Transaction.id == local_txn_id).first()
+                existing_txn = existing_txns.get(local_txn_id)
                 if existing_txn:
                     existing_txn.amount = Decimal(str(amount))
                     existing_txn.merchant = merchant_name
@@ -550,20 +583,166 @@ async def _scheduler_loop():
         conn.close()
 
 
+async def claim_orphan_jobs() -> int:
+    """Resume any 'running' jobs that exist at scheduler startup.
+
+    These come from two sources:
+    - The web tier inserted a row + NOTIFY'd while the scheduler was down.
+    - A previous scheduler process died mid-sync (graceful shutdown should
+      have failed them; this catches SIGKILL gaps before the watchdog).
+
+    Only claim jobs younger than the watchdog cutoff — older ones get
+    reaped to 'failed' by reap_stuck_jobs before we get here. Sync runs
+    sequentially per tenant; there's only one row per tenant by index.
+    """
+    from sqlalchemy.exc import ProgrammingError
+
+    cutoff = datetime.utcnow() - timedelta(minutes=WATCHDOG_STUCK_MINUTES)
+    schemas = _get_tenant_schemas()
+    claimed = 0
+    for schema in schemas:
+        db = _get_tenant_session(schema)
+        try:
+            job = (
+                db.query(MonarchSyncJob)
+                .filter(
+                    MonarchSyncJob.status == "running",
+                    MonarchSyncJob.started_at >= cutoff,
+                )
+                .order_by(MonarchSyncJob.started_at.desc())
+                .first()
+            )
+            job_id = job.id if job else None
+        except ProgrammingError:
+            db.rollback()
+            job_id = None
+        finally:
+            db.close()
+        if job_id is not None:
+            logger.info("Claiming orphan running job %d in %s", job_id, schema)
+            await run_sync_with_job(schema, job_id)
+            claimed += 1
+    return claimed
+
+
+def notify_sync_request(schema: str) -> None:
+    """Wake the scheduler container's notify_listener_loop for `schema`.
+
+    Called by the web tier's POST /sync after creating a 'running' job row.
+    Fire-and-forget: if no listener is connected (scheduler down, mid-deploy)
+    the NOTIFY is harmless — claim_orphan_jobs picks the row up at the next
+    scheduler boot.
+    """
+    with engine.connect() as conn:
+        # NOTIFY's payload can't be a bind parameter — it's a string literal
+        # in the SQL. Schema names come from server-controlled tenant rows
+        # (alphanumeric + underscore), but quote anyway as a defense.
+        safe = schema.replace("'", "''")
+        conn.execute(text(f"NOTIFY {NOTIFY_CHANNEL}, '{safe}'"))
+        conn.commit()
+
+
+async def notify_listener_loop():
+    """Wake on Postgres NOTIFY monarch_sync, run pending manual jobs.
+
+    Holds a long-lived psycopg2 connection in autocommit mode (so NOTIFY
+    payloads arrive immediately rather than being held until the next
+    transaction boundary). Uses asyncio's add_reader to avoid blocking the
+    event loop on select().
+    """
+    import select
+    from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+
+    raw = engine.raw_connection()
+    try:
+        # Capture the underlying psycopg2 connection BEFORE detach — after
+        # detach the proxy stops exposing driver_connection. Detach removes
+        # it from the pool so SQLAlchemy can't recycle it underneath us.
+        pg_conn = raw.driver_connection
+        raw.detach()
+        pg_conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        cur = pg_conn.cursor()
+        cur.execute(f"LISTEN {NOTIFY_CHANNEL}")
+        cur.close()
+        logger.info("Monarch sync NOTIFY listener attached on channel '%s'", NOTIFY_CHANNEL)
+
+        loop = asyncio.get_running_loop()
+        wakeup = asyncio.Event()
+
+        def _on_socket_readable():
+            wakeup.set()
+
+        loop.add_reader(pg_conn.fileno(), _on_socket_readable)
+        try:
+            while True:
+                await wakeup.wait()
+                wakeup.clear()
+                pg_conn.poll()
+                # Drain all pending notifies — collapse duplicates per
+                # schema (the loop processes manual jobs idempotently).
+                pending: set[str] = set()
+                while pg_conn.notifies:
+                    n = pg_conn.notifies.pop(0)
+                    if n.payload:
+                        pending.add(n.payload)
+                for schema in pending:
+                    await _process_notify(schema)
+        finally:
+            loop.remove_reader(pg_conn.fileno())
+    finally:
+        try:
+            raw.close()
+        except Exception:
+            pass
+
+
+async def _process_notify(schema: str) -> None:
+    """Look up the in-flight 'running' job for `schema` and run it."""
+    from sqlalchemy.exc import ProgrammingError
+
+    db = _get_tenant_session(schema)
+    try:
+        job = (
+            db.query(MonarchSyncJob)
+            .filter(MonarchSyncJob.status == "running")
+            .order_by(MonarchSyncJob.started_at.desc())
+            .first()
+        )
+        job_id = job.id if job else None
+    except ProgrammingError:
+        db.rollback()
+        job_id = None
+    finally:
+        db.close()
+    if job_id is None:
+        logger.info("NOTIFY for %s but no running job found (already processed?)", schema)
+        return
+    logger.info("NOTIFY: running Monarch sync for %s (job %d)", schema, job_id)
+    await run_sync_with_job(schema, job_id)
+
+
 _scheduler_task: asyncio.Task | None = None
+_listener_task: asyncio.Task | None = None
 
 
 def start_scheduler():
-    """Start the background sync scheduler. Call from app lifespan startup."""
-    global _scheduler_task
+    """Start the background sync scheduler and NOTIFY listener.
+
+    Call from the dedicated scheduler container's entrypoint. The web tier
+    no longer runs these — its event loop must stay free for HTTP traffic.
+    """
+    global _scheduler_task, _listener_task
     _scheduler_task = asyncio.create_task(_scheduler_loop())
-    logger.info("Monarch sync scheduler task created")
+    _listener_task = asyncio.create_task(notify_listener_loop())
+    logger.info("Monarch sync scheduler + NOTIFY listener tasks created")
 
 
 def stop_scheduler():
-    """Stop the background sync scheduler. Call from app lifespan shutdown."""
-    global _scheduler_task
-    if _scheduler_task and not _scheduler_task.done():
-        _scheduler_task.cancel()
-        logger.info("Monarch sync scheduler stopped")
+    """Stop background tasks. Call from shutdown."""
+    global _scheduler_task, _listener_task
+    for t in (_scheduler_task, _listener_task):
+        if t and not t.done():
+            t.cancel()
     _scheduler_task = None
+    _listener_task = None
+    logger.info("Monarch sync scheduler stopped")

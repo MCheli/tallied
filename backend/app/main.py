@@ -84,35 +84,41 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine, tables=platform_tables)
     logger.info("Platform tables created successfully")
 
-    # Reap any Monarch sync jobs left in 'running' from a previous worker
-    # that died mid-sync (SIGTERM on deploy, OOM, etc). Must run before the
-    # scheduler starts so a stuck row doesn't make POST /sync return a fake
-    # in-flight job_id.
-    from app.services.sync_scheduler import (
-        mark_running_jobs_failed, reap_stuck_jobs, start_scheduler, stop_scheduler,
-    )
-    try:
-        reap_stuck_jobs()
-    except Exception:
-        logger.exception("Watchdog reap_stuck_jobs failed at startup")
-
-    # Start background Monarch sync scheduler
-    start_scheduler()
+    # APP_ROLE controls whether this process runs the Monarch scheduler:
+    #   - "scheduler" → handled by app/scheduler/__main__.py, NOT here
+    #   - "web"       → HTTP only; no scheduler in this process
+    #   - unset       → legacy single-container mode (web also runs scheduler)
+    # During a rolling deploy from single-container to split-container, infra
+    # may not yet set APP_ROLE on the web tier — keep the legacy behavior so
+    # nothing breaks until APP_ROLE=web is wired up.
+    role = os.environ.get("APP_ROLE", "").lower()
+    run_scheduler_in_web = role not in ("web", "scheduler")
+    if run_scheduler_in_web:
+        from app.services.sync_scheduler import (
+            mark_running_jobs_failed, reap_stuck_jobs,
+            start_scheduler, stop_scheduler,
+        )
+        try:
+            reap_stuck_jobs()
+        except Exception:
+            logger.exception("Watchdog reap_stuck_jobs failed at startup")
+        start_scheduler()
+    else:
+        logger.info("APP_ROLE=%s — scheduler runs in a separate process; web tier will NOTIFY", role)
 
     yield
 
-    # Graceful shutdown — flip any 'running' jobs to 'failed' so the UI
-    # doesn't show a 14-min stale "syncing" state until the watchdog fires
-    # on the next boot. SIGKILL still skips this; the watchdog is the
-    # backstop for that case.
-    try:
-        n = mark_running_jobs_failed("worker shutdown")
-        if n:
-            logger.info("Shutdown: marked %d running Monarch sync job(s) as failed", n)
-    except Exception:
-        logger.exception("Shutdown mark_running_jobs_failed errored")
-
-    stop_scheduler()
+    if run_scheduler_in_web:
+        # Graceful shutdown — flip any 'running' jobs to 'failed' so the UI
+        # doesn't show a 14-min stale "syncing" state until the watchdog
+        # fires on the next boot. SIGKILL still skips this.
+        try:
+            n = mark_running_jobs_failed("worker shutdown")
+            if n:
+                logger.info("Shutdown: marked %d running Monarch sync job(s) as failed", n)
+        except Exception:
+            logger.exception("Shutdown mark_running_jobs_failed errored")
+        stop_scheduler()
 
 
 # ── Main application ──────────────────────────────────────────────────────────

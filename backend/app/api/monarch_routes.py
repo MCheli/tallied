@@ -466,7 +466,10 @@ async def sync_monarch_transactions(
     writes its result to monarch_sync_jobs. Poll GET /monarch/sync/status
     for completion.
     """
-    from app.services.sync_scheduler import create_job_row, run_sync_with_job
+    import os
+    from app.services.sync_scheduler import (
+        create_job_row, notify_sync_request, run_sync_with_job,
+    )
 
     link = db.query(MonarchLink).first()
     if not link:
@@ -479,7 +482,18 @@ async def sync_monarch_transactions(
     # raising. No separate find_running_job check needed.
     job_id, created = create_job_row(ctx.tenant_schema, trigger="manual")
     if created:
-        asyncio.create_task(run_sync_with_job(ctx.tenant_schema, job_id))
+        # APP_ROLE=web → handoff to the scheduler container via NOTIFY so
+        # the long-running sync doesn't run on a gunicorn worker (which
+        # gets SIGABRT'd at the worker timeout). Unset role keeps the
+        # legacy in-process path for rolling deploys.
+        role = os.environ.get("APP_ROLE", "").lower()
+        if role == "web":
+            try:
+                notify_sync_request(ctx.tenant_schema)
+            except Exception:
+                logger.exception("Failed to NOTIFY scheduler — claim_orphan_jobs will pick it up")
+        else:
+            asyncio.create_task(run_sync_with_job(ctx.tenant_schema, job_id))
     return {"job_id": job_id, "status": "running", "queued": created}
 
 

@@ -282,6 +282,143 @@ async def scenario_sync_all_tenants_path():
         db.close()
 
 
+async def scenario_notify_listener_e2e():
+    """Web-tier NOTIFY → scheduler listener wakes → job processed.
+
+    Spins up notify_listener_loop as a background task, then simulates the
+    web tier by inserting a 'running' job row and calling notify_sync_request.
+    Asserts the listener picks it up and finalizes the job within a few
+    seconds (no polling cadence — purely event-driven via LISTEN).
+    """
+    from app.services.sync_scheduler import (
+        create_job_row, notify_listener_loop, notify_sync_request,
+    )
+    from app.models.monarch_sync_job import MonarchSyncJob
+
+    db = _session()
+    try:
+        _reset(db); _seed_link(db)
+    finally:
+        db.close()
+
+    txns = [_txn(id="notify-1")]
+    mm = _mock_client(txns)
+
+    listener_task = asyncio.create_task(notify_listener_loop())
+    try:
+        await asyncio.sleep(0.5)  # let listener attach LISTEN
+        with patch("app.services.sync_scheduler._get_monarch_client", return_value=mm):
+            job_id, created = create_job_row(SCHEMA, trigger="manual")
+            assert created, "expected new job to be created"
+            notify_sync_request(SCHEMA)
+            # Poll the row until terminal — listener is event-driven so this
+            # should resolve in well under a second.
+            for _ in range(30):  # 30 * 0.2s = 6s ceiling
+                await asyncio.sleep(0.2)
+                d = _session()
+                try:
+                    j = d.query(MonarchSyncJob).filter(MonarchSyncJob.id == job_id).first()
+                    if j and j.status != "running":
+                        break
+                finally:
+                    d.close()
+    finally:
+        listener_task.cancel()
+        try:
+            await listener_task
+        except asyncio.CancelledError:
+            pass
+
+    db = _session()
+    try:
+        j = db.query(MonarchSyncJob).filter(MonarchSyncJob.id == job_id).first()
+        ok = j and j.status == "succeeded" and j.txn_added == 1
+        print(f"[notify-e2e] status={j.status if j else 'MISSING'} "
+              f"added={j.txn_added if j else '?'} → {'OK' if ok else 'FAIL'}")
+    finally:
+        db.close()
+
+
+async def scenario_claim_on_boot():
+    """Web inserts a job while scheduler is down. Scheduler boots, claims it.
+
+    Mimics the deploy-time race: web tier creates a 'running' row but the
+    scheduler container isn't up to receive the NOTIFY. claim_orphan_jobs
+    on scheduler boot must pick it up.
+    """
+    from app.services.sync_scheduler import claim_orphan_jobs, create_job_row
+    from app.models.monarch_sync_job import MonarchSyncJob
+
+    db = _session()
+    try:
+        _reset(db); _seed_link(db)
+    finally:
+        db.close()
+
+    # Web tier inserts the job row (no NOTIFY listener attached).
+    job_id, _created = create_job_row(SCHEMA, trigger="manual")
+
+    # Scheduler boots — should claim and run the job.
+    txns = [_txn(id="claim-1"), _txn(id="claim-2", date="2026-04-16")]
+    mm = _mock_client(txns)
+    with patch("app.services.sync_scheduler._get_monarch_client", return_value=mm):
+        claimed = await claim_orphan_jobs()
+
+    db = _session()
+    try:
+        j = db.query(MonarchSyncJob).filter(MonarchSyncJob.id == job_id).first()
+        ok = claimed >= 1 and j and j.status == "succeeded" and j.txn_added == 2
+        print(f"[claim-on-boot] claimed={claimed} status={j.status if j else 'MISSING'} "
+              f"added={j.txn_added if j else '?'} → {'OK' if ok else 'FAIL'}")
+    finally:
+        db.close()
+
+
+async def scenario_bulk_existence_check():
+    """Verify the new bulk SELECT IN matches the per-row results.
+
+    Pre-load some monarch transactions, then run a second sync with a
+    payload that has both new and existing ids. Expect 'updated' for the
+    pre-existing ids and 'added' for the new ones.
+    """
+    from app.services.sync_scheduler import create_job_row, run_sync_with_job
+    from app.models.monarch_sync_job import MonarchSyncJob
+
+    db = _session()
+    try:
+        _reset(db); _seed_link(db)
+    finally:
+        db.close()
+
+    # First sync: 3 new transactions.
+    initial = [_txn(id=f"bulk-{i}", date=f"2026-04-{10+i}") for i in range(3)]
+    mm = _mock_client(initial)
+    with patch("app.services.sync_scheduler._get_monarch_client", return_value=mm):
+        j1, _ = create_job_row(SCHEMA, trigger="manual")
+        await run_sync_with_job(SCHEMA, j1)
+
+    # Second sync: 2 existing (bulk-0, bulk-1) + 2 new (bulk-3, bulk-4).
+    payload = [
+        _txn(id="bulk-0", date="2026-04-10", amount=-99.99),  # update
+        _txn(id="bulk-1", date="2026-04-11", amount=-88.88),  # update
+        _txn(id="bulk-3", date="2026-04-13"),                 # new
+        _txn(id="bulk-4", date="2026-04-14"),                 # new
+    ]
+    mm = _mock_client(payload)
+    with patch("app.services.sync_scheduler._get_monarch_client", return_value=mm):
+        j2, _ = create_job_row(SCHEMA, trigger="manual")
+        await run_sync_with_job(SCHEMA, j2)
+
+    db = _session()
+    try:
+        j = db.query(MonarchSyncJob).filter(MonarchSyncJob.id == j2).first()
+        ok = j and j.status == "succeeded" and j.txn_added == 2 and j.txn_updated == 2
+        print(f"[bulk-exists] added={j.txn_added if j else '?'} "
+              f"updated={j.txn_updated if j else '?'} → {'OK' if ok else 'FAIL'}")
+    finally:
+        db.close()
+
+
 async def main():
     try:
         await scenario_happy_path()
@@ -290,6 +427,9 @@ async def main():
         scenario_watchdog_reaps_stuck()
         scenario_unique_running_index()
         await scenario_sync_all_tenants_path()
+        await scenario_bulk_existence_check()
+        await scenario_claim_on_boot()
+        await scenario_notify_listener_e2e()
     except Exception:
         traceback.print_exc()
 
