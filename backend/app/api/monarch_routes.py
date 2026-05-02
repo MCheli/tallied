@@ -246,6 +246,79 @@ async def connect_monarch(
     }
 
 
+@router.post("/refresh-credentials")
+async def refresh_monarch_credentials(
+    body: ConnectRequest,
+    db: Session = Depends(get_tenant_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Update the Monarch session token on the existing connection.
+
+    Use this when the stored token has expired (manifests as 401 on sync)
+    but the user wants to keep their per-account sync settings. Same
+    credential surface as /connect (password+MFA OR direct token), but
+    leaves MonarchAccountConfig rows untouched.
+    """
+    from monarchmoney import RequireMFAException
+
+    link = db.query(MonarchLink).first()
+    if not link:
+        raise HTTPException(
+            status_code=404,
+            detail="No Monarch connection to refresh — use Connect instead.",
+        )
+
+    mm = _get_monarch_client()
+
+    if body.token:
+        raw_token = body.token.strip()
+        if raw_token.lower().startswith("token "):
+            raw_token = raw_token[6:].strip()
+        mm.set_token(raw_token)
+        mm._headers["Authorization"] = f"Token {raw_token}"
+    else:
+        if not body.password:
+            raise HTTPException(status_code=400, detail="Password or token is required")
+        try:
+            if body.mfa_code:
+                await mm.multi_factor_authenticate(body.email, body.password, body.mfa_code)
+            else:
+                await mm.login(
+                    body.email, body.password,
+                    use_saved_session=False, save_session=False,
+                )
+        except RequireMFAException:
+            return {"mfa_required": True, "detail": "Enter your MFA code to continue."}
+        except Exception as e:
+            msg = str(e)
+            if "429" in msg:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Monarch rate-limited this IP. Wait 15-30 minutes before trying again.",
+                )
+            raise HTTPException(status_code=401, detail=f"Monarch login failed: {e}")
+
+    new_token = mm.token
+    if not new_token:
+        raise HTTPException(status_code=401, detail="No session token received")
+
+    # Validate the new credentials actually work before persisting — a
+    # token that can't fetch accounts is no improvement over the expired one.
+    try:
+        await mm.get_accounts()
+    except Exception as e:
+        logger.exception("New Monarch token failed validation")
+        raise _raise_monarch_http_error(e, "credential validation")
+
+    link.token = new_token
+    if body.email:
+        link.email = body.email
+    link.updated_at = datetime.utcnow()
+    db.commit()
+
+    return {"refreshed": True, "email": link.email}
+
+
 @router.get("/status")
 def monarch_status(
     db: Session = Depends(get_tenant_db),

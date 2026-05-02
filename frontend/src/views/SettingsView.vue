@@ -392,6 +392,80 @@ async function connectMonarch() {
   }
 }
 
+// ── Refresh credentials (token expired but want to keep account configs) ──
+const monarchRefreshing = ref(false)
+const monarchShowRefresh = ref(false)
+const monarchRefreshEmail = ref('')
+const monarchRefreshPassword = ref('')
+const monarchRefreshToken = ref('')
+const monarchRefreshUseToken = ref(false)
+const monarchRefreshMfaRequired = ref(false)
+const monarchRefreshMfaCode = ref('')
+
+function openRefreshForm() {
+  monarchShowRefresh.value = true
+  monarchRefreshEmail.value = monarchStatus.value.email || ''
+  monarchRefreshPassword.value = ''
+  monarchRefreshToken.value = ''
+  monarchRefreshUseToken.value = false
+  monarchRefreshMfaRequired.value = false
+  monarchRefreshMfaCode.value = ''
+  monarchStatusMsg.value = ''
+}
+
+function cancelRefreshForm() {
+  monarchShowRefresh.value = false
+  monarchRefreshPassword.value = ''
+  monarchRefreshToken.value = ''
+  monarchRefreshMfaRequired.value = false
+  monarchRefreshMfaCode.value = ''
+}
+
+async function refreshMonarchCredentials() {
+  if (!monarchRefreshEmail.value) return
+  if (!monarchRefreshUseToken.value && !monarchRefreshPassword.value) return
+  if (monarchRefreshUseToken.value && !monarchRefreshToken.value) return
+  monarchRefreshing.value = true
+  monarchStatusMsg.value = monarchRefreshMfaRequired.value
+    ? 'Verifying MFA code...'
+    : 'Refreshing Monarch credentials...'
+  try {
+    const payload: Record<string, string> = { email: monarchRefreshEmail.value }
+    if (monarchRefreshUseToken.value) {
+      payload.token = monarchRefreshToken.value
+    } else {
+      payload.password = monarchRefreshPassword.value
+      if (monarchRefreshMfaRequired.value && monarchRefreshMfaCode.value) {
+        payload.mfa_code = monarchRefreshMfaCode.value
+      }
+    }
+    const res = await fetch(`${API}/api/v1/monarch/refresh-credentials`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      monarchStatusMsg.value = `Error: ${body.detail || res.statusText}`
+      return
+    }
+    const data = await res.json()
+    if (data.mfa_required) {
+      monarchRefreshMfaRequired.value = true
+      monarchStatusMsg.value = 'MFA required — enter the code from your authenticator app.'
+      return
+    }
+    monarchStatusMsg.value = 'Credentials refreshed. Account settings preserved.'
+    cancelRefreshForm()
+    await loadMonarchStatus()
+  } catch (e: any) {
+    monarchStatusMsg.value = `Error: ${e.message}`
+  } finally {
+    monarchRefreshing.value = false
+  }
+}
+
 async function toggleMonarchSync(configId: number, field: 'sync_balances' | 'sync_transactions', value: boolean) {
   try {
     await fetch(`${API}/api/v1/monarch/accounts/${configId}`, {
@@ -890,6 +964,10 @@ onMounted(() => {
                 class="px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
                 {{ monarchSyncing ? 'Syncing...' : 'Sync All' }}
               </button>
+              <button @click="openRefreshForm" :disabled="monarchRefreshing"
+                class="px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg transition-colors disabled:opacity-50">
+                Refresh credentials
+              </button>
               <button @click="disconnectMonarch"
                 class="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors">
                 Disconnect
@@ -898,6 +976,53 @@ onMounted(() => {
           </div>
           <div v-if="monarchStatusMsg" class="mt-3 text-xs" :class="monarchStatusMsg.startsWith('Error') || monarchStatusMsg.startsWith('Sync error') ? 'text-red-500' : 'text-green-600 dark:text-green-400'">
             {{ monarchStatusMsg }}
+          </div>
+
+          <!-- Refresh credentials inline form -->
+          <div v-if="monarchShowRefresh" class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
+            <div>
+              <h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300">Refresh expired credentials</h4>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Updates the session token without disconnecting accounts. Per-account sync settings are preserved.</p>
+            </div>
+            <input v-model="monarchRefreshEmail" type="email" placeholder="Email" :disabled="monarchRefreshMfaRequired"
+              class="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white disabled:opacity-50" />
+            <template v-if="monarchRefreshUseToken">
+              <input v-model="monarchRefreshToken" type="password" placeholder="Session token"
+                class="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                @keyup.enter="refreshMonarchCredentials" />
+            </template>
+            <template v-else>
+              <input v-model="monarchRefreshPassword" type="password" placeholder="Password" :disabled="monarchRefreshMfaRequired"
+                class="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white disabled:opacity-50"
+                @keyup.enter="!monarchRefreshMfaRequired && refreshMonarchCredentials()" />
+              <input v-if="monarchRefreshMfaRequired" v-model="monarchRefreshMfaCode" type="text" placeholder="MFA code (6 digits)" autofocus
+                class="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white tracking-widest text-center"
+                @keyup.enter="refreshMonarchCredentials" />
+            </template>
+            <div class="flex items-center justify-between">
+              <button v-if="!monarchRefreshUseToken && !monarchRefreshMfaRequired"
+                @click="monarchRefreshUseToken = true; monarchStatusMsg = ''"
+                class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                Use session token instead
+              </button>
+              <button v-else-if="monarchRefreshUseToken"
+                @click="monarchRefreshUseToken = false; monarchRefreshToken = ''; monarchStatusMsg = ''"
+                class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                Use password instead
+              </button>
+              <span v-else></span>
+              <div class="flex items-center gap-2">
+                <button @click="cancelRefreshForm"
+                  class="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                  Cancel
+                </button>
+                <button @click="refreshMonarchCredentials"
+                  :disabled="monarchRefreshing || !monarchRefreshEmail || (!monarchRefreshUseToken && !monarchRefreshPassword) || (monarchRefreshUseToken && !monarchRefreshToken) || (monarchRefreshMfaRequired && !monarchRefreshUseToken && !monarchRefreshMfaCode)"
+                  class="px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                  {{ monarchRefreshing ? 'Refreshing...' : monarchRefreshMfaRequired && !monarchRefreshUseToken ? 'Verify' : 'Refresh' }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
