@@ -28,6 +28,24 @@ const showNewAccountForm = ref(false)
 const accountTypes = ['cash', 'investment_401k', 'investment_stock', 'real_estate', 'loan_mortgage', 'loan_student', 'credit_card']
 const displayGroups = ['Cash', 'Investments', 'Retirement', 'Home Equity', 'Credit Cards', 'Other Loans']
 
+function sourceLabel(source: string): string {
+  return ({
+    monarch: 'Monarch',
+    simplefin: 'SimpleFIN',
+    plaid: 'Plaid',
+    manual: 'Manual',
+  } as Record<string, string>)[source] || source
+}
+
+function sourceBadgeClass(source: string): string {
+  return ({
+    monarch: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400',
+    simplefin: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400',
+    plaid: 'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400',
+    manual: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  } as Record<string, string>)[source] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+}
+
 const emptyAccountForm = () => ({
   id: '',
   name: '',
@@ -809,6 +827,7 @@ onMounted(() => {
               <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Institution</th>
               <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Type</th>
               <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Group</th>
+              <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Source</th>
               <th class="text-center px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Active</th>
               <th class="text-right px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Balance</th>
               <th class="text-right px-5 py-3 font-medium text-gray-500 dark:text-gray-400"></th>
@@ -822,6 +841,11 @@ onMounted(() => {
                 <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ acct.institution || '\u2014' }}</td>
                 <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ acct.account_type }}</td>
                 <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ acct.display_group }}</td>
+                <td class="px-5 py-3">
+                  <span class="inline-block px-2 py-0.5 text-xs rounded font-medium" :class="sourceBadgeClass(acct.source)">
+                    {{ sourceLabel(acct.source) }}
+                  </span>
+                </td>
                 <td class="px-5 py-3 text-center">
                   <span :class="acct.is_active ? 'text-green-600 dark:text-green-400' : 'text-gray-400'">
                     {{ acct.is_active ? 'Yes' : 'No' }}
@@ -854,6 +878,7 @@ onMounted(() => {
                     <option v-for="g in displayGroups" :key="g" :value="g">{{ g }}</option>
                   </select>
                 </td>
+                <td class="px-5 py-2 text-gray-400 text-xs">\u2014</td>
                 <td class="px-5 py-2 text-center">
                   <input type="checkbox" v-model="editAccountForm.include_in_nw" class="rounded" />
                 </td>
@@ -867,7 +892,7 @@ onMounted(() => {
               </tr>
             </template>
             <tr v-if="accounts.length === 0 && !accountsLoading">
-              <td colspan="7" class="px-5 py-8 text-center text-gray-500 dark:text-gray-400">
+              <td colspan="8" class="px-5 py-8 text-center text-gray-500 dark:text-gray-400">
                 No accounts found
               </td>
             </tr>

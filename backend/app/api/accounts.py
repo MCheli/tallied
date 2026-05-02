@@ -18,6 +18,22 @@ from app.schemas.account import (
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
+def _account_source(account_id: str) -> str:
+    """Derive the data-source label from the synthetic id prefix.
+
+    Sync providers create accounts with a known prefix (monarch-*, simplefin-*,
+    plaid-*); manually created accounts use whatever id the user/system chose.
+    Surface this so the Settings page can show where each row's data came from.
+    """
+    if account_id.startswith("monarch-"):
+        return "monarch"
+    if account_id.startswith("simplefin-"):
+        return "simplefin"
+    if account_id.startswith("plaid-"):
+        return "plaid"
+    return "manual"
+
+
 def _latest_balance_subq():
     """Subquery returning the max snapshot_date per account_id."""
     return (
@@ -64,6 +80,7 @@ def list_accounts(
     results = []
     for acct, balance, snap_date in rows:
         data = AccountWithBalance.model_validate(acct)
+        data.source = _account_source(acct.id)
         data.current_balance = float(balance) if balance is not None else None
         data.balance_date = snap_date
         results.append(data)
@@ -84,6 +101,7 @@ def get_account(account_id: str, db: Session = Depends(get_tenant_db)):
     ).scalar_one_or_none()
 
     result = AccountWithBalance.model_validate(acct)
+    result.source = _account_source(acct.id)
     if latest:
         result.current_balance = float(latest.balance) if latest.balance is not None else None
         result.balance_date = latest.snapshot_date

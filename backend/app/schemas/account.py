@@ -33,6 +33,7 @@ class AccountResponse(BaseModel):
     include_in_nw: bool
     is_active: bool = True
     notes: str | None = None
+    source: str = "manual"  # derived from id prefix; populated in route
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

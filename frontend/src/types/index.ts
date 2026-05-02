@@ -8,6 +8,7 @@ export interface Account {
   include_in_nw: boolean
   is_active: boolean
   notes: string | null
+  source: string  // 'monarch' | 'simplefin' | 'plaid' | 'manual'
   created_at: string | null
   updated_at: string | null
 }
