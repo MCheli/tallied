@@ -44,3 +44,4 @@ Thumbs.db
 
 # Screenshots (root-level only, not docs/screenshots/)
 /Screenshot*
+.simplefin_access_url.local

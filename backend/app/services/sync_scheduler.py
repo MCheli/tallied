@@ -1,9 +1,10 @@
 """
-Background scheduler for automatic Monarch Money syncs.
+Background scheduler for automatic provider syncs (Monarch, SimpleFIN).
 
-Runs as an asyncio task started during app lifespan. Syncs balances
-(with history backfill) and transactions for all tenants that have
-a Monarch connection configured.
+Runs as an asyncio task started during app lifespan. Syncs balances and
+transactions for all tenants that have a connection configured for each
+provider. Job lifecycle is tracked in sync_jobs (per tenant schema) with
+provider-aware uniqueness.
 """
 import asyncio
 import logging
@@ -16,11 +17,17 @@ from app.database import SessionLocal, engine
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 from app.models.monarch_link import MonarchAccountConfig, MonarchLink
-from app.models.monarch_sync_job import MonarchSyncJob
+from app.models.simplefin_link import SimpleFinAccountConfig, SimpleFinLink
+from app.models.sync_job import SyncJob
 from app.models.transaction import Transaction
 from app.parsers.monarch import ACCOUNT_TYPE_MAP, DISPLAY_GROUP_MAP
 
 logger = logging.getLogger("tallied.sync")
+
+# Provider identifiers — keep in sync with the SyncJob.provider column.
+PROVIDER_MONARCH = "monarch"
+PROVIDER_SIMPLEFIN = "simplefin"
+ALL_PROVIDERS = (PROVIDER_MONARCH, PROVIDER_SIMPLEFIN)
 
 # Sync interval: 12 hours (twice per day)
 SYNC_INTERVAL_SECONDS = 12 * 60 * 60
@@ -33,11 +40,10 @@ WATCHDOG_STUCK_MINUTES = 15
 # automatically when the holding connection closes (process exit).
 SCHEDULER_LOCK_KEY = 0x6D6F6E6172636873  # "monarchs" as ASCII bytes, fits in bigint
 
-# LISTEN/NOTIFY channel — the web tier inserts a 'running' job row and
-# NOTIFY's this channel with the tenant schema name; the scheduler container's
-# notify_listener_loop wakes and runs the sync. Decouples the long-running
-# sync from gunicorn's request lifecycle.
-NOTIFY_CHANNEL = "monarch_sync"
+# LISTEN/NOTIFY channel. Payload is "{schema}|{provider}" so the listener
+# knows which provider's sync to run. Decouples the long-running sync from
+# gunicorn's request lifecycle.
+NOTIFY_CHANNEL = "tallied_sync"
 
 
 def _classify_account_type(monarch_type: str) -> tuple[str, str]:
@@ -86,7 +92,7 @@ def _get_monarch_client():
     return mm
 
 
-async def _sync_tenant(schema: str) -> dict:
+async def _sync_tenant_monarch(schema: str) -> dict:
     """Run a full Monarch sync for a single tenant."""
     db = _get_tenant_session(schema)
     try:
@@ -338,25 +344,258 @@ async def _sync_tenant(schema: str) -> dict:
         db.close()
 
 
-async def run_sync_with_job(schema: str, job_id: int) -> None:
-    """Execute a sync against `schema` and update the existing job row.
+# ── SimpleFIN sync ────────────────────────────────────────────────────────────
+# SimpleFIN exposes one endpoint: GET {access_url}/accounts. The response
+# contains balances + recent transactions for every account in one shot.
+# Default time range cap from the spec is 45 days; we request that.
 
-    Used by the route handler (which inserts the job row before returning 202)
-    and by the scheduler (which inserts a row per cycle). Always lands in a
+SIMPLEFIN_HISTORY_DAYS = 45
+
+
+def _classify_simplefin_account(name: str, has_holdings: bool) -> tuple[str, str]:
+    """Infer (account_type, display_group) from a SimpleFIN account name.
+
+    SimpleFIN doesn't carry a structured type field — only display name +
+    institution. Map common keywords to our internal types.
+    """
+    if has_holdings:
+        return "investment", "Investment"
+    n = name.lower()
+    if "mortgage" in n or "loan" in n:
+        return "loan", "Liability"
+    if "credit" in n or "visa" in n or "mastercard" in n or "amex" in n or "card" in n:
+        return "cash", "Cash"
+    if "savings" in n:
+        return "cash", "Cash"
+    return "cash", "Cash"
+
+
+async def _simplefin_get_accounts(access_url: str) -> dict:
+    """Fetch /accounts using the basic-auth credentials embedded in the URL."""
+    import aiohttp
+    from urllib.parse import urlparse
+
+    p = urlparse(access_url)
+    if not p.username or not p.password:
+        raise RuntimeError("SimpleFIN access URL missing basic-auth credentials")
+
+    end = int(datetime.utcnow().timestamp())
+    start = end - SIMPLEFIN_HISTORY_DAYS * 24 * 3600
+    clean = f"{p.scheme}://{p.hostname}{p.path}/accounts?start-date={start}&end-date={end}&pending=1"
+
+    auth = aiohttp.BasicAuth(p.username, p.password)
+    timeout = aiohttp.ClientTimeout(total=120)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(clean, auth=auth, headers={"User-Agent": "Tallied/1.0"}) as resp:
+            if resp.status == 401 or resp.status == 403:
+                raise RuntimeError(
+                    f"SimpleFIN access URL rejected ({resp.status}). "
+                    "Re-claim a fresh setup token in Settings → SimpleFIN."
+                )
+            resp.raise_for_status()
+            return await resp.json()
+
+
+async def _sync_tenant_simplefin(schema: str) -> dict:
+    """Run a full SimpleFIN sync for a single tenant.
+
+    Single API call returns balances + ~45 days of transactions for every
+    account. We respect per-account sync_balances / sync_transactions toggles
+    and reuse the same Account / BalanceSnapshot / Transaction models as
+    Monarch, with source='simplefin'.
+    """
+    db = _get_tenant_session(schema)
+    try:
+        link = db.query(SimpleFinLink).first()
+        if not link:
+            return {"schema": schema, "skipped": True}
+
+        try:
+            data = await _simplefin_get_accounts(link.access_url)
+        except Exception as e:
+            logger.error("Failed to fetch SimpleFIN accounts for %s: %s", schema, e)
+            return {"schema": schema, "error": str(e)}
+
+        for err in data.get("errors", []) or []:
+            logger.warning("SimpleFIN warning for %s: %s", schema, err)
+
+        configs = {
+            c.simplefin_account_id: c
+            for c in db.query(SimpleFinAccountConfig).filter(
+                SimpleFinAccountConfig.simplefin_link_id == link.id
+            ).all()
+        }
+
+        today = date.today()
+        balances_synced = 0
+        txn_added = 0
+        txn_updated = 0
+
+        for acct in data.get("accounts", []):
+            sf_acct_id = str(acct.get("id", ""))
+            cfg = configs.get(sf_acct_id)
+            if not cfg:
+                # Account exists upstream but not configured — skip silently;
+                # /connect (and refresh) is what creates configs.
+                continue
+
+            local_id = cfg.local_account_id or f"simplefin-{sf_acct_id}"
+            acct_name = acct.get("name", "Unknown")
+            org = acct.get("org") or {}
+            institution = org.get("name", "") if isinstance(org, dict) else ""
+            has_holdings = bool(acct.get("holdings"))
+            acct_type, display_group = _classify_simplefin_account(acct_name, has_holdings)
+
+            local_acct = db.query(Account).filter(Account.id == local_id).first()
+            if not local_acct:
+                local_acct = Account(
+                    id=local_id, name=acct_name, institution=institution,
+                    account_type=acct_type, display_group=display_group, include_in_nw=True,
+                )
+                db.add(local_acct)
+                db.flush()
+            if not cfg.local_account_id:
+                cfg.local_account_id = local_id
+
+            # ── Balance ────────────────────────────────────────────────────
+            if cfg.sync_balances:
+                balance_str = acct.get("balance")
+                if balance_str is not None:
+                    try:
+                        balance_val = Decimal(str(balance_str))
+                    except Exception:
+                        balance_val = None
+                    if balance_val is not None:
+                        existing_snap = db.query(BalanceSnapshot).filter(
+                            BalanceSnapshot.account_id == local_id,
+                            BalanceSnapshot.snapshot_date == today,
+                            BalanceSnapshot.source == "simplefin",
+                        ).first()
+                        if existing_snap:
+                            existing_snap.balance = balance_val
+                        else:
+                            db.add(BalanceSnapshot(
+                                account_id=local_id, snapshot_date=today,
+                                balance=balance_val, source="simplefin",
+                            ))
+                        balances_synced += 1
+
+            # ── Transactions ───────────────────────────────────────────────
+            if cfg.sync_transactions:
+                raw_txns = acct.get("transactions", []) or []
+
+                # Dedupe by id (defensive — SimpleFIN doesn't paginate but
+                # multiple accounts could theoretically expose the same id).
+                deduped: dict[str, dict] = {}
+                for t in raw_txns:
+                    deduped[str(t.get("id", ""))] = t
+                raw_txns = list(deduped.values())
+
+                # Bulk existence check — single SELECT IN, then in-memory.
+                candidate_ids = [f"simplefin-{str(t.get('id', ''))}" for t in raw_txns]
+                existing_txns: dict[str, Transaction] = {}
+                if candidate_ids:
+                    for t in (
+                        db.query(Transaction)
+                        .filter(Transaction.id.in_(candidate_ids))
+                        .all()
+                    ):
+                        existing_txns[t.id] = t
+
+                for t in raw_txns:
+                    sf_txn_id = str(t.get("id", ""))
+                    if not sf_txn_id:
+                        continue
+                    local_txn_id = f"simplefin-{sf_txn_id}"
+
+                    posted = t.get("posted") or t.get("transacted_at")
+                    if not posted:
+                        continue
+                    try:
+                        txn_date = datetime.utcfromtimestamp(int(posted)).date()
+                    except (ValueError, TypeError):
+                        continue
+
+                    amount_str = t.get("amount")
+                    if amount_str is None:
+                        continue
+                    try:
+                        amount = Decimal(str(amount_str))
+                    except Exception:
+                        continue
+
+                    merchant = t.get("payee") or t.get("description") or ""
+                    # SimpleFIN doesn't categorize — leave category empty so
+                    # our existing category-rules / manual labelling pipeline
+                    # owns it.
+                    existing = existing_txns.get(local_txn_id)
+                    if existing:
+                        existing.amount = amount
+                        existing.merchant = merchant
+                        txn_updated += 1
+                    else:
+                        db.add(Transaction(
+                            id=local_txn_id, account_id=cfg.local_account_id,
+                            date=txn_date, amount=amount,
+                            merchant=merchant, category="", category_group="",
+                            is_recurring=False,
+                            source="simplefin",
+                        ))
+                        txn_added += 1
+
+        link.last_synced_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "schema": schema,
+            "balances_synced": balances_synced,
+            "txn_added": txn_added,
+            "txn_updated": txn_updated,
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error("SimpleFIN sync failed for %s: %s", schema, e)
+        return {"schema": schema, "error": str(e)}
+    finally:
+        db.close()
+
+
+# Provider → sync function dispatch table.
+_PROVIDER_SYNC_FN: dict[str, "callable"] = {}
+
+
+def _register_provider(name: str, fn) -> None:
+    _PROVIDER_SYNC_FN[name] = fn
+
+
+_register_provider(PROVIDER_MONARCH, _sync_tenant_monarch)
+_register_provider(PROVIDER_SIMPLEFIN, _sync_tenant_simplefin)
+
+
+async def run_sync_with_job(schema: str, job_id: int, provider: str) -> None:
+    """Execute a provider sync against `schema` and update the job row.
+
+    Used by the route handlers (insert job row → return 202 → enqueue) and
+    by the scheduler (one row per cycle). Always lands the row in a
     terminal state — never leaves a row in 'running'.
     """
+    sync_fn = _PROVIDER_SYNC_FN.get(provider)
+    if sync_fn is None:
+        logger.error("Unknown provider %r for job %d", provider, job_id)
+        _finalize_job(schema, job_id, {"error": f"unknown provider: {provider}"})
+        return
     try:
-        result = await _sync_tenant(schema)
+        result = await sync_fn(schema)
         _finalize_job(schema, job_id, result)
     except Exception as e:
-        logger.exception("Monarch sync crashed for %s job=%d", schema, job_id)
+        logger.exception("%s sync crashed for %s job=%d", provider, schema, job_id)
         _finalize_job(schema, job_id, {"error": str(e)})
 
 
 def _finalize_job(schema: str, job_id: int, result: dict) -> None:
     db = _get_tenant_session(schema)
     try:
-        job = db.query(MonarchSyncJob).filter(MonarchSyncJob.id == job_id).first()
+        job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
         if not job:
             logger.warning("Job %d not found in %s when finalizing", job_id, schema)
             return
@@ -376,15 +615,16 @@ def _finalize_job(schema: str, job_id: int, result: dict) -> None:
         db.close()
 
 
-def create_job_row(schema: str, trigger: str) -> tuple[int, bool]:
-    """Insert a new monarch_sync_jobs row with status='running'.
+def create_job_row(schema: str, provider: str, trigger: str) -> tuple[int, bool]:
+    """Insert a new sync_jobs row with status='running' for `provider`.
 
     Returns (job_id, created): created=True if we inserted a new row,
-    False if a 'running' row already existed and we returned its id
-    instead. The unique partial index uq_monarch_sync_jobs_one_running
-    enforces at most one running row per schema, so a TOCTOU race
-    between a find_running_job check and the insert lands here as an
-    IntegrityError that we catch and recover from.
+    False if a 'running' row for the same provider already existed and
+    we returned its id instead. The unique partial index
+    uq_sync_jobs_one_running_per_provider enforces at most one running
+    row per (schema, provider), so a TOCTOU race between a
+    find_running_job check and the insert lands here as an IntegrityError
+    that we catch and recover from.
 
     Captures the autoincrement id via flush() before commit — the engine's
     pool-checkout handler resets search_path to public on the next checkout,
@@ -394,7 +634,7 @@ def create_job_row(schema: str, trigger: str) -> tuple[int, bool]:
 
     db = _get_tenant_session(schema)
     try:
-        job = MonarchSyncJob(status="running", trigger=trigger)
+        job = SyncJob(provider=provider, status="running", trigger=trigger)
         db.add(job)
         try:
             db.flush()
@@ -408,9 +648,9 @@ def create_job_row(schema: str, trigger: str) -> tuple[int, bool]:
             # before the recovery query.
             db.execute(text(f'SET search_path TO "{schema}"'))
             existing = (
-                db.query(MonarchSyncJob)
-                .filter(MonarchSyncJob.status == "running")
-                .order_by(MonarchSyncJob.started_at.desc())
+                db.query(SyncJob)
+                .filter(SyncJob.status == "running", SyncJob.provider == provider)
+                .order_by(SyncJob.started_at.desc())
                 .first()
             )
             if existing:
@@ -420,14 +660,14 @@ def create_job_row(schema: str, trigger: str) -> tuple[int, bool]:
         db.close()
 
 
-def find_running_job(schema: str) -> int | None:
-    """Return the id of the in-flight job for this tenant, if any."""
+def find_running_job(schema: str, provider: str) -> int | None:
+    """Return the id of the in-flight job for this (tenant, provider), if any."""
     db = _get_tenant_session(schema)
     try:
         job = (
-            db.query(MonarchSyncJob)
-            .filter(MonarchSyncJob.status == "running")
-            .order_by(MonarchSyncJob.started_at.desc())
+            db.query(SyncJob)
+            .filter(SyncJob.status == "running", SyncJob.provider == provider)
+            .order_by(SyncJob.started_at.desc())
             .first()
         )
         return job.id if job else None
@@ -450,10 +690,10 @@ def reap_stuck_jobs() -> None:
         db = _get_tenant_session(schema)
         try:
             stuck = (
-                db.query(MonarchSyncJob)
+                db.query(SyncJob)
                 .filter(
-                    MonarchSyncJob.status == "running",
-                    MonarchSyncJob.started_at < cutoff,
+                    SyncJob.status == "running",
+                    SyncJob.started_at < cutoff,
                 )
                 .all()
             )
@@ -474,37 +714,49 @@ def reap_stuck_jobs() -> None:
         finally:
             db.close()
     if total:
-        logger.warning("Watchdog reaped %d stuck Monarch sync job(s)", total)
+        logger.warning("Watchdog reaped %d stuck sync job(s)", total)
+
+
+def _tenant_has_provider_connection(schema: str, provider: str) -> bool:
+    """Check whether a tenant has a configured connection for `provider`."""
+    db = _get_tenant_session(schema)
+    try:
+        if provider == PROVIDER_MONARCH:
+            return db.query(MonarchLink).first() is not None
+        if provider == PROVIDER_SIMPLEFIN:
+            return db.query(SimpleFinLink).first() is not None
+        return False
+    finally:
+        db.close()
 
 
 async def sync_all_tenants():
-    """Run Monarch sync across all tenant schemas, recording a job row each.
+    """Run all configured provider syncs across every tenant schema.
 
-    Tolerates schemas where monarch_sync_jobs hasn't been created yet — that
-    can happen when a tenant exists from before the migration shipped, or in
-    dev DBs that didn't go through alembic. The next migration run will
-    create the table; until then, the schema just gets skipped.
+    For each tenant, iterates each provider; only creates a job row when the
+    tenant actually has a connection for that provider so we don't pollute
+    the job table. Tolerates schemas where sync_jobs hasn't been created yet.
     """
     from sqlalchemy.exc import ProgrammingError
 
     schemas = _get_tenant_schemas()
     results = []
     for schema in schemas:
-        # Skip tenants with no Monarch connection — don't pollute job table.
-        db = _get_tenant_session(schema)
-        try:
-            link = db.query(MonarchLink).first()
-        finally:
-            db.close()
-        if not link:
-            continue
-        try:
-            job_id, _created = create_job_row(schema, trigger="scheduled")
-        except ProgrammingError:
-            logger.warning("Skipping %s: monarch_sync_jobs missing (migration pending?)", schema)
-            continue
-        await run_sync_with_job(schema, job_id)
-        results.append({"schema": schema, "job_id": job_id})
+        for provider in ALL_PROVIDERS:
+            if not _tenant_has_provider_connection(schema, provider):
+                continue
+            try:
+                job_id, _created = create_job_row(
+                    schema, provider=provider, trigger="scheduled"
+                )
+            except ProgrammingError:
+                logger.warning(
+                    "Skipping %s/%s: sync_jobs missing (migration pending?)",
+                    schema, provider,
+                )
+                continue
+            await run_sync_with_job(schema, job_id, provider)
+            results.append({"schema": schema, "provider": provider, "job_id": job_id})
     return results
 
 
@@ -524,8 +776,8 @@ def mark_running_jobs_failed(reason: str) -> int:
         db = _get_tenant_session(schema)
         try:
             running = (
-                db.query(MonarchSyncJob)
-                .filter(MonarchSyncJob.status == "running")
+                db.query(SyncJob)
+                .filter(SyncJob.status == "running")
                 .all()
             )
             for j in running:
@@ -592,8 +844,8 @@ async def claim_orphan_jobs() -> int:
       have failed them; this catches SIGKILL gaps before the watchdog).
 
     Only claim jobs younger than the watchdog cutoff — older ones get
-    reaped to 'failed' by reap_stuck_jobs before we get here. Sync runs
-    sequentially per tenant; there's only one row per tenant by index.
+    reaped to 'failed' by reap_stuck_jobs before we get here. Iterates all
+    providers since multiple may have a running row per tenant.
     """
     from sqlalchemy.exc import ProgrammingError
 
@@ -603,42 +855,45 @@ async def claim_orphan_jobs() -> int:
     for schema in schemas:
         db = _get_tenant_session(schema)
         try:
-            job = (
-                db.query(MonarchSyncJob)
+            jobs = (
+                db.query(SyncJob)
                 .filter(
-                    MonarchSyncJob.status == "running",
-                    MonarchSyncJob.started_at >= cutoff,
+                    SyncJob.status == "running",
+                    SyncJob.started_at >= cutoff,
                 )
-                .order_by(MonarchSyncJob.started_at.desc())
-                .first()
+                .order_by(SyncJob.started_at.desc())
+                .all()
             )
-            job_id = job.id if job else None
+            pairs = [(j.id, j.provider) for j in jobs]
         except ProgrammingError:
             db.rollback()
-            job_id = None
+            pairs = []
         finally:
             db.close()
-        if job_id is not None:
-            logger.info("Claiming orphan running job %d in %s", job_id, schema)
-            await run_sync_with_job(schema, job_id)
+        for job_id, provider in pairs:
+            logger.info("Claiming orphan running job %d (%s) in %s", job_id, provider, schema)
+            await run_sync_with_job(schema, job_id, provider)
             claimed += 1
     return claimed
 
 
-def notify_sync_request(schema: str) -> None:
-    """Wake the scheduler container's notify_listener_loop for `schema`.
+def notify_sync_request(schema: str, provider: str) -> None:
+    """Wake the scheduler container's notify_listener_loop for (schema, provider).
 
-    Called by the web tier's POST /sync after creating a 'running' job row.
-    Fire-and-forget: if no listener is connected (scheduler down, mid-deploy)
-    the NOTIFY is harmless — claim_orphan_jobs picks the row up at the next
-    scheduler boot.
+    Called by the web tier's POST /sync routes after creating a 'running' job
+    row. Fire-and-forget: if no listener is connected (scheduler down,
+    mid-deploy) the NOTIFY is harmless — claim_orphan_jobs picks the row up
+    at the next scheduler boot.
     """
     with engine.connect() as conn:
         # NOTIFY's payload can't be a bind parameter — it's a string literal
         # in the SQL. Schema names come from server-controlled tenant rows
-        # (alphanumeric + underscore), but quote anyway as a defense.
-        safe = schema.replace("'", "''")
-        conn.execute(text(f"NOTIFY {NOTIFY_CHANNEL}, '{safe}'"))
+        # (alphanumeric + underscore) and provider is one of ALL_PROVIDERS,
+        # but quote anyway as a defense.
+        safe_schema = schema.replace("'", "''")
+        safe_provider = provider.replace("'", "''")
+        payload = f"{safe_schema}|{safe_provider}"
+        conn.execute(text(f"NOTIFY {NOTIFY_CHANNEL}, '{payload}'"))
         conn.commit()
 
 
@@ -680,13 +935,19 @@ async def notify_listener_loop():
                 pg_conn.poll()
                 # Drain all pending notifies — collapse duplicates per
                 # schema (the loop processes manual jobs idempotently).
-                pending: set[str] = set()
+                pending: set[tuple[str, str]] = set()
                 while pg_conn.notifies:
                     n = pg_conn.notifies.pop(0)
-                    if n.payload:
-                        pending.add(n.payload)
-                for schema in pending:
-                    await _process_notify(schema)
+                    if not n.payload:
+                        continue
+                    if "|" in n.payload:
+                        schema, provider = n.payload.split("|", 1)
+                    else:
+                        # Back-compat for the old single-channel payload.
+                        schema, provider = n.payload, PROVIDER_MONARCH
+                    pending.add((schema, provider))
+                for schema, provider in pending:
+                    await _process_notify(schema, provider)
         finally:
             loop.remove_reader(pg_conn.fileno())
     finally:
@@ -696,16 +957,16 @@ async def notify_listener_loop():
             pass
 
 
-async def _process_notify(schema: str) -> None:
-    """Look up the in-flight 'running' job for `schema` and run it."""
+async def _process_notify(schema: str, provider: str) -> None:
+    """Look up the in-flight 'running' job for (schema, provider) and run it."""
     from sqlalchemy.exc import ProgrammingError
 
     db = _get_tenant_session(schema)
     try:
         job = (
-            db.query(MonarchSyncJob)
-            .filter(MonarchSyncJob.status == "running")
-            .order_by(MonarchSyncJob.started_at.desc())
+            db.query(SyncJob)
+            .filter(SyncJob.status == "running", SyncJob.provider == provider)
+            .order_by(SyncJob.started_at.desc())
             .first()
         )
         job_id = job.id if job else None
@@ -715,10 +976,11 @@ async def _process_notify(schema: str) -> None:
     finally:
         db.close()
     if job_id is None:
-        logger.info("NOTIFY for %s but no running job found (already processed?)", schema)
+        logger.info("NOTIFY for %s/%s but no running job (already processed?)",
+                    schema, provider)
         return
-    logger.info("NOTIFY: running Monarch sync for %s (job %d)", schema, job_id)
-    await run_sync_with_job(schema, job_id)
+    logger.info("NOTIFY: running %s sync for %s (job %d)", provider, schema, job_id)
+    await run_sync_with_job(schema, job_id, provider)
 
 
 _scheduler_task: asyncio.Task | None = None

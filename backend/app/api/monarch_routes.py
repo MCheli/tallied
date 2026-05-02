@@ -19,7 +19,7 @@ from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 from app.models.monarch_link import MonarchAccountConfig, MonarchLink
-from app.models.monarch_sync_job import MonarchSyncJob
+from app.models.sync_job import SyncJob
 from app.models.transaction import Transaction
 from app.parsers.monarch import ACCOUNT_TYPE_MAP, DISPLAY_GROUP_MAP
 
@@ -553,7 +553,9 @@ async def sync_monarch_transactions(
     # atomic: create_job_row inserts and returns (id, True), or — if another
     # request beat us to the punch — returns (existing_id, False) without
     # raising. No separate find_running_job check needed.
-    job_id, created = create_job_row(ctx.tenant_schema, trigger="manual")
+    job_id, created = create_job_row(
+        ctx.tenant_schema, provider="monarch", trigger="manual",
+    )
     if created:
         # APP_ROLE=web → handoff to the scheduler container via NOTIFY so
         # the long-running sync doesn't run on a gunicorn worker (which
@@ -562,11 +564,11 @@ async def sync_monarch_transactions(
         role = os.environ.get("APP_ROLE", "").lower()
         if role == "web":
             try:
-                notify_sync_request(ctx.tenant_schema)
+                notify_sync_request(ctx.tenant_schema, "monarch")
             except Exception:
                 logger.exception("Failed to NOTIFY scheduler — claim_orphan_jobs will pick it up")
         else:
-            asyncio.create_task(run_sync_with_job(ctx.tenant_schema, job_id))
+            asyncio.create_task(run_sync_with_job(ctx.tenant_schema, job_id, "monarch"))
     return {"job_id": job_id, "status": "running", "queued": created}
 
 
@@ -577,8 +579,9 @@ def monarch_sync_status(
 ):
     """Return the most recent Monarch sync job for this tenant."""
     job = (
-        db.query(MonarchSyncJob)
-        .order_by(MonarchSyncJob.started_at.desc())
+        db.query(SyncJob)
+        .filter(SyncJob.provider == "monarch")
+        .order_by(SyncJob.started_at.desc())
         .first()
     )
     if not job:

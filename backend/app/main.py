@@ -161,6 +161,7 @@ from app.api import (  # noqa: E402
     admin,
     plaid_routes,
     monarch_routes,
+    simplefin_routes,
     ingest,
     rsu,
     property,
@@ -255,6 +256,7 @@ v1.include_router(import_data.router)
 v1.include_router(import_unified.router)
 v1.include_router(plaid_routes.router)
 v1.include_router(monarch_routes.router)
+v1.include_router(simplefin_routes.router)
 v1.include_router(ingest.router)
 v1.include_router(rsu.router)
 v1.include_router(property.router)

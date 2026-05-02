@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from app.models.monarch_link import MonarchLink
-from app.models.monarch_sync_job import MonarchSyncJob
+from app.models.sync_job import SyncJob as MonarchSyncJob
 
 
 @pytest.fixture
@@ -70,19 +70,16 @@ async def test_sync_all_tenants_passes_int_not_tuple_to_run_sync():
     from unittest.mock import AsyncMock, MagicMock
     from app.services import sync_scheduler
 
-    fake_link = MagicMock()
-    fake_db = MagicMock()
-    fake_db.query.return_value.first.return_value = fake_link
-
     with patch.object(sync_scheduler, "_get_tenant_schemas", return_value=["tenant_x"]), \
-         patch.object(sync_scheduler, "_get_tenant_session", return_value=fake_db), \
+         patch.object(sync_scheduler, "_tenant_has_provider_connection",
+                      side_effect=lambda schema, provider: provider == "monarch"), \
          patch.object(sync_scheduler, "create_job_row", return_value=(7, True)) as cj, \
          patch.object(sync_scheduler, "run_sync_with_job",
                       new_callable=AsyncMock) as rs:
         await sync_scheduler.sync_all_tenants()
 
-    cj.assert_called_once_with("tenant_x", trigger="scheduled")
-    rs.assert_awaited_once_with("tenant_x", 7)
+    cj.assert_called_once_with("tenant_x", provider="monarch", trigger="scheduled")
+    rs.assert_awaited_once_with("tenant_x", 7, "monarch")
     # Specifically the second arg must be a plain int, not a tuple.
     args = rs.await_args.args
     assert isinstance(args[1], int), f"expected int, got {type(args[1])}: {args[1]!r}"
@@ -91,12 +88,14 @@ async def test_sync_all_tenants_passes_int_not_tuple_to_run_sync():
 def test_status_returns_latest_job(db_session, client):
     from datetime import datetime, timedelta
     older = MonarchSyncJob(
+        provider="monarch",
         status="succeeded", trigger="scheduled",
         started_at=datetime.utcnow() - timedelta(hours=1),
         finished_at=datetime.utcnow() - timedelta(hours=1),
         balances_synced=2, txn_added=5, txn_updated=1,
     )
     newer = MonarchSyncJob(
+        provider="monarch",
         status="failed", trigger="manual",
         started_at=datetime.utcnow(),
         finished_at=datetime.utcnow(),

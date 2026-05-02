@@ -7,13 +7,14 @@ import type { AccountWithBalance, W2Record } from '../types'
 const { currency } = useFormatters()
 
 // Tab management
-type Tab = 'accounts' | 'income' | 'plaid' | 'monarch' | 'email' | 'import'
+type Tab = 'accounts' | 'income' | 'plaid' | 'monarch' | 'simplefin' | 'email' | 'import'
 const activeTab = ref<Tab>('accounts')
 const tabs: { key: Tab; label: string }[] = [
   { key: 'accounts', label: 'Accounts' },
   { key: 'income', label: 'Income' },
   { key: 'plaid', label: 'Plaid' },
   { key: 'monarch', label: 'Monarch' },
+  { key: 'simplefin', label: 'SimpleFIN' },
   { key: 'email', label: 'Email' },
   { key: 'import', label: 'Import' },
 ]
@@ -548,6 +549,160 @@ async function disconnectMonarch() {
   } catch { /* ignore */ }
 }
 
+// ── SimpleFIN ──
+interface SimpleFinStatus { connected: boolean; last_synced_at?: string; created_at?: string }
+interface SimpleFinAccountConfig { id: number; simplefin_account_id: string; account_name: string; account_type: string | null; institution: string | null; sync_balances: boolean; sync_transactions: boolean; local_account_id: string | null }
+
+const sfStatus = ref<SimpleFinStatus>({ connected: false })
+const sfAccounts = ref<SimpleFinAccountConfig[]>([])
+const sfLoading = ref(false)
+const sfSetupToken = ref('')
+const sfConnecting = ref(false)
+const sfStatusMsg = ref('')
+const sfSyncing = ref(false)
+
+const sfShowRefresh = ref(false)
+const sfRefreshToken = ref('')
+const sfRefreshing = ref(false)
+
+async function loadSimpleFinStatus() {
+  try {
+    const res = await fetch(`${API}/api/v1/simplefin/status`, { credentials: 'include' })
+    if (res.ok) sfStatus.value = await res.json()
+  } catch { /* ignore */ }
+}
+
+async function loadSimpleFinAccounts() {
+  sfLoading.value = true
+  try {
+    const res = await fetch(`${API}/api/v1/simplefin/accounts`, { credentials: 'include' })
+    if (res.ok) sfAccounts.value = await res.json()
+  } catch { /* ignore */ }
+  sfLoading.value = false
+}
+
+async function connectSimpleFin() {
+  if (!sfSetupToken.value.trim()) return
+  sfConnecting.value = true
+  sfStatusMsg.value = 'Claiming setup token...'
+  try {
+    const res = await fetch(`${API}/api/v1/simplefin/connect`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setup_token: sfSetupToken.value.trim() }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      sfStatusMsg.value = `Error: ${body.detail || res.statusText}`
+      return
+    }
+    const data = await res.json()
+    sfStatusMsg.value = `Connected — found ${data.accounts_found} accounts.`
+    sfSetupToken.value = ''
+    await loadSimpleFinStatus()
+    await loadSimpleFinAccounts()
+  } catch (e: any) {
+    sfStatusMsg.value = `Error: ${e.message}`
+  } finally {
+    sfConnecting.value = false
+  }
+}
+
+async function toggleSimpleFinSync(configId: number, field: 'sync_balances' | 'sync_transactions', value: boolean) {
+  try {
+    await fetch(`${API}/api/v1/simplefin/accounts/${configId}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value }),
+    })
+  } catch { /* ignore */ }
+}
+
+async function syncSimpleFin() {
+  sfSyncing.value = true
+  sfStatusMsg.value = 'Queuing SimpleFIN sync...'
+  try {
+    const enq = await fetch(`${API}/api/v1/simplefin/sync`, { method: 'POST', credentials: 'include' })
+    if (!enq.ok && enq.status !== 202) {
+      const body = await enq.json().catch(() => ({ detail: enq.statusText }))
+      sfStatusMsg.value = `Error: ${body.detail || enq.statusText}`
+      return
+    }
+    sfStatusMsg.value = 'Syncing... fetching accounts and recent transactions.'
+    const POLL = 2000, CEILING = 10 * 60 * 1000
+    const started = Date.now()
+    let last: any = null
+    while (Date.now() - started < CEILING) {
+      await new Promise(r => setTimeout(r, POLL))
+      const sRes = await fetch(`${API}/api/v1/simplefin/sync/status`, { credentials: 'include' })
+      if (!sRes.ok) continue
+      last = await sRes.json().catch(() => null)
+      if (!last) continue
+      if (last.status !== 'running') break
+    }
+    if (!last || last.status === 'running') {
+      sfStatusMsg.value = 'Sync still running in background — refresh later for results.'
+    } else if (last.status === 'failed') {
+      sfStatusMsg.value = `Sync failed: ${last.error || 'unknown error'}`
+    } else {
+      sfStatusMsg.value = `Done — ${last.balances_synced} balances, ${last.txn_added} added, ${last.txn_updated} updated.`
+    }
+    await loadSimpleFinStatus()
+  } catch (e: any) {
+    sfStatusMsg.value = `Sync error: ${e.message}`
+  } finally {
+    sfSyncing.value = false
+  }
+}
+
+function openSfRefresh() {
+  sfShowRefresh.value = true
+  sfRefreshToken.value = ''
+  sfStatusMsg.value = ''
+}
+
+function cancelSfRefresh() {
+  sfShowRefresh.value = false
+  sfRefreshToken.value = ''
+}
+
+async function refreshSimpleFinCredentials() {
+  if (!sfRefreshToken.value.trim()) return
+  sfRefreshing.value = true
+  sfStatusMsg.value = 'Refreshing SimpleFIN credentials...'
+  try {
+    const res = await fetch(`${API}/api/v1/simplefin/refresh-credentials`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setup_token: sfRefreshToken.value.trim() }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }))
+      sfStatusMsg.value = `Error: ${body.detail || res.statusText}`
+      return
+    }
+    sfStatusMsg.value = 'Credentials refreshed. Account settings preserved.'
+    cancelSfRefresh()
+    await loadSimpleFinStatus()
+  } catch (e: any) {
+    sfStatusMsg.value = `Error: ${e.message}`
+  } finally {
+    sfRefreshing.value = false
+  }
+}
+
+async function disconnectSimpleFin() {
+  try {
+    await fetch(`${API}/api/v1/simplefin/disconnect`, { method: 'DELETE', credentials: 'include' })
+    sfStatus.value = { connected: false }
+    sfAccounts.value = []
+    sfStatusMsg.value = ''
+  } catch { /* ignore */ }
+}
+
 // Load data on mount
 onMounted(() => {
   loadAccounts()
@@ -555,6 +710,8 @@ onMounted(() => {
   loadPlaidLinks()
   loadMonarchStatus()
   loadMonarchAccounts()
+  loadSimpleFinStatus()
+  loadSimpleFinAccounts()
   loadImportLog()
   loadForwardingEmails()
   loadEmailReceipts()
@@ -1061,6 +1218,121 @@ onMounted(() => {
                   <input type="checkbox" :checked="acct.sync_transactions"
                     @change="acct.sync_transactions = !acct.sync_transactions; toggleMonarchSync(acct.id, 'sync_transactions', acct.sync_transactions)"
                     class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 dark:bg-gray-800" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </div>
+
+    <!-- ═══ SimpleFIN Tab ═══ -->
+    <div v-if="activeTab === 'simplefin'" class="space-y-4">
+      <div v-if="!sfStatus.connected" class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Connect SimpleFIN Bridge</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          Get a setup token from
+          <a href="https://beta-bridge.simplefin.org/" target="_blank" class="text-indigo-600 dark:text-indigo-400 hover:underline">beta-bridge.simplefin.org</a>
+          and paste it below. Tokens are single-use — once claimed, the access URL is stored.
+        </p>
+        <div class="space-y-2">
+          <textarea v-model="sfSetupToken" placeholder="Paste base64 setup token here"
+            rows="3"
+            class="w-full px-3 py-2 text-xs font-mono border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></textarea>
+          <div class="flex justify-end">
+            <button @click="connectSimpleFin"
+              :disabled="sfConnecting || !sfSetupToken.trim()"
+              class="px-4 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+              {{ sfConnecting ? 'Connecting...' : 'Connect' }}
+            </button>
+          </div>
+          <div v-if="sfStatusMsg" class="text-xs" :class="sfStatusMsg.startsWith('Error') ? 'text-red-500' : 'text-green-600 dark:text-green-400'">
+            {{ sfStatusMsg }}
+          </div>
+        </div>
+      </div>
+
+      <template v-else>
+        <!-- Connected status + actions -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">SimpleFIN Connected</h3>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                <span v-if="sfStatus.last_synced_at">Last synced: {{ new Date(sfStatus.last_synced_at).toLocaleString() }}</span>
+                <span v-else>Never synced</span>
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button @click="syncSimpleFin" :disabled="sfSyncing"
+                class="px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                {{ sfSyncing ? 'Syncing...' : 'Sync All' }}
+              </button>
+              <button @click="openSfRefresh" :disabled="sfRefreshing"
+                class="px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg disabled:opacity-50">
+                Refresh credentials
+              </button>
+              <button @click="disconnectSimpleFin"
+                class="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg">
+                Disconnect
+              </button>
+            </div>
+          </div>
+          <div v-if="sfStatusMsg" class="mt-3 text-xs" :class="sfStatusMsg.startsWith('Error') || sfStatusMsg.startsWith('Sync error') ? 'text-red-500' : 'text-green-600 dark:text-green-400'">
+            {{ sfStatusMsg }}
+          </div>
+
+          <!-- Refresh inline form -->
+          <div v-if="sfShowRefresh" class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-2">
+            <h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300">Refresh access URL</h4>
+            <p class="text-xs text-gray-400 dark:text-gray-500">Paste a fresh setup token. Account configs are preserved.</p>
+            <textarea v-model="sfRefreshToken" placeholder="New setup token"
+              rows="3"
+              class="w-full px-3 py-2 text-xs font-mono border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></textarea>
+            <div class="flex items-center justify-end gap-2">
+              <button @click="cancelSfRefresh"
+                class="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                Cancel
+              </button>
+              <button @click="refreshSimpleFinCredentials"
+                :disabled="sfRefreshing || !sfRefreshToken.trim()"
+                class="px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                {{ sfRefreshing ? 'Refreshing...' : 'Refresh' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Account configuration -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Account Sync Configuration</h3>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">SimpleFIN returns balances + ~45 days of transactions per account.</p>
+          </div>
+          <div v-if="sfLoading" class="px-5 py-4 text-xs text-gray-400">Loading...</div>
+          <div v-else-if="sfAccounts.length === 0" class="px-5 py-4 text-xs text-gray-400">No accounts.</div>
+          <table v-else class="w-full text-xs">
+            <thead class="bg-gray-50 dark:bg-gray-950/50 border-b border-gray-100 dark:border-gray-800">
+              <tr>
+                <th class="text-left px-5 py-2 font-medium text-gray-600 dark:text-gray-400">Account</th>
+                <th class="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">Institution</th>
+                <th class="text-center px-3 py-2 font-medium text-gray-600 dark:text-gray-400">Balances</th>
+                <th class="text-center px-3 py-2 font-medium text-gray-600 dark:text-gray-400">Transactions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+              <tr v-for="cfg in sfAccounts" :key="cfg.id">
+                <td class="px-5 py-2 text-gray-900 dark:text-white">{{ cfg.account_name }}</td>
+                <td class="px-3 py-2 text-gray-500 dark:text-gray-400">{{ cfg.institution || '—' }}</td>
+                <td class="px-3 py-2 text-center">
+                  <input type="checkbox" :checked="cfg.sync_balances"
+                    @change="(e) => { const v = (e.target as HTMLInputElement).checked; cfg.sync_balances = v; toggleSimpleFinSync(cfg.id, 'sync_balances', v) }"
+                    class="rounded text-indigo-600" />
+                </td>
+                <td class="px-3 py-2 text-center">
+                  <input type="checkbox" :checked="cfg.sync_transactions"
+                    @change="(e) => { const v = (e.target as HTMLInputElement).checked; cfg.sync_transactions = v; toggleSimpleFinSync(cfg.id, 'sync_transactions', v) }"
+                    class="rounded text-indigo-600" />
                 </td>
               </tr>
             </tbody>
