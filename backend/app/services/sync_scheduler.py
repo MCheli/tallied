@@ -718,13 +718,23 @@ def reap_stuck_jobs() -> None:
 
 
 def _tenant_has_provider_connection(schema: str, provider: str) -> bool:
-    """Check whether a tenant has a configured connection for `provider`."""
+    """Check whether a tenant has a configured connection for `provider`.
+
+    Tolerates schemas where the provider's link table doesn't exist yet
+    (tenant created before the migration ran) by treating it as "no
+    connection" — the next migration will add the table.
+    """
+    from sqlalchemy.exc import ProgrammingError
+
     db = _get_tenant_session(schema)
     try:
         if provider == PROVIDER_MONARCH:
             return db.query(MonarchLink).first() is not None
         if provider == PROVIDER_SIMPLEFIN:
             return db.query(SimpleFinLink).first() is not None
+        return False
+    except ProgrammingError:
+        db.rollback()
         return False
     finally:
         db.close()
