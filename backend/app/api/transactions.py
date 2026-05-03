@@ -6,6 +6,7 @@ from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_tenant_db
+from app.models.account import Account
 from app.models.transaction import Transaction
 from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionResponse
 
@@ -19,6 +20,7 @@ def list_transactions(
     category: str | None = Query(None),
     category_group: str | None = Query(None),
     account_id: str | None = Query(None),
+    account_types: str | None = Query(None, description="Comma-separated account_types to include"),
     merchant: str | None = Query(None),
     search: str | None = Query(None),
     limit: int = Query(50, ge=1, le=500),
@@ -37,6 +39,14 @@ def list_transactions(
         base = base.where(Transaction.category_group == category_group)
     if account_id:
         base = base.where(Transaction.account_id == account_id)
+    if account_types:
+        types = [t.strip() for t in account_types.split(",") if t.strip()]
+        if types:
+            base = base.where(
+                Transaction.account_id.in_(
+                    select(Account.id).where(Account.account_type.in_(types))
+                )
+            )
     if merchant:
         base = base.where(Transaction.merchant.ilike(f"%{merchant}%"))
     if search:

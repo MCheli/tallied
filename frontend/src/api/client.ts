@@ -93,10 +93,19 @@ export const api = {
     fetchJson<{ items: Transaction[]; total: number }>('/transactions/' + buildQuery(params)),
 
   // Spending
-  getSpendingByCategory: (from?: string, to?: string) =>
-    fetchJson<CategorySummary[]>('/spending/by-category' + buildQuery({ from_date: from, to_date: to })),
-  getRecurring: () => fetchJson<RecurringExpense[]>('/spending/recurring'),
-  getMonthlyTrend: () => fetchJson<MonthlySpending[]>('/spending/monthly-trend'),
+  getSpendingByCategory: (from?: string, to?: string, accountTypes?: string[]) =>
+    fetchJson<CategorySummary[]>('/spending/by-category' + buildQuery({
+      from_date: from, to_date: to,
+      account_types: accountTypes && accountTypes.length ? accountTypes.join(',') : undefined,
+    })),
+  getRecurring: (accountTypes?: string[]) =>
+    fetchJson<RecurringExpense[]>('/spending/recurring' + buildQuery({
+      account_types: accountTypes && accountTypes.length ? accountTypes.join(',') : undefined,
+    })),
+  getMonthlyTrend: (accountTypes?: string[]) =>
+    fetchJson<MonthlySpending[]>('/spending/monthly-trend' + buildQuery({
+      account_types: accountTypes && accountTypes.length ? accountTypes.join(',') : undefined,
+    })),
 
   // Trends
   getNetWorth: (from?: string, to?: string) =>

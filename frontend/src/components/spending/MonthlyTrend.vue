@@ -2,14 +2,14 @@
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
-import { LineChart } from 'echarts/charts'
+import { BarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { useChartDefaults } from '../../composables/useChartDefaults'
 import { useFormatters } from '../../composables/useFormatters'
 import type { MonthlySpending } from '../../types'
 
-use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
+use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const props = defineProps<{ data: MonthlySpending[] }>()
 const { baseOption } = useChartDefaults()
@@ -45,23 +45,20 @@ const option = computed(() => {
     },
     series: [
       {
-        type: 'line',
+        type: 'bar',
         data: values,
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: { color: '#6366f1', width: 2 },
-        itemStyle: { color: '#6366f1' },
-        areaStyle: {
+        itemStyle: {
           color: {
             type: 'linear' as const,
             x: 0, y: 0, x2: 0, y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(99,102,241,0.25)' },
-              { offset: 1, color: 'rgba(99,102,241,0.02)' },
+              { offset: 0, color: '#6366f1' },
+              { offset: 1, color: 'rgba(99,102,241,0.5)' },
             ],
           },
+          borderRadius: [4, 4, 0, 0],
         },
+        barMaxWidth: 48,
       },
     ],
   }

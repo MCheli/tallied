@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useTransactionStore } from '../stores/transactions'
 import { useDataExplorer } from '../composables/useDataExplorer'
+import { api } from '../api/client'
 import DataExplorer from '../components/common/DataExplorer.vue'
 import ChartContainer from '../components/common/ChartContainer.vue'
 import SqlViewerModal from '../components/common/SqlViewerModal.vue'
@@ -9,9 +10,41 @@ import TransactionTable from '../components/spending/TransactionTable.vue'
 import CategoryChart from '../components/spending/CategoryChart.vue'
 import RecurringList from '../components/spending/RecurringList.vue'
 import MonthlyTrend from '../components/spending/MonthlyTrend.vue'
+import type { AccountWithBalance } from '../types'
 
 const store = useTransactionStore()
 const { openData } = useDataExplorer()
+
+// ── Account name lookup + account-type filter ────────────────────────────────
+const accounts = ref<AccountWithBalance[]>([])
+const selectedAccountTypes = ref<string[]>([])
+
+const accountNames = computed<Record<string, string>>(() => {
+  const m: Record<string, string> = {}
+  for (const a of accounts.value) m[a.id] = a.name
+  return m
+})
+
+// Distinct account_types present, with a count so users see what's available.
+const accountTypeOptions = computed(() => {
+  const counts = new Map<string, number>()
+  for (const a of accounts.value) {
+    counts.set(a.account_type, (counts.get(a.account_type) ?? 0) + 1)
+  }
+  return Array.from(counts.entries())
+    .map(([type, count]) => ({ type, count }))
+    .sort((a, b) => a.type.localeCompare(b.type))
+})
+
+function toggleAccountType(t: string) {
+  const i = selectedAccountTypes.value.indexOf(t)
+  if (i >= 0) selectedAccountTypes.value.splice(i, 1)
+  else selectedAccountTypes.value.push(t)
+}
+
+function clearAccountTypes() {
+  selectedAccountTypes.value = []
+}
 
 const showRecurringSql = ref(false)
 const showTransactionsSql = ref(false)
@@ -102,6 +135,7 @@ function loadData() {
   const { from, to } = getDateRange(activePreset.value)
   store.filters.from_date = from
   store.filters.to_date = to
+  store.filters.account_types = [...selectedAccountTypes.value]
   store.filters.page = 1
   store.fetchTransactions()
   store.fetchCategoryBreakdown(from, to)
@@ -110,7 +144,14 @@ function loadData() {
 }
 
 watch(activePreset, () => loadData())
-onMounted(() => loadData())
+watch(selectedAccountTypes, () => loadData(), { deep: true })
+
+onMounted(async () => {
+  try {
+    accounts.value = await api.getAccounts()
+  } catch { /* ignore — table just shows ids */ }
+  loadData()
+})
 
 function onPageChange(page: number) {
   store.filters.page = page
@@ -133,7 +174,7 @@ const presets: { key: DatePreset; label: string }[] = [
 
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-bold text-gray-900 dark:text-white">Spending</h2>
       <div class="flex items-center gap-2">
         <button @click="openData('spending')"
@@ -155,6 +196,35 @@ const presets: { key: DatePreset; label: string }[] = [
           {{ p.label }}
         </button>
       </div>
+    </div>
+
+    <!-- Account-type filter chips -->
+    <div v-if="accountTypeOptions.length > 0" class="flex items-center gap-2 mb-6 flex-wrap">
+      <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Account types:</span>
+      <button
+        @click="clearAccountTypes"
+        :class="[
+          'px-2.5 py-1 text-xs rounded-full border transition-colors',
+          selectedAccountTypes.length === 0
+            ? 'bg-indigo-600 text-white border-indigo-600'
+            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+        ]"
+      >
+        All
+      </button>
+      <button
+        v-for="opt in accountTypeOptions"
+        :key="opt.type"
+        @click="toggleAccountType(opt.type)"
+        :class="[
+          'px-2.5 py-1 text-xs rounded-full border transition-colors',
+          selectedAccountTypes.includes(opt.type)
+            ? 'bg-indigo-600 text-white border-indigo-600'
+            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+        ]"
+      >
+        {{ opt.type }} <span class="opacity-60">({{ opt.count }})</span>
+      </button>
     </div>
 
     <!-- Main Grid -->
@@ -181,6 +251,7 @@ const presets: { key: DatePreset; label: string }[] = [
             :page="store.filters.page"
             :pageSize="store.filters.page_size"
             :total="store.total"
+            :accountNames="accountNames"
             @page-change="onPageChange"
             @search="onSearch"
           />

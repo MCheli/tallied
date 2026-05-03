@@ -15,6 +15,7 @@ export const useTransactionStore = defineStore('transactions', () => {
     category: '',
     category_group: '',
     account_id: '',
+    account_types: [] as string[],
     merchant: '',
     page: 1,
     page_size: 25,
@@ -29,8 +30,10 @@ export const useTransactionStore = defineStore('transactions', () => {
     loading.value = true
     error.value = null
     try {
+      const { account_types, ...rest } = filters
       const params: Record<string, unknown> = {
-        ...filters,
+        ...rest,
+        account_types: account_types.length ? account_types.join(',') : undefined,
         offset: (filters.page - 1) * filters.page_size,
         limit: filters.page_size,
       }
@@ -46,7 +49,7 @@ export const useTransactionStore = defineStore('transactions', () => {
 
   async function fetchCategoryBreakdown(from?: string, to?: string) {
     try {
-      categoryBreakdown.value = await api.getSpendingByCategory(from, to)
+      categoryBreakdown.value = await api.getSpendingByCategory(from, to, filters.account_types)
     } catch {
       categoryBreakdown.value = []
     }
@@ -54,7 +57,7 @@ export const useTransactionStore = defineStore('transactions', () => {
 
   async function fetchRecurring() {
     try {
-      recurring.value = await api.getRecurring()
+      recurring.value = await api.getRecurring(filters.account_types)
     } catch {
       recurring.value = []
     }
@@ -62,7 +65,7 @@ export const useTransactionStore = defineStore('transactions', () => {
 
   async function fetchMonthlyTrend() {
     try {
-      monthlyTrend.value = await api.getMonthlyTrend()
+      monthlyTrend.value = await api.getMonthlyTrend(filters.account_types)
     } catch {
       monthlyTrend.value = []
     }

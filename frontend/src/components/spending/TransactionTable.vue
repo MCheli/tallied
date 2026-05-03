@@ -10,7 +10,13 @@ const props = defineProps<{
   page: number
   pageSize: number
   total: number
+  accountNames?: Record<string, string>
 }>()
+
+function accountLabel(accountId: string | null | undefined): string {
+  if (!accountId) return '—'
+  return props.accountNames?.[accountId] || accountId
+}
 
 const emit = defineEmits<{
   (e: 'page-change', page: number): void
@@ -60,6 +66,7 @@ const totalPages = computed(() => Math.ceil(props.total / props.pageSize))
           <tr class="border-b border-gray-100 dark:border-gray-800">
             <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Date</th>
             <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Merchant</th>
+            <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Account</th>
             <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Category</th>
             <th class="text-right px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Amount</th>
           </tr>
@@ -72,6 +79,7 @@ const totalPages = computed(() => Math.ceil(props.total / props.pageSize))
           >
             <td class="px-5 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ dateShort(tx.date) }}</td>
             <td class="px-5 py-3 text-gray-900 dark:text-white">{{ tx.merchant || '\u2014' }}</td>
+            <td class="px-5 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">{{ accountLabel(tx.account_id) }}</td>
             <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ tx.category || '\u2014' }}</td>
             <td
               class="px-5 py-3 text-right font-medium whitespace-nowrap"
@@ -81,7 +89,7 @@ const totalPages = computed(() => Math.ceil(props.total / props.pageSize))
             </td>
           </tr>
           <tr v-if="transactions.length === 0">
-            <td colspan="4" class="px-5 py-8 text-center text-gray-500 dark:text-gray-400">
+            <td colspan="5" class="px-5 py-8 text-center text-gray-500 dark:text-gray-400">
               No transactions found
             </td>
           </tr>

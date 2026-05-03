@@ -6,16 +6,39 @@ from sqlalchemy.orm import Session
 
 from app.database import year_month
 from app.dependencies import get_tenant_db
+from app.models.account import Account
 from app.models.transaction import Transaction
 from app.schemas.transaction import CategorySummary, RecurringExpense, MonthlySpending
 
 router = APIRouter(prefix="/spending", tags=["spending"])
 
 
+def _parse_account_types(raw: str | None) -> list[str] | None:
+    """Comma-separated account_types → list, or None for no filter."""
+    if not raw:
+        return None
+    types = [t.strip() for t in raw.split(",") if t.strip()]
+    return types or None
+
+
+def _apply_account_type_filter(stmt, account_types: list[str] | None):
+    """Restrict a Transaction-based query to txns whose account is one of
+    the given account_types. NULL account_id rows (e.g. email receipts)
+    are excluded when a filter is active."""
+    if not account_types:
+        return stmt
+    return stmt.where(
+        Transaction.account_id.in_(
+            select(Account.id).where(Account.account_type.in_(account_types))
+        )
+    )
+
+
 @router.get("/by-category", response_model=list[CategorySummary])
 def spending_by_category(
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
+    account_types: str | None = Query(None, description="Comma-separated account_types to include"),
     db: Session = Depends(get_tenant_db),
 ):
     """Category totals for a date range (expenses only, amount < 0)."""
@@ -36,6 +59,7 @@ def spending_by_category(
         stmt = stmt.where(Transaction.date >= from_date)
     if to_date:
         stmt = stmt.where(Transaction.date <= to_date)
+    stmt = _apply_account_type_filter(stmt, _parse_account_types(account_types))
 
     rows = db.execute(stmt).all()
 
@@ -56,6 +80,7 @@ def spending_by_category(
 @router.get("/recurring", response_model=list[RecurringExpense])
 def recurring_expenses(
     months: int = Query(6, ge=1, le=24, description="Lookback months"),
+    account_types: str | None = Query(None, description="Comma-separated account_types to include"),
     db: Session = Depends(get_tenant_db),
 ):
     """Detect recurring expenses by merchant frequency."""
@@ -85,6 +110,7 @@ def recurring_expenses(
         )
         .order_by(func.avg(Transaction.amount))
     )
+    stmt = _apply_account_type_filter(stmt, _parse_account_types(account_types))
 
     rows = db.execute(stmt).all()
 
@@ -104,6 +130,7 @@ def recurring_expenses(
 def monthly_spending_trend(
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
+    account_types: str | None = Query(None, description="Comma-separated account_types to include"),
     db: Session = Depends(get_tenant_db),
 ):
     """Monthly spending totals."""
@@ -123,6 +150,7 @@ def monthly_spending_trend(
         stmt = stmt.where(Transaction.date >= from_date)
     if to_date:
         stmt = stmt.where(Transaction.date <= to_date)
+    stmt = _apply_account_type_filter(stmt, _parse_account_types(account_types))
 
     rows = db.execute(stmt).all()
 
