@@ -896,7 +896,7 @@ onMounted(() => {
               <!-- Display Row -->
               <tr v-if="editingAccountId !== acct.id" class="border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800">
                 <td class="px-5 py-3 text-gray-900 dark:text-white">{{ acct.name }}</td>
-                <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ acct.institution || '\u2014' }}</td>
+                <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ acct.institution || '—' }}</td>
                 <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ acct.account_type }}</td>
                 <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ acct.display_group }}</td>
                 <td class="px-5 py-3">
@@ -910,7 +910,7 @@ onMounted(() => {
                   </span>
                 </td>
                 <td class="px-5 py-3 text-right font-medium text-gray-900 dark:text-white">
-                  {{ acct.current_balance != null ? currency(acct.current_balance) : '\u2014' }}
+                  {{ acct.current_balance != null ? currency(acct.current_balance) : '—' }}
                 </td>
                 <td class="px-5 py-3 text-right">
                   <div class="flex gap-3 justify-end">
@@ -941,11 +941,11 @@ onMounted(() => {
                     <option v-for="g in displayGroups" :key="g" :value="g">{{ g }}</option>
                   </select>
                 </td>
-                <td class="px-5 py-2 text-gray-400 text-xs">\u2014</td>
+                <td class="px-5 py-2 text-gray-400 text-xs">—</td>
                 <td class="px-5 py-2 text-center">
                   <input type="checkbox" v-model="editAccountForm.include_in_nw" class="rounded" />
                 </td>
-                <td class="px-5 py-2 text-right text-gray-400 text-sm">\u2014</td>
+                <td class="px-5 py-2 text-right text-gray-400 text-sm">—</td>
                 <td class="px-5 py-2 text-right">
                   <div class="flex gap-1 justify-end">
                     <button @click="saveEditAccount" class="px-2 py-1 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">Save</button>
@@ -1102,13 +1102,13 @@ onMounted(() => {
               <!-- Display Row -->
               <tr v-if="editingW2Year !== w2.tax_year" class="border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800">
                 <td class="px-5 py-3 text-gray-900 dark:text-white font-medium">{{ w2.tax_year }}</td>
-                <td class="px-5 py-3 text-right text-gray-900 dark:text-white">{{ w2.gross_pay != null ? currency(w2.gross_pay) : '\u2014' }}</td>
-                <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400">{{ w2.base_salary != null ? currency(w2.base_salary) : '\u2014' }}</td>
-                <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400">{{ w2.rsu_income != null ? currency(w2.rsu_income) : '\u2014' }}</td>
-                <td class="px-5 py-3 text-right text-red-600 dark:text-red-400">{{ w2.federal_tax != null ? currency(w2.federal_tax) : '\u2014' }}</td>
-                <td class="px-5 py-3 text-right text-red-600 dark:text-red-400">{{ w2.state_tax != null ? currency(w2.state_tax) : '\u2014' }}</td>
-                <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400">{{ w2.pretax_401k != null ? currency(w2.pretax_401k) : '\u2014' }}</td>
-                <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400">{{ w2.roth_401k != null ? currency(w2.roth_401k) : '\u2014' }}</td>
+                <td class="px-5 py-3 text-right text-gray-900 dark:text-white">{{ w2.gross_pay != null ? currency(w2.gross_pay) : '—' }}</td>
+                <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400">{{ w2.base_salary != null ? currency(w2.base_salary) : '—' }}</td>
+                <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400">{{ w2.rsu_income != null ? currency(w2.rsu_income) : '—' }}</td>
+                <td class="px-5 py-3 text-right text-red-600 dark:text-red-400">{{ w2.federal_tax != null ? currency(w2.federal_tax) : '—' }}</td>
+                <td class="px-5 py-3 text-right text-red-600 dark:text-red-400">{{ w2.state_tax != null ? currency(w2.state_tax) : '—' }}</td>
+                <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400">{{ w2.pretax_401k != null ? currency(w2.pretax_401k) : '—' }}</td>
+                <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400">{{ w2.roth_401k != null ? currency(w2.roth_401k) : '—' }}</td>
                 <td class="px-5 py-3 text-right">
                   <button @click="startEditW2(w2)" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 text-sm font-medium">Edit</button>
                 </td>
@@ -1549,11 +1549,11 @@ onMounted(() => {
           </thead>
           <tbody>
             <tr v-for="r in emailReceipts" :key="r.id" class="border-b border-gray-50 dark:border-gray-800 last:border-0">
-              <td class="px-5 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ r.created_at ? new Date(r.created_at).toLocaleDateString() : '\u2014' }}</td>
+              <td class="px-5 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ r.created_at ? new Date(r.created_at).toLocaleDateString() : '—' }}</td>
               <td class="px-3 py-2.5 text-gray-600 dark:text-gray-400 truncate max-w-[150px]">{{ r.from_email }}</td>
               <td class="px-3 py-2.5 text-gray-900 dark:text-white truncate max-w-[200px]">{{ r.subject }}</td>
-              <td class="px-3 py-2.5 text-gray-900 dark:text-white">{{ r.parsed_data?.merchant || '\u2014' }}</td>
-              <td class="px-3 py-2.5 text-right text-gray-900 dark:text-white">{{ r.parsed_data?.amount ? currency(r.parsed_data.amount) : '\u2014' }}</td>
+              <td class="px-3 py-2.5 text-gray-900 dark:text-white">{{ r.parsed_data?.merchant || '—' }}</td>
+              <td class="px-3 py-2.5 text-right text-gray-900 dark:text-white">{{ r.parsed_data?.amount ? currency(r.parsed_data.amount) : '—' }}</td>
               <td class="px-5 py-2.5">
                 <span :class="[
                   'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
@@ -1599,10 +1599,10 @@ onMounted(() => {
               class="border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               <td class="px-5 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                {{ log.created_at ? new Date(log.created_at).toLocaleDateString() : '\u2014' }}
+                {{ log.created_at ? new Date(log.created_at).toLocaleDateString() : '—' }}
               </td>
               <td class="px-5 py-3 text-gray-900 dark:text-white">{{ log.source }}</td>
-              <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ log.capture_mode || '\u2014' }}</td>
+              <td class="px-5 py-3 text-gray-600 dark:text-gray-400">{{ log.capture_mode || '—' }}</td>
               <td class="px-5 py-3">
                 <span :class="[
                   'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
@@ -1615,7 +1615,7 @@ onMounted(() => {
               </td>
               <td class="px-5 py-3 text-right text-gray-900 dark:text-white">{{ log.records_created }}</td>
               <td class="px-5 py-3 text-red-600 dark:text-red-400 text-xs max-w-xs truncate">
-                {{ log.error_message || '\u2014' }}
+                {{ log.error_message || '—' }}
               </td>
             </tr>
             <tr v-if="importLogs.length === 0 && !importLoading">
