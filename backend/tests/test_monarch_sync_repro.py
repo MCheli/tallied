@@ -70,16 +70,19 @@ async def test_sync_all_tenants_passes_int_not_tuple_to_run_sync():
     from unittest.mock import AsyncMock, MagicMock
     from app.services import sync_scheduler
 
+    # Monarch is no longer in ALL_PROVIDERS — pin the test to whichever
+    # provider is active so it stays a real regression check.
+    active = sync_scheduler.ALL_PROVIDERS[0]
     with patch.object(sync_scheduler, "_get_tenant_schemas", return_value=["tenant_x"]), \
          patch.object(sync_scheduler, "_tenant_has_provider_connection",
-                      side_effect=lambda schema, provider: provider == "monarch"), \
+                      side_effect=lambda schema, provider: provider == active), \
          patch.object(sync_scheduler, "create_job_row", return_value=(7, True)) as cj, \
          patch.object(sync_scheduler, "run_sync_with_job",
                       new_callable=AsyncMock) as rs:
         await sync_scheduler.sync_all_tenants()
 
-    cj.assert_called_once_with("tenant_x", provider="monarch", trigger="scheduled")
-    rs.assert_awaited_once_with("tenant_x", 7, "monarch")
+    cj.assert_called_once_with("tenant_x", provider=active, trigger="scheduled")
+    rs.assert_awaited_once_with("tenant_x", 7, active)
     # Specifically the second arg must be a plain int, not a tuple.
     args = rs.await_args.args
     assert isinstance(args[1], int), f"expected int, got {type(args[1])}: {args[1]!r}"

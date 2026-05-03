@@ -2,12 +2,17 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_tenant_db
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
+from app.models.transaction import Transaction
+from app.models.property import Mortgage, PropertyValuation
+from app.models.property_value_history import PropertyValueHistory
+from app.models.monarch_link import MonarchAccountConfig
+from app.models.simplefin_link import SimpleFinAccountConfig
 from app.schemas.account import (
     AccountCreate,
     AccountUpdate,
@@ -142,15 +147,90 @@ def update_account(account_id: str, payload: AccountUpdate, db: Session = Depend
     return acct
 
 
-@router.delete("/{account_id}", status_code=204)
-def delete_account(account_id: str, db: Session = Depends(get_tenant_db)):
-    """Delete an account and all its associated balance snapshots."""
+def _related_counts(db: Session, account_id: str) -> dict[str, int]:
+    """Count records that reference this account, grouped by table."""
+    return {
+        "balance_snapshots": db.execute(
+            select(func.count()).select_from(BalanceSnapshot).where(BalanceSnapshot.account_id == account_id)
+        ).scalar_one(),
+        "transactions": db.execute(
+            select(func.count()).select_from(Transaction).where(Transaction.account_id == account_id)
+        ).scalar_one(),
+        "mortgages": db.execute(
+            select(func.count()).select_from(Mortgage).where(Mortgage.account_id == account_id)
+        ).scalar_one(),
+        "property_valuations": db.execute(
+            select(func.count()).select_from(PropertyValuation).where(PropertyValuation.account_id == account_id)
+        ).scalar_one(),
+        "property_value_history": db.execute(
+            select(func.count()).select_from(PropertyValueHistory).where(PropertyValueHistory.account_id == account_id)
+        ).scalar_one(),
+    }
+
+
+@router.get("/{account_id}/related-counts")
+def get_related_counts(account_id: str, db: Session = Depends(get_tenant_db)):
+    """Return counts of records that would be affected by deleting this account.
+
+    Powers the Settings → Accounts delete confirmation so the UI can show the
+    user exactly what will be removed before they tick the cascade box.
+    """
     acct = db.get(Account, account_id)
     if not acct:
         raise HTTPException(status_code=404, detail="Account not found")
-    # Delete associated balance snapshots first
-    for snap in db.execute(select(BalanceSnapshot).where(BalanceSnapshot.account_id == account_id)).scalars().all():
-        db.delete(snap)
+    return _related_counts(db, account_id)
+
+
+@router.delete("/{account_id}", status_code=204)
+def delete_account(
+    account_id: str,
+    cascade: bool = Query(False, description="If true, also delete all records referencing this account."),
+    db: Session = Depends(get_tenant_db),
+):
+    """Delete an account.
+
+    Default (cascade=false) refuses if any related records exist and returns
+    409 with counts so the UI can prompt. With cascade=true, deletes related
+    transactions, balance snapshots, mortgages, and property history first.
+
+    Sync-provider per-account configs (Monarch/SimpleFIN) are not deleted;
+    their `local_account_id` is cleared so they no longer reference the
+    removed row but the user's sync mapping survives.
+    """
+    acct = db.get(Account, account_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    counts = _related_counts(db, account_id)
+    has_related = any(v > 0 for v in counts.values())
+
+    if has_related and not cascade:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Account has related records. Re-send with ?cascade=true to delete them.",
+                "related_counts": counts,
+            },
+        )
+
+    if cascade and has_related:
+        db.execute(BalanceSnapshot.__table__.delete().where(BalanceSnapshot.account_id == account_id))
+        db.execute(Transaction.__table__.delete().where(Transaction.account_id == account_id))
+        db.execute(Mortgage.__table__.delete().where(Mortgage.account_id == account_id))
+        db.execute(PropertyValuation.__table__.delete().where(PropertyValuation.account_id == account_id))
+        db.execute(PropertyValueHistory.__table__.delete().where(PropertyValueHistory.account_id == account_id))
+
+    db.execute(
+        update(MonarchAccountConfig)
+        .where(MonarchAccountConfig.local_account_id == account_id)
+        .values(local_account_id=None)
+    )
+    db.execute(
+        update(SimpleFinAccountConfig)
+        .where(SimpleFinAccountConfig.local_account_id == account_id)
+        .values(local_account_id=None)
+    )
+
     db.delete(acct)
     db.commit()
     return None

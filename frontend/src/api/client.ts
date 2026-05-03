@@ -134,6 +134,17 @@ export const api = {
     fetchJson<AccountWithBalance>('/accounts/', { method: 'POST', body: JSON.stringify(data) }),
   updateAccount: (id: string, data: Record<string, unknown>) =>
     fetchJson<AccountWithBalance>(`/accounts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getAccountRelatedCounts: (id: string) =>
+    fetchJson<Record<string, number>>(`/accounts/${id}/related-counts`),
+  deleteAccount: async (id: string, cascade: boolean = false) => {
+    const res = await fetch(`${BASE}/accounts/${id}${cascade ? '?cascade=true' : ''}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    if (res.status === 204) return
+    const text = await res.text()
+    throw new Error(`${res.status}: ${text}`)
+  },
 
   // W2 management
   createW2: (data: Record<string, unknown>) =>

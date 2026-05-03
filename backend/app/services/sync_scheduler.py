@@ -27,7 +27,11 @@ logger = logging.getLogger("tallied.sync")
 # Provider identifiers — keep in sync with the SyncJob.provider column.
 PROVIDER_MONARCH = "monarch"
 PROVIDER_SIMPLEFIN = "simplefin"
-ALL_PROVIDERS = (PROVIDER_MONARCH, PROVIDER_SIMPLEFIN)
+# Monarch is hidden from the UI and excluded from the 12h scheduler loop —
+# its API integration has been unreliable. Direct route access
+# (/api/v1/monarch/sync) and the dispatch table still work, so re-enabling
+# is a one-line change here when Monarch ships a real API.
+ALL_PROVIDERS = (PROVIDER_SIMPLEFIN,)
 
 # Sync interval: 12 hours (twice per day)
 SYNC_INTERVAL_SECONDS = 12 * 60 * 60

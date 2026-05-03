@@ -125,6 +125,62 @@ async function saveNewAccount() {
   }
 }
 
+// ── Delete account confirmation ──
+const deleteTarget = ref<AccountWithBalance | null>(null)
+const deleteRelatedCounts = ref<Record<string, number> | null>(null)
+const deleteCascade = ref(false)
+const deleteBusy = ref(false)
+const deleteError = ref<string | null>(null)
+
+const relatedCountLabels: Record<string, string> = {
+  balance_snapshots: 'Balance snapshots',
+  transactions: 'Transactions',
+  mortgages: 'Mortgage records',
+  property_valuations: 'Property valuations',
+  property_value_history: 'Property value history',
+}
+
+async function startDeleteAccount(acct: AccountWithBalance) {
+  deleteTarget.value = acct
+  deleteRelatedCounts.value = null
+  deleteCascade.value = false
+  deleteError.value = null
+  try {
+    deleteRelatedCounts.value = await api.getAccountRelatedCounts(acct.id)
+  } catch (e) {
+    deleteError.value = 'Failed to load related record counts: ' + (e instanceof Error ? e.message : e)
+  }
+}
+
+function cancelDeleteAccount() {
+  deleteTarget.value = null
+  deleteRelatedCounts.value = null
+  deleteCascade.value = false
+  deleteError.value = null
+  deleteBusy.value = false
+}
+
+const hasRelatedRecords = () =>
+  !!deleteRelatedCounts.value && Object.values(deleteRelatedCounts.value).some((n) => n > 0)
+
+async function confirmDeleteAccount() {
+  if (!deleteTarget.value) return
+  if (hasRelatedRecords() && !deleteCascade.value) {
+    deleteError.value = 'Tick the box to confirm deleting related records, or cancel.'
+    return
+  }
+  deleteBusy.value = true
+  deleteError.value = null
+  try {
+    await api.deleteAccount(deleteTarget.value.id, deleteCascade.value)
+    cancelDeleteAccount()
+    await loadAccounts()
+  } catch (e) {
+    deleteError.value = 'Failed to delete account: ' + (e instanceof Error ? e.message : e)
+    deleteBusy.value = false
+  }
+}
+
 // ── Income (W2) ──
 const w2Records = ref<W2Record[]>([])
 const incomeLoading = ref(false)
@@ -857,9 +913,14 @@ onMounted(() => {
                   {{ acct.current_balance != null ? currency(acct.current_balance) : '\u2014' }}
                 </td>
                 <td class="px-5 py-3 text-right">
-                  <button @click="startEditAccount(acct)" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 text-sm font-medium">
-                    Edit
-                  </button>
+                  <div class="flex gap-3 justify-end">
+                    <button @click="startEditAccount(acct)" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 text-sm font-medium">
+                      Edit
+                    </button>
+                    <button @click="startDeleteAccount(acct)" class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm font-medium">
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
               <!-- Edit Row -->
@@ -900,6 +961,64 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Delete Account Modal -->
+    <div v-if="deleteTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" @click.self="cancelDeleteAccount">
+      <div class="w-full max-w-md bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-xl">
+        <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Delete account</h3>
+        </div>
+        <div class="px-5 py-4 space-y-4">
+          <p class="text-sm text-gray-700 dark:text-gray-300">
+            Delete <span class="font-medium text-gray-900 dark:text-white">{{ deleteTarget.name }}</span>?
+          </p>
+
+          <div v-if="deleteRelatedCounts === null && !deleteError" class="text-sm text-gray-500 dark:text-gray-400">
+            Loading related records...
+          </div>
+
+          <div v-else-if="deleteRelatedCounts && hasRelatedRecords()" class="space-y-3">
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              This account has related records:
+            </div>
+            <ul class="text-sm text-gray-700 dark:text-gray-300 space-y-1 pl-4">
+              <li v-for="(count, key) in deleteRelatedCounts" :key="key" v-show="count > 0">
+                <span class="font-medium">{{ count.toLocaleString() }}</span>
+                {{ relatedCountLabels[key] || key }}
+              </li>
+            </ul>
+            <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+              <input type="checkbox" v-model="deleteCascade" class="mt-0.5 rounded" />
+              <span>Also delete all related records listed above. This cannot be undone.</span>
+            </label>
+          </div>
+
+          <div v-else-if="deleteRelatedCounts" class="text-sm text-gray-600 dark:text-gray-400">
+            No related records — only the account row will be removed.
+          </div>
+
+          <div v-if="deleteError" class="text-sm text-red-600 dark:text-red-400">
+            {{ deleteError }}
+          </div>
+        </div>
+        <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
+          <button
+            @click="cancelDeleteAccount"
+            :disabled="deleteBusy"
+            class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="confirmDeleteAccount"
+            :disabled="deleteBusy || deleteRelatedCounts === null || (hasRelatedRecords() && !deleteCascade)"
+            class="px-3 py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:hover:bg-red-600"
+          >
+            {{ deleteBusy ? 'Deleting...' : 'Delete' }}
+          </button>
+        </div>
       </div>
     </div>
 
