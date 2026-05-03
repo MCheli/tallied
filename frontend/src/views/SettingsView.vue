@@ -7,13 +7,16 @@ import type { AccountWithBalance, W2Record } from '../types'
 const { currency } = useFormatters()
 
 // Tab management
+// Note: 'monarch' tab is hidden but the underlying script state, helpers,
+// and template block are kept in case Monarch ships a real API integration
+// in the future. Routes (/api/v1/monarch/*) and the scheduler dispatch
+// remain wired up — only the user-facing tab is gone.
 type Tab = 'accounts' | 'income' | 'plaid' | 'monarch' | 'simplefin' | 'email' | 'import'
 const activeTab = ref<Tab>('accounts')
 const tabs: { key: Tab; label: string }[] = [
   { key: 'accounts', label: 'Accounts' },
   { key: 'income', label: 'Income' },
   { key: 'plaid', label: 'Plaid' },
-  { key: 'monarch', label: 'Monarch' },
   { key: 'simplefin', label: 'SimpleFIN' },
   { key: 'email', label: 'Email' },
   { key: 'import', label: 'Import' },
@@ -726,8 +729,7 @@ onMounted(() => {
   loadAccounts()
   loadIncome()
   loadPlaidLinks()
-  loadMonarchStatus()
-  loadMonarchAccounts()
+  // Monarch tab hidden — skip its loaders. Re-add when the tab is re-enabled.
   loadSimpleFinStatus()
   loadSimpleFinAccounts()
   loadImportLog()
