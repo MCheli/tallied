@@ -398,10 +398,15 @@ requirements:
     done_means:
       - "Either deliver_webhook is called on sync finalize and import confirm with the documented events, or the Webhooks tab is removed from the API page."
       - "Webhook URLs are validated: https or http, no private or link-local hosts."
-    status: in_progress
+    status: done
+    evidence:
+      - backend/tests/test_webhook_delivery.py::test_import_confirm_delivers_import_completed
+      - backend/tests/test_webhook_delivery.py::test_sync_finalize_delivers_balance_and_transaction_events
+      - backend/tests/test_api/test_security.py::test_webhook_rejects_private_or_invalid_urls
     notes:
       - "2026-10-29: deliver_webhook fires after a successful sync; import confirm and URL validation (done in SEC-5) remain to be wired/recorded."
       - "2026-10-29: import.completed now fires on confirm; balance.updated/transaction.created on sync; URL validation in SEC-5. Remaining: a test that delivery is invoked."
+      - "2026-10-29: delivery proven by tests on confirm and sync finalize."
   - id: PLAT-SET-001
     title: Settings shows only working connections
     job: platform

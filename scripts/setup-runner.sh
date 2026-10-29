@@ -70,46 +70,55 @@ if command -v docker &>/dev/null && ! docker info &>/dev/null 2>&1; then
   done
 fi
 
-# ── 5. PostgreSQL via Docker Compose ────────────────────────────────────────
-if ! command -v docker &>/dev/null || ! docker info &>/dev/null 2>&1; then
-  yellow "[setup] Docker not available — skipping PostgreSQL, migrations, and seed"
-  yellow "[setup] Backend tests use SQLite (no Docker needed)"
-elif docker compose ps postgres 2>/dev/null | grep -q "running"; then
-  green "[setup] PostgreSQL already running — skipping"
+# ── 5. PostgreSQL: Docker Compose, or a local server (Homebrew) already on :5432 ──
+DB_URL="${FINANCE_DATABASE_URL:-postgresql://tallied:tallied_dev@localhost/tallied}"
+DB_READY=false
+if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+  if docker compose ps postgres 2>/dev/null | grep -q "running"; then
+    green "[setup] PostgreSQL (docker) already running"
+    DB_READY=true
+  else
+    yellow "[setup] Starting PostgreSQL (docker)..."
+    docker compose up -d postgres
+    for i in $(seq 1 30); do
+      if docker compose exec postgres pg_isready -U tallied &>/dev/null; then DB_READY=true; break; fi
+      sleep 1
+    done
+    [ "$DB_READY" = true ] && green "[setup] PostgreSQL is ready on localhost:5432" || red "[setup] PostgreSQL did not become ready in 30s"
+  fi
+elif backend/.venv/bin/python -c "import psycopg2,os; psycopg2.connect(os.environ.get('FINANCE_DATABASE_URL','$DB_URL')).close()" &>/dev/null; then
+  green "[setup] PostgreSQL reachable at $DB_URL (local server)"
   DB_READY=true
 else
-  yellow "[setup] Starting PostgreSQL..."
-  docker compose up -d postgres
-  echo -n "[setup] Waiting for Postgres..."
-  DB_READY=false
-  for i in $(seq 1 30); do
-    if docker compose exec postgres pg_isready -U tallied &>/dev/null; then
-      echo ""
-      green "[setup] PostgreSQL is ready on localhost:5432"
-      DB_READY=true
-      break
-    fi
-    echo -n "."
-    sleep 1
-    if [ "$i" -eq 30 ]; then
-      echo ""
-      red "[setup] WARNING: PostgreSQL did not become ready in 30s"
-    fi
-  done
+  yellow "[setup] No PostgreSQL reachable (no Docker; nothing on localhost:5432)."
+  yellow "[setup] Backend unit tests use SQLite. For the app: brew services start postgresql@16, then make seed-test."
 fi
 
-# ── 6. Run Alembic migrations (only if DB is available) ─────────────────────
-if [ "${DB_READY:-false}" = "true" ]; then
+# ── 6. Migrations (errors are shown, never hidden) and a first seed on an empty database ──
+if [ "$DB_READY" = true ]; then
   yellow "[setup] Running database migrations..."
-  (cd backend && source .venv/bin/activate && PYTHONPATH=. alembic upgrade head 2>/dev/null) && \
-    green "[setup] Migrations applied" || \
-    yellow "[setup] Migrations skipped (may need manual attention)"
+  if (cd backend && source .venv/bin/activate && PYTHONPATH=. alembic upgrade head); then
+    green "[setup] Migrations applied"
+  else
+    red "[setup] Migrations FAILED (see output above). Fix before running the app."
+  fi
 
-  # ── 7. Seed test data ────────────────────────────────────────────────────
-  yellow "[setup] Seeding test data (Claudius Banks)..."
-  (cd backend && source .venv/bin/activate && PYTHONPATH=. python ../scripts/seed_test_data.py --reset 2>/dev/null) && \
-    green "[setup] Test data seeded" || \
-    yellow "[setup] Seed skipped (may need manual attention)"
+  # Seed only when the database has no users: an existing database is never reset here
+  # (it may hold real connections). Use `make seed-test` to rebuild on purpose.
+  HAS_USERS=$(cd backend && source .venv/bin/activate && PYTHONPATH=. python -c "
+from sqlalchemy import create_engine, text
+from app.config import settings
+e = create_engine(settings.database_url)
+with e.connect() as c:
+    print(c.execute(text(\"select count(*) from information_schema.tables where table_schema='public' and table_name='users'\")).scalar() and c.execute(text('select count(*) from users')).scalar())
+" 2>/dev/null || echo "?")
+  if [ "$HAS_USERS" = "0" ]; then
+    yellow "[setup] Empty database — seeding Claudius Banks..."
+    (cd backend && source .venv/bin/activate && PYTHONPATH=. python ../scripts/seed_test_data.py --reset) \
+      && green "[setup] Test data seeded" || red "[setup] Seed FAILED (see output above)"
+  else
+    green "[setup] Database already has data — not reseeding (make seed-test to rebuild)"
+  fi
 fi
 
 # ── Done ────────────────────────────────────────────────────────────────────

@@ -26,7 +26,7 @@ jobs:
         run: |
           cd backend
           pip install -r requirements.txt
-          pip install pytest httpx python-jose[cryptography]
+          pip install pytest httpx
 
       - name: Run backend tests
         run: |

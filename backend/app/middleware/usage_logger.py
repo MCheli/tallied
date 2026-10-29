@@ -42,7 +42,8 @@ class UsageLoggerMiddleware(BaseHTTPMiddleware):
         from app.models.api_key import ApiKey
         from app.dependencies import ALGORITHM
         from app.config import settings
-        from jose import jwt, JWTError
+        import jwt
+        from jwt import PyJWTError as JWTError
 
         user_id: int | None = None
         tenant_id: int | None = None

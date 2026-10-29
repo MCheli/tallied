@@ -4,7 +4,8 @@ from collections.abc import Generator
 from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException, Request
-from jose import jwt, JWTError
+import jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

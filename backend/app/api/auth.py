@@ -14,7 +14,8 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from jose import jwt, JWTError
+import jwt
+from jwt import PyJWTError as JWTError
 
 from app.config import settings
 from app.database import get_db

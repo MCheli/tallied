@@ -1,211 +1,45 @@
 # Tallied
 
-**Your finances, tallied.**
+**Your finances, tallied.** One household's accounts, transactions, income, company stock, 401(k), house and vehicles in one PostgreSQL database you can also open with psql or a spreadsheet, with a dashboard that shows what it adds up to and a plan that projects it to retirement.
 
-A comprehensive personal finance dashboard that tracks net worth, income, spending, investments, property, and retirement planning — all in one place. Built as a multi-tenant data platform with direct database access, API keys, and SQL transparency.
+Tallied is a personal project, built for its owner's household. It is not a product. What it is, page by page, lives in [`docs/PRODUCT.md`](docs/PRODUCT.md); how it is built in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); every requirement with its status and evidence in [`docs/requirements/ledger.yaml`](docs/requirements/ledger.yaml).
 
-![Dashboard](docs/screenshots/dashboard.png)
+![Dashboard](artifacts/screens/dashboard/desktop.png)
 
-## Features
+## What it does
 
-### Dashboard
-Net worth overview, liquidity layers, compensation split, upcoming RSU vests, spending summary, and net worth trend over time.
+- **Look**: Dashboard with net worth, liquid net worth, liquidity layers, compensation split, net worth over time, upcoming RSU vests and recent spending.
+- **Feed**: bank and card sync through SimpleFIN; W-2, pay stub, mortgage, 401(k) and E-Trade RSU documents read by Claude and confirmed before anything is written; forwarded email receipts; manual entry.
+- **Understand**: Spending, Income, Cash, RSU, 401(k), Property, Assets.
+- **Plan**: year-by-year retirement projection with editable assumptions and scenario comparison.
+- **Platform**: a database explorer with a read-only SQL runner, direct database credentials, API keys, the OpenAPI reference.
 
-### Income
-W2 and pay stub import via AI parsing. Gross-to-net waterfall chart, compensation breakdown (salary vs RSU), multi-year history.
+## Stack
 
-![Income](docs/screenshots/income.png)
+FastAPI + SQLAlchemy 2.0 + Alembic on PostgreSQL 16 (schema per tenant), Vue 3 + TypeScript + Tailwind v4 + ECharts, Anthropic Claude for document extraction and labelled estimates.
 
-### Cash
-Checking & savings account tracking with balance history, account breakdown donut, notable transaction markers, and per-account transaction detail.
-
-![Cash](docs/screenshots/cash.png)
-
-### RSU Holdings
-Stock grants with live prices (Yahoo Finance), vest schedule tracking, tax lot analysis (long/short term capital gains), liquidation estimates, and vesting projections.
-
-![RSU](docs/screenshots/rsu.png)
-
-### 401(k) Retirement
-Roth vs pretax balance breakdown, contribution rate tracking, fund holdings with live prices, and balance history.
-
-![401k](docs/screenshots/retirement.png)
-
-### Property
-Mortgage amortization schedule with principal/interest/escrow visualization, equity position (appreciation vs payments), and property valuation tracking.
-
-![Property](docs/screenshots/property.png)
-
-### Spending
-Category breakdown, recurring expense detection, monthly trend, searchable transaction table with time range controls.
-
-![Spending](docs/screenshots/spending.png)
-
-### Planning
-Year-by-year retirement projection table with editable assumptions, collapsible column groups, plan comparison, and "What You Need to Believe" narrative summaries for each plan year.
-
-### Assets
-Fixed capital assets (vehicles) with AI-estimated market values.
-
-### Unified Import
-AI-powered document parsing with a unified modal workflow — upload any financial document, review AI-extracted changes, chat with AI about findings, then accept or reject before saving.
-
-### Database Explorer
-Interactive schema canvas (ERD) with Miro-style pan/zoom, SQL runner with syntax highlighting, and data preview — explore your financial data directly.
-
-### SQL Transparency
-Every dashboard KPI has a "View SQL" button showing the exact query behind the number. Clickable table references with inline data preview.
-
-### API Access
-Programmatic access via API keys. Full OpenAPI documentation at `/api/v1/scalar`. Create and manage keys from the API page.
-
-![Login](docs/screenshots/login.png)
-
-## Data Import
-
-Tallied uses AI (Claude) to parse financial documents:
-
-- **W2 forms** — AI extracts tax/income fields
-- **Pay stubs** — AI extracts salary/RSU split from YTD totals
-- **Mortgage statements** — AI extracts balance, rate, payment breakdown
-- **401(k) statements** — AI extracts balances, contribution rates, holdings
-- **E-Trade exports** — RSU grants and vest schedules from spreadsheet exports
-- **Plaid** — Automatic transaction sync from linked bank accounts
-
-All imports go through a unified review workflow where you can accept/reject individual changes and chat with AI about the findings before anything is saved.
-
-## Tech Stack
-
-- **Backend**: FastAPI (Python 3.14) with SQLAlchemy ORM
-- **Frontend**: Vue 3 + TypeScript + Tailwind CSS v4 + ECharts
-- **Database**: PostgreSQL 16 with schema-per-tenant isolation
-- **Auth**: Google SSO + dev mode email/password login, JWT tokens
-- **AI**: Anthropic Claude API for document parsing
-- **Bank Sync**: Plaid API for transaction imports
-- **Stock Prices**: Yahoo Finance API (cached daily)
-
-## Quick Start
-
-### Prerequisites
-
-- Python 3.12+
-- Node.js 20+
-- Docker (for PostgreSQL)
-- Anthropic API key (for document parsing)
-
-### Setup
+## Run it locally
 
 ```bash
-# Clone
-git clone https://github.com/MCheli/tallied.git
-cd tallied
-
-# Install dependencies
-make install
-
-# Start PostgreSQL
-make db-start
-
-# Seed test data (Claudius Banks test persona)
-make seed-test
-
-# Start development servers
-make dev
+# Postgres 16 (Docker: make db-start; or Homebrew: brew services start postgresql@16)
+cp backend/.env.example backend/.env       # set FINANCE_DEV_MODE=true, optionally FINANCE_ANTHROPIC_API_KEY
+make install                               # backend venv + frontend node_modules
+make seed-test                             # build the Claudius Banks demo tenant
+make dev                                   # http://localhost:5173 (API on :8000)
 ```
 
-The app will be available at:
-- Frontend: http://localhost:5173
-- API: http://localhost:8000
-- API docs: http://localhost:8000/docs
-- API reference (Scalar): http://localhost:8000/api/v1/scalar
+Sign in as `claudius@tallied.dev` / `demo123`. The persona and its documents under `fixtures/` are the only data ever committed.
 
-### Environment Variables
-
-Create `backend/.env`:
-```
-# Required
-FINANCE_DATABASE_URL=postgresql://tallied:tallied_dev@localhost/tallied
-
-# AI document parsing
-FINANCE_ANTHROPIC_API_KEY=sk-ant-...
-
-# Auth — use dev mode for local development
-FINANCE_DEV_MODE=true
-FINANCE_DEV_USER_EMAIL=admin@tallied.dev
-FINANCE_DEV_USER_PASSWORD=tallied-admin-change-me
-
-# Auth — Google SSO (production)
-FINANCE_GOOGLE_CLIENT_ID=...
-FINANCE_GOOGLE_CLIENT_SECRET=...
-
-# Optional — bank sync
-FINANCE_PLAID_CLIENT_ID=...
-FINANCE_PLAID_SECRET=...
-```
-
-### Test Persona
-
-The app ships with a test persona — **Claudius Banks** — a 30-year-old software engineer at Microsoft with realistic (but fake) financial data. Use `make seed-test` to populate the database.
-
-Login: `claudius@tallied.dev` / `demo123`
-
-## Development
+## Working on it
 
 ```bash
-make db-start     # Start PostgreSQL container (required first)
-make dev          # Start backend + frontend
-make test         # Run backend tests
-make typecheck    # Run frontend TypeScript strict check
-make pre-commit   # Run tests + typecheck (always run before pushing)
-make seed-test    # Reset DB with test data
-make lint         # Run linters
-make build        # Build Docker image
+make test            # backend unit tests (SQLite)
+make test-e2e        # backend e2e tests (Postgres + seed)
+make typecheck       # vue-tsc
+make test-frontend   # vitest
+make tour            # screenshots of every route into artifacts/screens/
+make ledger-check    # validate the requirements ledger
+make pre-commit      # all of the above except e2e and tour; CI runs the same
 ```
 
-See [CLAUDE.md](CLAUDE.md) for full development documentation.
-
-## Docker
-
-```bash
-# Build
-docker build -t tallied .
-
-# Run (requires a PostgreSQL instance)
-docker run -p 8000:8000 \
-  -e FINANCE_DATABASE_URL=postgresql://user:pass@host/tallied \
-  tallied
-```
-
-## Architecture
-
-```
-backend/
-├── app/
-│   ├── api/            # FastAPI route handlers
-│   ├── models/         # SQLAlchemy ORM models
-│   ├── engine/         # Projection engine
-│   ├── services/       # Business logic (tenant service, etc.)
-│   ├── schemas/        # Pydantic schemas
-│   ├── database.py     # DB engine, get_db (public schema)
-│   ├── dependencies.py # get_tenant_db (tenant schema), auth
-│   └── config.py       # Settings from environment
-frontend/
-├── src/
-│   ├── views/          # Page components
-│   ├── components/     # Reusable UI components
-│   ├── composables/    # Vue composables
-│   ├── stores/         # Pinia state management
-│   └── router/         # Vue Router with auth guards
-```
-
-### Multi-Tenancy
-
-Tallied uses PostgreSQL schema-per-tenant isolation:
-- **`public` schema**: Platform tables (users, tenants, API keys)
-- **Tenant schemas** (e.g., `tenant_1`): All financial data (accounts, transactions, balances, etc.)
-- The application sets `search_path` per request based on the authenticated user's tenant
-- Financial routes use `get_tenant_db`, auth routes use `get_db`
-
-## Copyright
-
-Copyright (c) 2026. All rights reserved.
+Read [`docs/CONTRIBUTING-FEATURES.md`](docs/CONTRIBUTING-FEATURES.md) before adding anything: a requirement is done only with a test and, for anything visible, a screenshot from the tour. Deployment is described in [`docs/DEPLOYING.md`](docs/DEPLOYING.md).
