@@ -18,15 +18,26 @@ if (!existsSync(path.join(dist, 'index.html'))) {
 const PORT = 4199
 const ROUTES = ['/', '/login']
 
-const preview = spawn('npx', ['vite', 'preview', '--outDir', dist, '--port', String(PORT), '--strictPort'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] })
+// Hard stop: a hung browser or server must fail the gate, never hang CI.
+const watchdog = setTimeout(() => { console.error('build-smoke: timed out after 120s'); stopPreview(); process.exit(1) }, 120000)
+watchdog.unref()
+
+// Run vite directly (no npx wrapper) in its own process group so the whole tree can be killed.
+const viteBin = path.join(root, 'node_modules', 'vite', 'bin', 'vite.js')
+const preview = spawn(process.execPath, [viteBin, 'preview', '--outDir', dist, '--port', String(PORT), '--strictPort'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' })
 let previewLog = ''
 preview.stdout.on('data', d => { previewLog += d })
 preview.stderr.on('data', d => { previewLog += d })
+function stopPreview() {
+  try { if (process.platform !== 'win32') process.kill(-preview.pid, 'SIGTERM'); else preview.kill() } catch {}
+}
 const deadline = Date.now() + 20000
+let up = false
 while (Date.now() < deadline) {
-  try { const r = await fetch(`http://localhost:${PORT}/`); if (r.ok) break } catch {}
+  try { const r = await fetch(`http://localhost:${PORT}/`); if (r.ok) { up = true; break } } catch {}
   await new Promise(r => setTimeout(r, 250))
 }
+if (!up) { console.error('build-smoke: preview server did not start on port ' + PORT + '\n' + previewLog.slice(-2000)); stopPreview(); process.exit(1) }
 
 const launch = async () => {
   try { return await chromium.launch({ channel: 'chrome', headless: true }) } catch (e) { return chromium.launch({ headless: true }) }
@@ -49,11 +60,13 @@ try {
   }
 } finally {
   await browser.close()
-  preview.kill()
+  stopPreview()
 }
 if (failures.length) {
   console.error('build-smoke FAILED (production bundle throws on load):')
   for (const f of failures) console.error('  ' + f)
+  if (previewLog.trim()) console.error('preview server output:\n' + previewLog.slice(-2000))
   process.exit(1)
 }
 console.log('build-smoke: production bundle loads cleanly')
+process.exit(0)
