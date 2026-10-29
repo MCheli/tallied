@@ -19,7 +19,8 @@ backend/app/
   engine/       pure calculation: projection, sensitivity, net worth, cash flow, spending, variance
   models/       SQLAlchemy models; register new ones in models/__init__.py
   schemas/      Pydantic request/response models
-  ai/           Claude client, model ids, structured-output helpers
+  ai/           Claude client (structured outputs), schemas, model ids from settings
+  services/providers/  bank/broker provider protocol + registry (SimpleFIN)
   middleware/   rate limit, API usage logging
   database.py   engine, SessionLocal, pool-checkout search_path reset
   dependencies.py  TenantContext, get_tenant_context, get_tenant_db, require_admin
@@ -63,7 +64,7 @@ Tallied is a household app, but it was built multi-tenant and that structure sta
 Data enters through these paths only (details and current status in `PRODUCT.md`, "Data sources"):
 
 1. **Unified AI import** (`api/import_unified.py`, `components/import/ImportModal.vue`): upload → AI extraction → review → confirm. Nothing is written until confirm.
-2. **SimpleFIN sync** (`api/simplefin_routes.py`, `services/sync_scheduler.py`): accounts, balances, transactions on a schedule, through `sync_jobs` rows.
+2. **Provider sync** (`services/providers/`, `services/sync_scheduler.py`): a provider turns its stored, encrypted credential into a `ProviderSnapshot`; one generic loop upserts accounts, balance snapshots and transactions and finalizes the `sync_jobs` row. SimpleFIN is the only provider today.
 3. **Email receipts** (`workers/email-receipt`, `api/email_import.py`): a forwarded receipt becomes one transaction.
 4. **Manual edits** from Settings and the page-level forms (accounts, income records, vehicles, property, plans).
 5. **The seed** (`scripts/seed_test_data.py --reset`), which builds the Claudius tenant from `fixtures/`.

@@ -60,9 +60,9 @@ The unified import flow is `upload → extract → review → confirm`.
 
 ## 5. A new data provider (bank or broker sync)
 
-Providers implement one interface and register once; see `backend/app/services/providers/` once CON-2 lands. Until then, SimpleFIN in `simplefin_routes.py` and `sync_scheduler.py` is the reference.
+Providers implement the protocol in `backend/app/services/providers/base.py` (`get_connection(db)` and `fetch(credential) -> ProviderSnapshot`) and register once in `providers/__init__.py`; the scheduler's generic loop does the rest. SimpleFIN (`providers/simplefin.py`, routes in `api/simplefin_routes.py`) is the reference.
 
-- Credentials are encrypted at rest. The connect route never stores a raw password.
+- Credentials are encrypted at rest with `services/crypto.encrypt_secret` (FINANCE_CREDENTIAL_KEY). The connect route never stores a raw password.
 - The provider's accounts map to `Account` rows with `source` set to the provider name and `account_type` chosen at connect time, not guessed per sync.
 - Syncs run through `sync_jobs` (NOTIFY wakes the scheduler, advisory lock prevents overlap, watchdog fails stuck jobs). Never fetch synchronously inside a request.
 - Settings gets a tab rendered from the provider's metadata, not a copy of another provider's tab.
