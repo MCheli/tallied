@@ -12,46 +12,36 @@ import type { CategorySummary } from '../../types'
 use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const props = defineProps<{ categories: CategorySummary[] }>()
-const { baseOption } = useChartDefaults()
-const { currency } = useFormatters()
+const { baseOption, isMobile, splitLineColor, mobileAxis } = useChartDefaults()
+const { currency, compact } = useFormatters()
+
+const top = computed(() => [...props.categories].sort((a, b) => Math.abs(b.total) - Math.abs(a.total)).slice(0, 15))
 
 const option = computed(() => {
-  const sorted = [...props.categories]
-    .sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
-    .slice(0, 15)
-  const cats = sorted.map(c => c.category).reverse()
-  const values = sorted.map(c => Math.abs(c.total)).reverse()
+  const cats = top.value.map(c => c.category).reverse()
+  const values = top.value.map(c => Math.abs(c.total)).reverse()
 
   return {
     ...baseOption.value,
-    grid: { left: 10, right: 20, top: 10, bottom: 10, containLabel: true },
+    grid: { left: 4, right: 12, top: 4, bottom: 4, containLabel: true },
     tooltip: {
       ...baseOption.value.tooltip,
       trigger: 'axis' as const,
-      formatter: (params: any) => {
-        const p = Array.isArray(params) ? params[0] : params
+      formatter: (params: unknown) => {
+        const p = (Array.isArray(params) ? params[0] : params) as { name: string; value: number }
         return `${p.name}: ${currency(p.value)}`
       },
     },
     xAxis: {
       type: 'value' as const,
-      axisLabel: {
-        color: baseOption.value.textStyle.color,
-        formatter: (v: number) => v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v.toFixed(0)}`,
-        hideOverlap: true,
-      },
+      axisLabel: { ...mobileAxis(), formatter: (v: number) => compact(v) },
       splitNumber: 3,
-      splitLine: { lineStyle: { color: '#e5e7eb33' } },
+      splitLine: { lineStyle: { color: splitLineColor.value } },
     },
     yAxis: {
       type: 'category' as const,
       data: cats,
-      axisLabel: {
-        color: baseOption.value.textStyle.color,
-        fontSize: 11,
-        width: 120,
-        overflow: 'truncate' as const,
-      },
+      axisLabel: { ...mobileAxis(), width: isMobile.value ? 90 : 120, overflow: 'truncate' as const, interval: 0 },
     },
     series: [
       {
@@ -63,8 +53,10 @@ const option = computed(() => {
     ],
   }
 })
+
+const height = computed(() => `${Math.max(180, Math.min(400, 24 + top.value.length * 26))}px`)
 </script>
 
 <template>
-  <v-chart :option="option" autoresize style="height: 400px" />
+  <v-chart :option="option" autoresize :style="{ height }" />
 </template>

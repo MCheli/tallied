@@ -444,8 +444,7 @@ def record_actual(payload: ActualSnapshotCreate, db: Session = Depends(get_tenan
 
 
 _PLAN_METRICS = [
-    "gross_income", "base_salary", "rsu_income", "tax_paid", "take_home",
-    "expenses_annual", "savings_rate", "contributions_401k",
+    "gross_income", "base_salary", "rsu_income", "tax_paid", "take_home", "contributions_401k",
     "net_worth", "liquid_net_worth", "investment_balance",
     "retirement_balance", "home_equity", "mortgage_balance",
 ]
@@ -624,8 +623,6 @@ def plan_table(plan_id: int, db: Session = Depends(get_tenant_db)):
                 "rsu_income": _cell(rsu_income, status),
                 "tax_paid": _cell(tax_paid, status),
                 "take_home": _cell(take_home, status),
-                "expenses_annual": _cell(None, status),
-                "savings_rate": _cell(None, status),
                 "contributions_401k": _cell(contributions_401k, status),
             }
             row.update(_balance_metrics(balances, current_mortgage_balance, status))
@@ -669,8 +666,6 @@ def plan_table(plan_id: int, db: Session = Depends(get_tenant_db)):
                 "rsu_income": _cell(rsu_income, status),
                 "tax_paid": _cell(tax_paid, status),
                 "take_home": _cell(take_home, status),
-                "expenses_annual": _cell(None, status),
-                "savings_rate": _cell(None, status),
                 "contributions_401k": _cell(contributions_401k, status),
             }
             row.update(_balance_metrics(balances, current_mortgage_balance, status))
@@ -717,8 +712,6 @@ def plan_table(plan_id: int, db: Session = Depends(get_tenant_db)):
                     "rsu_income": _cell(rsu_income_val, status),
                     "tax_paid": _cell(tax_paid, status),
                     "take_home": _cell(take_home, status),
-                    "expenses_annual": _cell(None, status),
-                    "savings_rate": _cell(None, status),
                     "contributions_401k": _cell(contributions_401k, status),
                     "net_worth": _cell(net_worth_val, status),
                     "liquid_net_worth": _cell(liquid_nw, status),
@@ -740,6 +733,9 @@ def plan_table(plan_id: int, db: Session = Depends(get_tenant_db)):
         "years": years,
         "metrics": _PLAN_METRICS,
         "rows": rows_out,
+        "current_age": user_age,
+        "retirement_age": retirement_age,
+        "retirement_year": retirement_year,
     }
 
 

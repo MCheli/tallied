@@ -23,16 +23,17 @@ const categoryLabels: Record<string, string> = {
   spending: 'Spending & Savings',
   tax: 'Taxes',
   housing: 'Housing',
+  general: 'Other',
   other: 'Other',
 }
 
 const PERCENTAGE_KEYS = new Set([
   'total_comp_growth', 'rsu_pct_of_comp', 'rsu_pct_annual_increase', 'rsu_pct_cap',
   'rsu_tax_rate', 'investment_return', 'retirement_return', 'stock_price_growth',
-  'inflation', 'home_appreciation', 'retirement_tax_rate',
+  'inflation', 'home_appreciation', 'retirement_tax_rate', 'employee_401k_rate', 'employer_match_rate',
 ])
 
-const INTEGER_KEYS = new Set(['retirement_age'])
+const INTEGER_KEYS = new Set(['retirement_age', 'current_age'])
 
 function isPercentage(a: AssumptionResponse): boolean {
   return PERCENTAGE_KEYS.has(a.key)
@@ -57,11 +58,13 @@ function getStep(a: AssumptionResponse): number {
 }
 
 function getMin(a: AssumptionResponse): number {
+  if (a.key === 'current_age') return 18
   if (isInteger(a)) return 30
   return 0
 }
 
 function getMax(a: AssumptionResponse): number {
+  if (a.key === 'current_age') return 80
   if (isPercentage(a)) return 1
   if (isInteger(a)) return 80
   if (a.value > 100000) return a.value * 3
@@ -98,7 +101,7 @@ function onInput(key: string, event: Event) {
               :max="getMax(a)"
               :step="getStep(a)"
               @input="onInput(a.key, $event)"
-              class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              class="w-full h-2 my-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
             />
             <p v-if="a.description" class="text-[10px] text-gray-400 mt-0.5">{{ a.description }}</p>
           </div>

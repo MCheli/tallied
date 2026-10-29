@@ -22,12 +22,17 @@ class Settings(BaseSettings):
     dev_user_password: str = "tallied-admin-change-me"
     api_key_pepper: str = "tallied-api-key-pepper-change-in-production"
 
+    # RSU sell-today estimate (household tax assumptions, editable per deployment)
+    ltcg_rate: float = 0.15  # federal long-term capital gains
+    stcg_rate: float = 0.37  # short-term = ordinary income (top bracket estimate)
+    state_tax_rate: float = 0.05  # state tax on gains (Massachusetts)
+
     # CORS
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # Rate limiting
     rate_limit_per_hour: int = 1000  # Max requests per hour per API key / user
-    login_rate_limit_per_hour: int = 30  # Max dev-login attempts per hour per IP
+    login_rate_limit_per_hour: int = 100  # Max dev-login attempts per hour per IP (tours log in repeatedly)
 
     # App
     base_url: str = "http://localhost:8000"  # Used for OAuth redirect URLs

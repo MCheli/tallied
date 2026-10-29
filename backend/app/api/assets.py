@@ -259,14 +259,17 @@ def assets_summary(db: Session = Depends(get_tenant_db)):
     vehicles = db.execute(select(Vehicle).order_by(Vehicle.id)).scalars().all()
 
     total_value = sum(float(v.estimated_value or 0) for v in vehicles)
-    # Only sum purchase prices for vehicles that have them
+    # Depreciation only makes sense per vehicle that has both a purchase price and an estimate.
     vehicles_with_purchase = [v for v in vehicles if v.purchase_price]
     total_purchase = sum(float(v.purchase_price) for v in vehicles_with_purchase)
+    depreciable = [v for v in vehicles_with_purchase if v.estimated_value is not None]
+    total_depreciation = sum(float(v.purchase_price) - float(v.estimated_value) for v in depreciable)
 
     return {
         "total_value": round(total_value, 2),
         "total_purchase_price": round(total_purchase, 2) if vehicles_with_purchase else None,
-        "total_depreciation": round(total_purchase - total_value, 2) if vehicles_with_purchase else None,
+        "total_depreciation": round(total_depreciation, 2) if depreciable else None,
+        "vehicles_with_purchase_price": len(vehicles_with_purchase),
         "vehicle_count": len(vehicles),
         "vehicles": [_serialize_vehicle(v) for v in vehicles],
     }

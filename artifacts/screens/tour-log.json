@@ -1,16 +1,15 @@
 {
-  "capturedAt": "2026-10-29T12:49:51.994Z",
+  "capturedAt": "2026-10-29T13:07:15.284Z",
   "base": "http://localhost:5173",
   "theme": "light",
   "routes": {
     "login/mobile": {
-      "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      "consoleErrors": [],
+      "failedRequests": [
+        "GET http://localhost:5173/api/v1/auth/me :: net::ERR_ABORTED",
+        "GET http://localhost:5173/api/v1/auth/me :: net::ERR_ABORTED"
       ],
-      "failedRequests": [],
-      "badResponses": [
-        "401 POST http://localhost:5173/api/v1/auth/refresh"
-      ],
+      "badResponses": [],
       "overflow": []
     },
     "dashboard/mobile": {
@@ -35,6 +34,94 @@
         "viewport": 390
       }
     },
+    "spending/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/spending",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "income/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/income",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "cash/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/cash",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "rsu/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/rsu",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "retirement/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/retirement",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "property/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/property",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "assets/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/assets",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "planning/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/planning",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
     "database/mobile": {
       "consoleErrors": [],
       "failedRequests": [],
@@ -46,16 +133,32 @@
         "viewport": 390
       }
     },
-    "login/desktop": {
-      "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
-      ],
+    "developer/mobile": {
+      "consoleErrors": [],
       "failedRequests": [],
-      "badResponses": [
-        "401 POST http://localhost:5173/api/v1/auth/refresh",
-        "401 POST http://localhost:5173/api/v1/auth/refresh"
-      ],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/developer",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "settings/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/settings",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "login/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
       "overflow": []
     },
     "dashboard/desktop": {
@@ -80,12 +183,122 @@
         "viewport": 1440
       }
     },
+    "spending/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/spending",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "income/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/income",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "cash/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/cash",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "rsu/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/rsu",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "retirement/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/retirement",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "property/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/property",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "assets/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/assets",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "planning/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/planning",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
     "database/desktop": {
       "consoleErrors": [],
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
       "finalUrl": "http://localhost:5173/database",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "developer/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/developer",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "settings/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/settings",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440

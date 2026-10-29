@@ -12,8 +12,8 @@ import type { MonthlySpending } from '../../types'
 use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const props = defineProps<{ data: MonthlySpending[] }>()
-const { baseOption } = useChartDefaults()
-const { currency } = useFormatters()
+const { baseOption, isMobile, axisLineColor, splitLineColor, mobileAxis } = useChartDefaults()
+const { currency, compact, monthYear } = useFormatters()
 
 const option = computed(() => {
   const months = props.data.map(d => d.month)
@@ -24,24 +24,24 @@ const option = computed(() => {
     tooltip: {
       ...baseOption.value.tooltip,
       trigger: 'axis' as const,
-      formatter: (params: any) => {
-        const p = Array.isArray(params) ? params[0] : params
-        return `${p.name}<br/>Spending: ${currency(p.value)}`
+      formatter: (params: unknown) => {
+        const p = (Array.isArray(params) ? params[0] : params) as { name: string; value: number }
+        return `${monthYear(p.name)}<br/>Spending: ${currency(p.value)}`
       },
     },
     xAxis: {
       type: 'category' as const,
       data: months,
-      axisLabel: { color: baseOption.value.textStyle.color, fontSize: 11 },
-      axisLine: { lineStyle: { color: '#e5e7eb' } },
+      axisLabel: {
+        ...mobileAxis(),
+        formatter: (v: string) => (isMobile.value ? monthYear(v).replace(' 20', " '") : monthYear(v)),
+      },
+      axisLine: { lineStyle: { color: axisLineColor.value } },
     },
     yAxis: {
       type: 'value' as const,
-      axisLabel: {
-        color: baseOption.value.textStyle.color,
-        formatter: (v: number) => `$${(v / 1000).toFixed(0)}K`,
-      },
-      splitLine: { lineStyle: { color: '#e5e7eb33' } },
+      axisLabel: { ...mobileAxis(), formatter: (v: number) => compact(v) },
+      splitLine: { lineStyle: { color: splitLineColor.value } },
     },
     series: [
       {
@@ -66,5 +66,5 @@ const option = computed(() => {
 </script>
 
 <template>
-  <v-chart :option="option" autoresize style="height: 280px" />
+  <v-chart :option="option" autoresize :style="{ height: isMobile ? '220px' : '280px' }" />
 </template>

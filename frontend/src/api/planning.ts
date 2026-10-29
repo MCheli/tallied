@@ -25,6 +25,9 @@ export interface PlanTable {
   years: number[]
   metrics: string[]
   rows: Record<string, PlanTableRow>
+  current_age?: number
+  retirement_age?: number
+  retirement_year?: number
 }
 
 /** Planning calls go through the shared /api/v1 client (credentials + 401 refresh). */

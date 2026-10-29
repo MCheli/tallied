@@ -16,6 +16,16 @@ import type {
   Transaction,
   VarianceResponse,
   ImportLogEntry,
+  PropertySummary,
+  AmortizationResponse,
+  PropertyValueHistoryResponse,
+  AssetsSummary,
+  Vehicle,
+  VehicleHistory,
+  AggregateVehicleHistory,
+  VehicleRefreshResult,
+  VehicleInput,
+  LargeTransaction,
   SimpleFinStatus,
   SimpleFinAccountConfig,
   SimpleFinAccountType,
@@ -23,6 +33,10 @@ import type {
   SimpleFinSyncStatus,
   ForwardingEmail,
   EmailReceiptItem,
+  RSUGrantsResponse,
+  RSUSummary,
+  PriceHistoryResponse,
+  RetirementSummary,
 } from '../types'
 
 const BASE = '/api/v1'
@@ -104,14 +118,27 @@ export const api = {
       from_date: from, to_date: to,
       account_types: accountTypes && accountTypes.length ? accountTypes.join(',') : undefined,
     })),
-  getRecurring: (accountTypes?: string[]) =>
+  getRecurring: (from?: string, to?: string, accountTypes?: string[]) =>
     fetchJson<RecurringExpense[]>('/spending/recurring' + buildQuery({
+      from_date: from, to_date: to,
       account_types: accountTypes && accountTypes.length ? accountTypes.join(',') : undefined,
     })),
-  getMonthlyTrend: (accountTypes?: string[]) =>
+  getMonthlyTrend: (from?: string, to?: string, accountTypes?: string[]) =>
     fetchJson<MonthlySpending[]>('/spending/monthly-trend' + buildQuery({
+      from_date: from, to_date: to,
       account_types: accountTypes && accountTypes.length ? accountTypes.join(',') : undefined,
     })),
+  getExcludedCategories: () => fetchJson<string[]>('/spending/excluded-categories'),
+  getLargeTransactions: (opts: { threshold?: number; days?: number; limit?: number; excludeIncome?: boolean } = {}) =>
+    fetchJson<LargeTransaction[]>('/transactions/large' + buildQuery({
+      threshold: opts.threshold, days: opts.days, limit: opts.limit,
+      exclude_income: opts.excludeIncome ? 'true' : undefined,
+    })),
+
+  // Page summaries used by the Dashboard
+  getRsuSummary: () => fetchJson<RSUSummary>('/rsu/summary'),
+  getPropertySummary: () => fetchJson<PropertySummary>('/property/summary'),
+  getAssetsSummary: () => fetchJson<AssetsSummary>('/assets/summary'),
 
   // Trends
   getNetWorth: (from?: string, to?: string) =>
@@ -168,6 +195,24 @@ export const api = {
     receipts: (limit = 20) => fetchJson<EmailReceiptItem[]>(`/email-import/receipts?limit=${limit}`),
   },
 
+  // RSU
+  rsu: {
+    getSummary: () => fetchJson<RSUSummary>('/rsu/summary'),
+    getGrants: () => fetchJson<RSUGrantsResponse>('/rsu/grants'),
+    getPriceHistory: (symbol: string, range = '5y') =>
+      fetchJson<PriceHistoryResponse>('/rsu/price-history' + buildQuery({ symbol, range })),
+  },
+
+  // 401(k)
+  retirement: {
+    getSummary: () => fetchJson<RetirementSummary>('/retirement/summary'),
+    updateRates: (pretax: number, roth: number) =>
+      fetchJson<{ pretax_deferral_rate: number; roth_deferral_rate: number; total_deferral_rate: number }>(
+        '/retirement/rates',
+        { method: 'PUT', body: JSON.stringify({ pretax_deferral_rate: pretax, roth_deferral_rate: roth }) },
+      ),
+  },
+
   // Account management
   createAccount: (data: Record<string, unknown>) =>
     fetchJson<AccountWithBalance>('/accounts/', { method: 'POST', body: JSON.stringify(data) }),
@@ -189,4 +234,26 @@ export const api = {
   createW2: (data: Record<string, unknown>) =>
     fetchJson<any>('/income/w2', { method: 'POST', body: JSON.stringify(data) }),
 
+
+  // Property
+  property: {
+    summary: () => fetchJson<PropertySummary>('/property/summary'),
+    amortization: () => fetchJson<AmortizationResponse>('/property/amortization'),
+    valueHistory: () => fetchJson<PropertyValueHistoryResponse>('/property/value-history'),
+    addValuation: (data: { value: number; source: string; valuation_date?: string }) =>
+      fetchJson<{ id: number; value: number; date: string; source: string }>('/property/valuation', { method: 'POST', body: JSON.stringify(data) }),
+    refreshHistory: () => fetchJson<PropertyValueHistoryResponse>('/property/refresh-history', { method: 'POST' }),
+  },
+
+  // Assets (vehicles)
+  assets: {
+    summary: () => fetchJson<AssetsSummary>('/assets/summary'),
+    aggregateHistory: () => fetchJson<AggregateVehicleHistory>('/assets/value-history/aggregate'),
+    vehicleHistory: (id: number) => fetchJson<VehicleHistory>(`/assets/vehicles/${id}/value-history`),
+    createVehicle: (data: VehicleInput) => fetchJson<Vehicle>('/assets/vehicles', { method: 'POST', body: JSON.stringify(data) }),
+    updateVehicle: (id: number, data: Partial<VehicleInput> & { mileage?: number | null; condition?: string | null; notes?: string | null; purchase_price?: number | null }) =>
+      fetchJson<Vehicle>(`/assets/vehicles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteVehicle: (id: number) => fetchJson<{ deleted: boolean }>(`/assets/vehicles/${id}`, { method: 'DELETE' }),
+    refreshValue: (id: number) => fetchJson<VehicleRefreshResult>(`/assets/vehicles/${id}/refresh-value`, { method: 'POST' }),
+  },
 }

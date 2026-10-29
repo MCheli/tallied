@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 
+from app.config import settings
 from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
 from app.models.investment import RSUGrant, VestEvent, StockPrice
 
@@ -270,10 +271,11 @@ def rsu_summary(db: Session = Depends(get_tenant_db)):
 
     # Tax lot detail — distribute each grant's sellable shares across vest events
     # using FIFO (oldest vest lots first, which is how E-Trade works)
-    # Estimated tax rates for "what would I net" analysis
-    LTCG_RATE = 0.15  # federal long-term capital gains
-    STCG_RATE = 0.37  # short-term = ordinary income (top bracket estimate)
-    STATE_RATE = 0.05  # state tax estimate
+    # Estimated tax rates for "what would I net" analysis come from settings
+    # (FINANCE_LTCG_RATE, FINANCE_STCG_RATE, FINANCE_STATE_TAX_RATE).
+    LTCG_RATE = settings.ltcg_rate
+    STCG_RATE = settings.stcg_rate
+    STATE_RATE = settings.state_tax_rate
 
     tax_lots: list[dict] = []
 
@@ -344,6 +346,9 @@ def rsu_summary(db: Session = Depends(get_tenant_db)):
     lt_summary = _agg(lt_lots)
     st_summary = _agg(st_lots)
     all_summary = _agg(tax_lots)
+    # Sellable shares that no actual vest lot can account for (grant says sellable,
+    # vest events say fewer were released). Surfaced instead of silently dropped.
+    unallocated_sellable = max(0, sellable_shares - all_summary["shares"])
 
     # Current holdings = sellable (held, vested) + unvested (future)
     held_shares = sellable_shares + unvested_shares
@@ -375,6 +380,7 @@ def rsu_summary(db: Session = Depends(get_tenant_db)):
             "short_term": st_summary,
             "all": all_summary,
             "lots": tax_lots,
+            "unallocated_sellable_shares": unallocated_sellable,
             "assumed_rates": {
                 "ltcg": LTCG_RATE,
                 "stcg": STCG_RATE,

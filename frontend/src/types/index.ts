@@ -69,12 +69,15 @@ export interface LayerAccount {
   id: string
   name: string
   balance: number
+  balance_date?: string | null
+  include_in_nw?: boolean
 }
 
 export interface LiquidityLayer {
   name: string
   total: number
   accounts: LayerAccount[]
+  as_of?: string | null
 }
 
 export interface SnapshotResponse {
@@ -83,6 +86,7 @@ export interface SnapshotResponse {
   liquid_net_worth: number
   total_comp_annual: number | null
   net_worth_12mo_change: number | null
+  as_of?: string | null
 }
 
 export interface IncomeBreakdown {
@@ -321,4 +325,290 @@ export interface EmailReceiptItem {
   parsed_data: { merchant?: string; amount?: number; date?: string; category?: string } | null
   error_message: string | null
   created_at: string | null
+}
+
+// ── Dashboard / Cash payloads ────────────────────────────────────────────────
+export interface LargeTransaction {
+  id: string
+  date: string
+  amount: number
+  merchant: string | null
+  category: string | null
+  source: string | null
+  account_name: string
+}
+
+// ── RSU ──
+export interface VestEventDetail {
+  id: number
+  vest_date: string | null
+  vest_period: number | null
+  shares: number
+  fmv_at_vest: number | null
+  shares_withheld: number | null
+  shares_released: number | null
+  total_taxes_paid: number | null
+  is_actual: boolean
+  tax_status: string | null
+  gain_per_share: number | null
+}
+
+export interface RSUGrantDetail {
+  id: string
+  company: string | null
+  symbol: string | null
+  grant_date: string | null
+  total_shares: number | null
+  vested_shares: number | null
+  unvested_shares: number | null
+  sellable_shares: number | null
+  held_value: number
+  unvested_value: number
+  sellable_value: number
+  vest_events: VestEventDetail[]
+}
+
+export interface RSUGrantsResponse {
+  grants: RSUGrantDetail[]
+  current_price: number | null
+  symbol: string | null
+}
+
+export interface UpcomingVest {
+  grant_id: string
+  grant_date: string | null
+  vest_date: string
+  shares: number
+  est_value: number | null
+}
+
+export interface TaxLotAggregate {
+  shares: number
+  market_value: number
+  cost_basis: number
+  gain: number
+  est_tax: number
+  net_proceeds: number
+}
+
+export interface VestIncomeYear {
+  value: number
+  actual: number
+  projected: number
+  is_projected: boolean
+  is_mixed: boolean
+}
+
+export interface RSUSummary {
+  held_shares: number
+  total_granted: number
+  vested_shares: number
+  unvested_shares: number
+  sellable_shares: number
+  held_value: number
+  unvested_value: number
+  sellable_value: number
+  current_price: number | null
+  symbol: string | null
+  upcoming_vests: UpcomingVest[]
+  vesting_income_by_year: Record<string, VestIncomeYear>
+  tax_lots?: {
+    long_term: TaxLotAggregate
+    short_term: TaxLotAggregate
+    all: TaxLotAggregate
+    lots: unknown[]
+    unallocated_sellable_shares: number
+    assumed_rates: { ltcg: number; stcg: number; state: number }
+  }
+}
+
+export interface PricePoint {
+  date: string
+  price: number
+}
+
+export interface PriceHistoryResponse {
+  symbol: string
+  points: PricePoint[]
+}
+
+// ── 401(k) ──
+export interface RetirementAccountSummary {
+  id: number
+  plan_name: string | null
+  provider: string | null
+  total_balance: number
+  vested_balance: number
+  roth_balance: number
+  pretax_balance: number
+  employer_match_balance: number
+  other_balance: number
+  pretax_deferral_rate: number
+  roth_deferral_rate: number
+  total_employee_contributions: number
+  total_employer_contributions: number
+  roth_basis: number
+  account_return: number
+  return_period_start: string | null
+  statement_start: string | null
+  statement_end: string | null
+  estimated_monthly_income: number
+  updated_at: string | null
+}
+
+export interface RetirementHoldingSummary {
+  id: number
+  fund_name: string
+  ticker: string | null
+  balance: number | null
+  allocation_pct: number | null
+  gain_loss: number | null
+  live_price: number | null
+}
+
+export interface RetirementSnapshotPoint {
+  date: string
+  balance: number
+  roth: number | null
+  pretax: number | null
+  employer: number | null
+}
+
+export interface RetirementSummary {
+  account: RetirementAccountSummary | null
+  balance_breakdown?: {
+    roth: number
+    pretax: number
+    employer: number
+    other: number
+    roth_pct: number
+    pretax_pct: number
+    employer_pct: number
+  }
+  holdings: RetirementHoldingSummary[]
+  snapshots: RetirementSnapshotPoint[]
+}
+
+// ── Property ──
+export interface PropertySummary {
+  property: {
+    address: string | null
+    value: number | null
+    valuation_source: string | null
+    valuation_date: string | null
+    purchase_price: number | null
+    account_id?: string
+  } | null
+  mortgage: {
+    balance: number | null
+    rate: number | null
+    monthly_payment: number | null
+    original_amount: number | null
+    origination_date: string | null
+    maturity_date: string | null
+    escrow: number | null
+  } | null
+  equity: number | null
+  payment_breakdown: { total: number; principal: number; interest: number; escrow: number } | null
+}
+
+export interface AmortizationRow {
+  date: string
+  principal: number
+  interest: number
+  escrow: number
+  balance: number
+  is_past: boolean
+}
+
+export interface AmortizationResponse {
+  schedule: AmortizationRow[]
+  current_month_index?: number | null
+  summary: {
+    original_amount: number
+    current_balance: number | null
+    payoff_date: string | null
+    months_remaining: number
+    total_interest_paid: number
+    total_interest_remaining: number
+    total_principal_paid: number
+  } | null
+}
+
+export interface PropertyValuePoint {
+  date: string
+  value: number
+  source: 'tax_assessment' | 'realtor_estimate' | 'sale' | 'ai_projection' | 'manual' | string
+  is_projected: boolean
+  details?: Record<string, unknown> | null
+}
+
+export interface PropertyValueHistoryResponse {
+  history: PropertyValuePoint[]
+  commentary: string | null
+  property_details: Record<string, unknown> | null
+  projection_note?: string | null
+  refreshed?: boolean
+}
+
+export type ValuationSourceLabel = 'Manual' | 'Redfin' | 'Zillow' | 'Appraisal' | 'Tax Assessment' | 'Purchase price'
+
+// ── Assets ──
+export interface Vehicle {
+  id: number
+  year: number
+  make: string
+  model: string
+  trim: string | null
+  vin?: string | null
+  mileage: number | null
+  condition: string | null
+  purchase_price: number | null
+  purchase_date: string | null
+  estimated_value: number | null
+  value_last_updated: string | null
+  notes: string | null
+  valuation_notes: string | null
+  valuation_source: 'ai' | 'manual' | null
+  valuation_model: string | null
+  valuation_confidence: 'high' | 'medium' | 'low' | null
+  depreciation: number | null
+}
+
+export interface AssetsSummary {
+  total_value: number
+  total_purchase_price: number | null
+  total_depreciation: number | null
+  vehicles_with_purchase_price: number
+  vehicle_count: number
+  vehicles: Vehicle[]
+}
+
+export interface VehicleHistoryPoint { date: string; value: number; source: string; is_projected: boolean }
+export interface VehicleHistory { vehicle_id: number; history: VehicleHistoryPoint[] }
+export interface AggregateVehicleHistory {
+  dates: string[]
+  total: number[]
+  vehicles: Record<string, (number | null)[]>
+  is_projected: boolean[]
+}
+export interface VehicleRefreshResult {
+  estimated_value: number
+  updated: boolean
+  confidence: 'high' | 'medium' | 'low'
+  model: string
+  reasoning: string
+  annual_depreciation_pct: number
+}
+export interface VehicleInput {
+  year: number
+  make: string
+  model: string
+  trim?: string
+  vin?: string
+  mileage?: number
+  condition?: string
+  purchase_price?: number
+  purchase_date?: string
+  notes?: string
 }

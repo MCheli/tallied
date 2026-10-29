@@ -36,6 +36,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (data.authenticated) {
         user.value = data.user
         authenticated.value = true
+        rememberSession(true)
         return true
       }
       return false
@@ -44,9 +45,21 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // The refresh cookie is httpOnly, so the page cannot see whether one exists. Remember
+  // that a session was established in this browser and only try to refresh then; a fresh
+  // visitor on the login page no longer fires two 401s (BUG-8).
+  const SESSION_FLAG = 'tallied:had-session'
+  function hadSession(): boolean {
+    try { return localStorage.getItem(SESSION_FLAG) === '1' } catch { return true }
+  }
+  function rememberSession(on: boolean) {
+    try { on ? localStorage.setItem(SESSION_FLAG, '1') : localStorage.removeItem(SESSION_FLAG) } catch { /* ignore */ }
+  }
+
   async function refreshOnce(): Promise<boolean> {
+    if (!hadSession()) return false
     if (!refreshing) {
-      refreshing = tryRefresh().finally(() => { refreshing = null })
+      refreshing = tryRefresh().then(ok => { if (!ok) rememberSession(false); return ok }).finally(() => { refreshing = null })
     }
     return refreshing
   }
@@ -98,6 +111,7 @@ export const useAuthStore = defineStore('auth', () => {
       const data = await res.json()
       user.value = data.user
       authenticated.value = true
+      rememberSession(true)
       return null
     } catch (e: any) {
       return e.message
@@ -106,6 +120,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout() {
     await fetch(`${API}/api/v1/auth/logout`, { method: 'POST', credentials: 'include' })
+    rememberSession(false)
     user.value = null
     authenticated.value = false
   }

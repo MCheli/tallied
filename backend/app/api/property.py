@@ -146,7 +146,9 @@ def amortization_schedule(db: Session = Depends(get_tenant_db)):
 
     # Start from origination with original balance
     original_amount = float(mortgage.original_amount) if mortgage.original_amount else float(mortgage.current_balance or 0)
-    start_date = mortgage.origination_date or date(2022, 3, 31)
+    if not mortgage.origination_date:
+        raise HTTPException(status_code=422, detail="Mortgage has no origination date; import a statement or enter it on the mortgage.")
+    start_date = mortgage.origination_date
 
     balance = original_amount
     schedule = []

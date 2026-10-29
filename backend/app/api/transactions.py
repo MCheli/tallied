@@ -120,6 +120,7 @@ def large_transactions(
     threshold: float = Query(500),
     days: int = Query(30),
     limit: int = Query(20),
+    exclude_income: bool = Query(False, description="Drop positive amounts (paychecks, deposits)"),
     db: Session = Depends(get_tenant_db),
 ):
     """Return recent transactions above a threshold amount (absolute value)."""
@@ -133,6 +134,8 @@ def large_transactions(
         .order_by(Transaction.date.desc())
         .limit(limit)
     )
+    if exclude_income:
+        stmt = stmt.where(Transaction.amount < 0)
     rows = db.execute(stmt).scalars().all()
 
     # Look up account names

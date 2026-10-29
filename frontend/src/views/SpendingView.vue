@@ -2,7 +2,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useTransactionStore } from '../stores/transactions'
 import { useDataExplorer } from '../composables/useDataExplorer'
+import { useFormatters } from '../composables/useFormatters'
+import { DEFAULT_PRESET, PRESETS, monthsInRange, presetLabel, presetRange, widerPreset, type DatePreset } from '../composables/useDatePresets'
 import { api } from '../api/client'
+import PageHeader from '../components/common/PageHeader.vue'
 import DataExplorer from '../components/common/DataExplorer.vue'
 import ChartContainer from '../components/common/ChartContainer.vue'
 import SqlViewerModal from '../components/common/SqlViewerModal.vue'
@@ -14,6 +17,7 @@ import type { AccountWithBalance } from '../types'
 
 const store = useTransactionStore()
 const { openData } = useDataExplorer()
+const { date } = useFormatters()
 
 // ── Account name lookup + account-type filter ────────────────────────────────
 const accounts = ref<AccountWithBalance[]>([])
@@ -25,15 +29,10 @@ const accountNames = computed<Record<string, string>>(() => {
   return m
 })
 
-// Distinct account_types present, with a count so users see what's available.
 const accountTypeOptions = computed(() => {
   const counts = new Map<string, number>()
-  for (const a of accounts.value) {
-    counts.set(a.account_type, (counts.get(a.account_type) ?? 0) + 1)
-  }
-  return Array.from(counts.entries())
-    .map(([type, count]) => ({ type, count }))
-    .sort((a, b) => a.type.localeCompare(b.type))
+  for (const a of accounts.value) counts.set(a.account_type, (counts.get(a.account_type) ?? 0) + 1)
+  return Array.from(counts.entries()).map(([type, count]) => ({ type, count })).sort((a, b) => a.type.localeCompare(b.type))
 })
 
 function toggleAccountType(t: string) {
@@ -41,112 +40,44 @@ function toggleAccountType(t: string) {
   if (i >= 0) selectedAccountTypes.value.splice(i, 1)
   else selectedAccountTypes.value.push(t)
 }
+function clearAccountTypes() { selectedAccountTypes.value = [] }
 
-function clearAccountTypes() {
-  selectedAccountTypes.value = []
-}
+// ── Period ───────────────────────────────────────────────────────────────────
+const activePreset = ref<DatePreset>(DEFAULT_PRESET)
+const range = computed(() => presetRange(activePreset.value))
+const rangeNote = ref('')
+const excludedCategories = ref<string[]>([])
 
-const showRecurringSql = ref(false)
-const showTransactionsSql = ref(false)
-
-const categorySql = `SELECT
-  category,
-  category_group,
-  SUM(amount) AS total,
-  COUNT(*) AS count
-FROM transactions
-WHERE amount < 0
-  AND date >= :from_date
-  AND date <= :to_date
-GROUP BY category, category_group
-ORDER BY SUM(amount) ASC`
-
-const recurringSql = `SELECT
-  merchant,
-  category,
-  AVG(amount) AS avg_amount,
-  COUNT(DISTINCT strftime('%Y-%m', date)) AS months_seen,
-  MAX(date) AS last_date
-FROM transactions
-WHERE amount < 0
-  AND date >= date('now', '-6 months')
-  AND merchant IS NOT NULL
-GROUP BY merchant, category
-HAVING COUNT(DISTINCT strftime('%Y-%m', date)) >= 2
-ORDER BY AVG(amount) ASC`
-
-const transactionsSql = `SELECT id, date, merchant, category, amount, account_id, notes
-FROM transactions
-  AND date >= :from_date
-  AND date <= :to_date
-  AND (merchant LIKE '%' || :search || '%'
-       OR category LIKE '%' || :search || '%'
-       OR notes LIKE '%' || :search || '%')
-ORDER BY date DESC
-LIMIT :limit OFFSET :offset`
-
-const monthlyTrendSql = `SELECT
-  strftime('%Y-%m', date) AS month,
-  SUM(amount) AS total,
-  COUNT(*) AS count
-FROM transactions
-WHERE amount < 0
-GROUP BY strftime('%Y-%m', date)
-ORDER BY month ASC`
-
-type DatePreset = 'month' | '3mo' | 'ytd' | '12mo'
-const activePreset = ref<DatePreset>('3mo')
-
-function getDateRange(preset: DatePreset): { from: string; to: string } {
-  const now = new Date()
-  const to = now.toISOString().slice(0, 10)
-  let from: string
-  switch (preset) {
-    case 'month': {
-      const d = new Date(now.getFullYear(), now.getMonth(), 1)
-      from = d.toISOString().slice(0, 10)
-      break
-    }
-    case '3mo': {
-      const d = new Date(now)
-      d.setMonth(d.getMonth() - 3)
-      from = d.toISOString().slice(0, 10)
-      break
-    }
-    case 'ytd': {
-      from = `${now.getFullYear()}-01-01`
-      break
-    }
-    case '12mo': {
-      const d = new Date(now)
-      d.setFullYear(d.getFullYear() - 1)
-      from = d.toISOString().slice(0, 10)
-      break
-    }
-  }
-  return { from, to }
-}
-
-function loadData() {
-  const { from, to } = getDateRange(activePreset.value)
+/** One date range and one account filter drive all four sections. */
+async function loadData(opts: { allowFallback?: boolean } = {}) {
+  const { from, to } = range.value
   store.filters.from_date = from
   store.filters.to_date = to
   store.filters.account_types = [...selectedAccountTypes.value]
   store.filters.page = 1
-  store.fetchTransactions()
-  store.fetchCategoryBreakdown(from, to)
-  store.fetchRecurring()
-  store.fetchMonthlyTrend()
+  await Promise.all([store.fetchTransactions(), store.fetchSections()])
+
+  // First load only: if the default period is empty, widen it once and say so.
+  if (opts.allowFallback && store.total === 0 && store.categoryBreakdown.length === 0) {
+    const wider = widerPreset(activePreset.value)
+    if (wider) {
+      rangeNote.value = `Nothing in ${presetLabel(activePreset.value).toLowerCase()}; showing ${presetLabel(wider).toLowerCase()} instead.`
+      activePreset.value = wider // the watcher reloads
+    }
+  }
 }
 
-watch(activePreset, () => loadData())
+watch(activePreset, (_, old) => {
+  if (old !== undefined && !rangeNote.value.includes(presetLabel(activePreset.value).toLowerCase())) rangeNote.value = ''
+  loadData()
+})
 watch(selectedAccountTypes, () => loadData(), { deep: true })
 
 onMounted(async () => {
-  try {
-    accounts.value = await api.getAccounts()
-  } catch { /* ignore — table just shows ids */ }
-  loadData()
+  const [acct, excl] = await Promise.allSettled([api.getAccounts(), api.getExcludedCategories()])
+  if (acct.status === 'fulfilled') accounts.value = acct.value
+  if (excl.status === 'fulfilled') excludedCategories.value = excl.value
+  await loadData({ allowFallback: true })
 })
 
 function onPageChange(page: number) {
@@ -160,87 +91,146 @@ function onSearch(term: string) {
   store.fetchTransactions()
 }
 
-const presets: { key: DatePreset; label: string }[] = [
-  { key: 'month', label: 'This Month' },
-  { key: '3mo', label: 'Last 3 Months' },
-  { key: 'ytd', label: 'YTD' },
-  { key: '12mo', label: 'Last 12 Months' },
-]
+const periodLabel = computed(() => `${date(range.value.from)} to ${date(range.value.to)}`)
+const monthsLabel = computed(() => {
+  const n = monthsInRange(range.value.from, range.value.to)
+  return `${n} month${n === 1 ? '' : 's'}`
+})
+const exclusionText = computed(() =>
+  excludedCategories.value.length ? excludedCategories.value.join(', ') : 'transfers and loan or card payments'
+)
+
+// ── SQL transparency (Postgres; what the API runs) ───────────────────────────
+const showRecurringSql = ref(false)
+const showTransactionsSql = ref(false)
+
+const SPENDING_WHERE = `WHERE amount < 0
+  AND (category IS NULL OR category NOT IN ('Transfer', 'Credit Card Payment', 'Loan Payment', 'Mortgage Payment'))
+  AND date BETWEEN :from_date AND :to_date`
+
+const categorySql = `-- Spending = negative amounts, excluding transfers and loan/card payments
+SELECT category, category_group, SUM(amount) AS total, COUNT(*) AS count
+FROM transactions
+${SPENDING_WHERE}
+GROUP BY category, category_group
+ORDER BY SUM(amount)`
+
+const recurringSql = `-- avg_monthly = total in the period / months in the period
+SELECT merchant, category,
+  SUM(amount) / :months_in_range AS avg_monthly,
+  COUNT(DISTINCT to_char(date, 'YYYY-MM')) AS months_seen,
+  MAX(date) AS last_date
+FROM transactions
+${SPENDING_WHERE}
+  AND merchant IS NOT NULL
+GROUP BY merchant, category
+HAVING COUNT(DISTINCT to_char(date, 'YYYY-MM')) >= 2
+ORDER BY SUM(amount)`
+
+const transactionsSql = `-- All transactions in the period (income and transfers included), newest first
+SELECT id, date, merchant, category, amount, account_id, notes
+FROM transactions
+WHERE date BETWEEN :from_date AND :to_date
+  AND (merchant ILIKE '%' || :search || '%'
+       OR category ILIKE '%' || :search || '%'
+       OR notes ILIKE '%' || :search || '%')
+ORDER BY date DESC
+LIMIT :limit OFFSET :offset`
+
+const monthlyTrendSql = `SELECT to_char(date, 'YYYY-MM') AS month, SUM(amount) AS total, COUNT(*) AS count
+FROM transactions
+${SPENDING_WHERE}
+GROUP BY to_char(date, 'YYYY-MM')
+ORDER BY month`
 </script>
 
 <template>
   <div>
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-bold text-gray-900 dark:text-white">Spending</h2>
-      <div class="flex items-center gap-2">
-        <button @click="openData('spending')"
-          class="px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
-          Data
-        </button>
-        <span class="w-px h-5 bg-gray-200 dark:bg-gray-700"></span>
-        <button
-          v-for="p in presets"
-          :key="p.key"
-          @click="activePreset = p.key"
-          :class="[
-            'px-3 py-1.5 text-sm rounded-lg transition-colors',
-            activePreset === p.key
-              ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-medium'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          ]"
-        >
-          {{ p.label }}
-        </button>
-      </div>
-    </div>
+    <PageHeader
+      title="Spending"
+      :subtitle="rangeNote || `${periodLabel} (${monthsLabel})`"
+      :tooltip="`Where the money went in one period. Every section on this page uses the same date range and account filter. Spending means money out; ${exclusionText} are never counted.`"
+    >
+      <button @click="openData('spending')"
+        class="px-3 py-2 min-h-[40px] text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+        Data
+      </button>
+      <template #below>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex flex-wrap gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5" role="group" aria-label="Period">
+            <button
+              v-for="p in PRESETS"
+              :key="p.key"
+              @click="activePreset = p.key"
+              :aria-pressed="activePreset === p.key"
+              :class="[
+                'px-3 py-1.5 min-h-[36px] text-sm rounded-md transition-colors',
+                activePreset === p.key
+                  ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 font-medium shadow-sm'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-white/60 dark:hover:bg-gray-700/60'
+              ]"
+            >
+              {{ p.label }}
+            </button>
+          </div>
+          <div v-if="accountTypeOptions.length > 0" class="flex flex-wrap items-center gap-1.5">
+            <span class="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Accounts</span>
+            <button
+              @click="clearAccountTypes"
+              :class="[
+                'px-2.5 py-1.5 text-xs rounded-full border transition-colors',
+                selectedAccountTypes.length === 0
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+              ]"
+            >
+              All
+            </button>
+            <button
+              v-for="opt in accountTypeOptions"
+              :key="opt.type"
+              @click="toggleAccountType(opt.type)"
+              :class="[
+                'px-2.5 py-1.5 text-xs rounded-full border transition-colors',
+                selectedAccountTypes.includes(opt.type)
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+              ]"
+            >
+              {{ opt.type }} <span class="opacity-60">({{ opt.count }})</span>
+            </button>
+          </div>
+        </div>
+      </template>
+    </PageHeader>
 
-    <!-- Account-type filter chips -->
-    <div v-if="accountTypeOptions.length > 0" class="flex items-center gap-2 mb-6 flex-wrap">
-      <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Account types:</span>
-      <button
-        @click="clearAccountTypes"
-        :class="[
-          'px-2.5 py-1 text-xs rounded-full border transition-colors',
-          selectedAccountTypes.length === 0
-            ? 'bg-indigo-600 text-white border-indigo-600'
-            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-        ]"
-      >
-        All
-      </button>
-      <button
-        v-for="opt in accountTypeOptions"
-        :key="opt.type"
-        @click="toggleAccountType(opt.type)"
-        :class="[
-          'px-2.5 py-1 text-xs rounded-full border transition-colors',
-          selectedAccountTypes.includes(opt.type)
-            ? 'bg-indigo-600 text-white border-indigo-600'
-            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-        ]"
-      >
-        {{ opt.type }} <span class="opacity-60">({{ opt.count }})</span>
-      </button>
-    </div>
+    <p v-if="store.sectionError" class="mb-4 text-sm text-red-600 dark:text-red-400">Some sections could not load: {{ store.sectionError }}</p>
 
     <!-- Main Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-      <!-- Left Column -->
-      <div class="space-y-4">
-        <ChartContainer title="Spending by Category" info="Horizontal bar chart showing total spending by category for the selected time period. Only includes expenses (negative transaction amounts). Categories are sorted by total spend.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; Transactions table grouped by category field. Includes both Plaid-synced and imported transactions." :loading="store.categoryBreakdown.length === 0 && store.loading" :sql="categorySql" :sqlTables="['transactions']">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 items-start">
+      <div class="space-y-4 min-w-0">
+        <ChartContainer
+          title="Spending by Category"
+          :subtitle="periodLabel"
+          :loading="store.sectionsLoading && store.categoryBreakdown.length === 0"
+          :empty="!store.sectionsLoading && store.categoryBreakdown.length === 0"
+          empty-text="No spending in this period"
+          :info="`Total spent per category in the selected period, largest first (top 15). Spending is negative transactions; ${exclusionText} are excluded.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; transactions grouped by category, scoped by the period and account filter.`"
+          :sql="categorySql"
+          :sqlTables="['transactions']"
+        >
           <CategoryChart :categories="store.categoryBreakdown" />
         </ChartContainer>
-        <div class="group/recurring relative">
-          <RecurringList :expenses="store.recurring" />
-          <button @click="showRecurringSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/recurring:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+        <div class="group/recurring relative min-w-0">
+          <RecurringList :expenses="store.recurring" :loading="store.sectionsLoading && store.recurring.length === 0" :period-label="periodLabel" />
+          <button @click="showRecurringSql = true" class="sql-btn absolute top-1 right-1 w-10 h-10 flex items-center justify-center rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/recurring:opacity-100 focus-visible:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL" aria-label="View SQL">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
           </button>
           <SqlViewerModal :open="showRecurringSql" :sql="recurringSql" title="Recurring Expenses" :tables="['transactions']" @close="showRecurringSql = false" />
         </div>
       </div>
-      <!-- Right Column -->
-      <div class="lg:col-span-2">
-        <div class="group/txns relative">
+      <div class="lg:col-span-2 min-w-0">
+        <div class="group/txns relative min-w-0">
           <TransactionTable
             :transactions="store.items"
             :loading="store.loading"
@@ -251,7 +241,7 @@ const presets: { key: DatePreset; label: string }[] = [
             @page-change="onPageChange"
             @search="onSearch"
           />
-          <button @click="showTransactionsSql = true" class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/txns:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL">
+          <button @click="showTransactionsSql = true" class="sql-btn absolute top-1 right-1 w-10 h-10 flex items-center justify-center rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/txns:opacity-100 focus-visible:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all" title="View SQL" aria-label="View SQL">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
           </button>
           <SqlViewerModal :open="showTransactionsSql" :sql="transactionsSql" title="Transactions" :tables="['transactions']" @close="showTransactionsSql = false" />
@@ -260,10 +250,25 @@ const presets: { key: DatePreset; label: string }[] = [
     </div>
 
     <!-- Monthly Trend -->
-    <ChartContainer title="Monthly Spending Trend" info="Monthly total spending over time. Shows how your spending has trended month over month. Only includes expenses, not income. Useful for spotting seasonal patterns or lifestyle changes.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; Transactions table, summed by month (expenses only)." :loading="store.monthlyTrend.length === 0 && store.loading" :sql="monthlyTrendSql" :sqlTables="['transactions']">
+    <ChartContainer
+      title="Monthly Spending Trend"
+      :subtitle="`By month, ${periodLabel}`"
+      :loading="store.sectionsLoading && store.monthlyTrend.length === 0"
+      :empty="!store.sectionsLoading && store.monthlyTrend.length === 0"
+      empty-text="No spending in this period"
+      :info="`Total spending per calendar month inside the selected period, so the bars match the category chart and the transactions table. ${exclusionText} are excluded; income is never counted.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; transactions summed by month.`"
+      :sql="monthlyTrendSql"
+      :sqlTables="['transactions']"
+    >
       <MonthlyTrend :data="store.monthlyTrend" />
     </ChartContainer>
 
     <DataExplorer />
   </div>
 </template>
+
+<style scoped>
+@media (hover: none) {
+  .sql-btn { opacity: 0.4; }
+}
+</style>
