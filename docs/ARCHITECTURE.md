@@ -4,7 +4,7 @@ How the code is put together and the rules that keep it that way. What the produ
 
 ## Stack
 
-- **Backend** `backend/`: FastAPI, SQLAlchemy 2.0 (`Mapped` / `mapped_column`), Alembic, Pydantic v2, psycopg2. Python 3.13 in the image (`Dockerfile`); the pinned floor is in `backend/requirements.txt`.
+- **Backend** `backend/`: FastAPI, SQLAlchemy 2.0 (`Mapped` / `mapped_column`), Alembic, Pydantic v2, psycopg2. Python 3.13 (`.python-version`, the image and CI); the pinned floors are in `backend/requirements.txt`.
 - **Frontend** `frontend/`: Vue 3 `<script setup lang="ts">`, Vite, Tailwind v4 (`dark:` variants), ECharts via `vue-echarts`, Pinia, Vue Router.
 - **Database**: PostgreSQL 16, one schema per tenant plus `public` for platform tables. Tests use SQLite in memory.
 - **AI**: Anthropic Claude for document parsing, receipt parsing and asset valuation, through `backend/app/ai/` (one client, one place to pick models).
@@ -105,9 +105,10 @@ Local dev on a machine without Docker: `brew services start postgresql@16`, then
 - `make test`: backend unit tests on SQLite in memory. These cover the engines, services and route shapes.
 - `make test-e2e`: tests marked `e2e` against the local Postgres with the Claudius seed.
 - `make typecheck`: `vue-tsc --noEmit`.
+- `make test-frontend`: Vitest (`frontend/tests/*.spec.ts`, jsdom, Vue Test Utils). Page logic that needs testing lives in composables so the specs stay small.
 - `make tour`: `scripts/screenshot_tour.mjs` logs in as Claudius and captures every route at 390 and 1440 into `artifacts/screens/<route>/{mobile,desktop}.png`, writing console errors, failed requests and overflow to `artifacts/screens/tour-log.json`. Requires `make dev` and a seeded database.
 - `make ledger-check`: validates the requirements ledger (below).
-- `make pre-commit` runs tests, typecheck and the ledger check. It must pass before every commit; CI runs the same.
+- `make pre-commit` runs backend tests, typecheck, frontend tests and the ledger check. It must pass before every commit; CI runs the same.
 
 AI paths are tested with recorded responses, never with live calls in CI. `fixtures/test_documents/` plus its manifest is the evaluation set for document import.
 

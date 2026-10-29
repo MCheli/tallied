@@ -36,9 +36,10 @@ make dev           # backend :8000 (uvicorn --reload) + frontend :5173 (vite)
 make test          # backend unit tests (SQLite, fast)
 make test-e2e      # backend e2e tests (Postgres + seed)
 make typecheck     # vue-tsc --noEmit
+make test-frontend # vitest (frontend/tests/*.spec.ts)
 make tour          # screenshots of every route into artifacts/screens/
 make ledger-check  # validate the requirements ledger
-make pre-commit    # test + typecheck + ledger-check (same as CI)
+make pre-commit    # test + typecheck + test-frontend + ledger-check (same as CI)
 ```
 
 Backend venv: `backend/.venv`. Env: `backend/.env` (prefix `FINANCE_`; see `backend/app/config.py`). Dev login: `claudius@tallied.dev` / `demo123` with `FINANCE_DEV_MODE=true`. API at `/api/v1`, reference at `/api/v1/scalar`.

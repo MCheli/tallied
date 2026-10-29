@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-.PHONY: dev dev-backend dev-frontend test test-e2e test-all seed-test lint build clean db-start pre-commit typecheck setup-db-roles ledger-check tour
+.PHONY: dev dev-backend dev-frontend test test-e2e test-frontend test-all seed-test lint build clean db-start pre-commit typecheck setup-db-roles ledger-check tour
 
 # Development
 dev: dev-backend dev-frontend
@@ -33,8 +33,10 @@ test:
 test-e2e:
 	cd backend && source .venv/bin/activate && pytest tests/test_e2e/ -v -m e2e
 
-test-all: test typecheck
-	cd frontend && npm run test 2>/dev/null || echo "Frontend unit tests not configured yet"
+test-frontend:
+	cd frontend && npx vitest run
+
+test-all: test typecheck test-frontend
 
 # Linting & type checking
 lint:
@@ -52,7 +54,7 @@ tour:
 	node scripts/screenshot_tour.mjs
 
 # Run before committing — catches what CI would catch
-pre-commit: test typecheck ledger-check
+pre-commit: test typecheck test-frontend ledger-check
 
 # Build
 build:
@@ -80,6 +82,7 @@ help:
 	@echo "  make test         Run backend tests (fast, SQLite)"
 	@echo "  make test-e2e     Run E2E tests against PostgreSQL"
 	@echo "  make typecheck    Run frontend TypeScript strict check"
+	@echo "  make test-frontend Run frontend unit tests (vitest)"
 	@echo "  make ledger-check Validate docs/requirements/ledger.yaml"
 	@echo "  make tour         Screenshot every route into artifacts/screens/"
 	@echo "  make pre-commit   Run tests + typecheck + ledger check (always run before pushing)"

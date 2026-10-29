@@ -20,7 +20,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install backend dependencies
         run: |
@@ -51,6 +51,11 @@ jobs:
           cd frontend
           npx vue-tsc --noEmit
 
+      - name: Frontend unit tests
+        run: |
+          cd frontend
+          npx vitest run
+
   migrate:
     name: Migrate an empty database
     runs-on: ubuntu-latest
@@ -76,7 +81,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install backend dependencies
         run: |
