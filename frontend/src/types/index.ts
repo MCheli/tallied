@@ -251,3 +251,74 @@ export interface IncomeHistory {
   w2_records: W2Record[]
   rsu_grants: RSUGrant[]
 }
+
+// ── Settings: connections, email receipts, import history ──
+export interface ImportLogEntry {
+  id: number
+  source: string
+  capture_mode: string | null
+  status: string
+  records_created: number
+  error_message: string | null
+  created_at: string | null
+}
+
+export interface SimpleFinStatus {
+  connected: boolean
+  last_synced_at?: string | null
+  created_at?: string | null
+}
+
+export interface SimpleFinAccountConfig {
+  id: number
+  simplefin_account_id: string
+  account_name: string
+  account_type: string | null
+  display_group: string | null
+  institution: string | null
+  sync_balances: boolean
+  sync_transactions: boolean
+  local_account_id: string | null
+}
+
+export interface SimpleFinAccountType {
+  account_type: string
+  display_group: string
+}
+
+export interface SimpleFinConnectResult {
+  connected: boolean
+  accounts_found: number
+  accounts: { simplefin_account_id: string; account_name: string; institution: string; account_type: string | null }[]
+  warnings: string[]
+}
+
+export interface SimpleFinSyncStatus {
+  job_id: number | null
+  status: 'none' | 'running' | 'succeeded' | 'failed' | string
+  trigger?: string
+  started_at?: string | null
+  finished_at?: string | null
+  balances_synced?: number
+  txn_added?: number
+  txn_updated?: number
+  error?: string | null
+}
+
+export interface ForwardingEmail {
+  id: number
+  email: string
+  is_active: boolean
+  created_at: string | null
+}
+
+export interface EmailReceiptItem {
+  id: number
+  from_email: string
+  subject: string
+  status: string
+  transaction_id: string | null
+  parsed_data: { merchant?: string; amount?: number; date?: string; category?: string } | null
+  error_message: string | null
+  created_at: string | null
+}

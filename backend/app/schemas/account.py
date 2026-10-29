@@ -19,6 +19,7 @@ class AccountUpdate(BaseModel):
     account_type: str | None = None
     display_group: str | None = None
     include_in_nw: bool | None = None
+    is_active: bool | None = None
     notes: str | None = None
 
 

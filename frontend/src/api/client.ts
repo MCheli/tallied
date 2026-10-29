@@ -15,6 +15,14 @@ import type {
   SnapshotResponse,
   Transaction,
   VarianceResponse,
+  ImportLogEntry,
+  SimpleFinStatus,
+  SimpleFinAccountConfig,
+  SimpleFinAccountType,
+  SimpleFinConnectResult,
+  SimpleFinSyncStatus,
+  ForwardingEmail,
+  EmailReceiptItem,
 } from '../types'
 
 const BASE = '/api/v1'
@@ -131,8 +139,34 @@ export const api = {
   getSensitivity: (id: number) => fetchJson<SensitivityResponse>(`/plans/${id}/sensitivity`),
   getVariance: (id: number) => fetchJson<VarianceResponse[]>(`/plans/${id}/variance`),
 
-  // Import
-  getImportLog: () => fetchJson<any[]>('/import/logs'),
+  // Import history
+  getImportLog: () => fetchJson<ImportLogEntry[]>('/import/logs'),
+
+  // SimpleFIN connection
+  simplefin: {
+    status: () => fetchJson<SimpleFinStatus>('/simplefin/status'),
+    accounts: () => fetchJson<SimpleFinAccountConfig[]>('/simplefin/accounts'),
+    accountTypes: () => fetchJson<SimpleFinAccountType[]>('/simplefin/account-types'),
+    connect: (setup_token: string) =>
+      fetchJson<SimpleFinConnectResult>('/simplefin/connect', { method: 'POST', body: JSON.stringify({ setup_token }) }),
+    refreshCredentials: (setup_token: string) =>
+      fetchJson<{ refreshed: boolean }>('/simplefin/refresh-credentials', { method: 'POST', body: JSON.stringify({ setup_token }) }),
+    updateAccount: (id: number, data: { sync_balances?: boolean; sync_transactions?: boolean; account_type?: string }) =>
+      fetchJson<SimpleFinAccountConfig>(`/simplefin/accounts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    sync: () => fetchJson<{ job_id: number | null; status: string; queued?: boolean; detail?: string }>('/simplefin/sync', { method: 'POST' }),
+    syncStatus: () => fetchJson<SimpleFinSyncStatus>('/simplefin/sync/status'),
+    disconnect: () => fetchJson<{ disconnected: boolean }>('/simplefin/disconnect', { method: 'DELETE' }),
+  },
+
+  // Email receipts
+  email: {
+    forwardingAddresses: () => fetchJson<ForwardingEmail[]>('/email-forwarding'),
+    addForwardingAddress: (email: string) =>
+      fetchJson<ForwardingEmail>('/email-forwarding', { method: 'POST', body: JSON.stringify({ email }) }),
+    removeForwardingAddress: (id: number) =>
+      fetchJson<{ status: string }>(`/email-forwarding/${id}`, { method: 'DELETE' }),
+    receipts: (limit = 20) => fetchJson<EmailReceiptItem[]>(`/email-import/receipts?limit=${limit}`),
+  },
 
   // Account management
   createAccount: (data: Record<string, unknown>) =>

@@ -67,7 +67,7 @@ const VIEWPORTS = {
 // a full-page screenshot captures the whole page instead of one viewport.
 const FULLPAGE_CSS = `
   .h-screen { height: auto !important; min-height: 100vh !important; }
-  main.overflow-y-auto { overflow: visible !important; }
+  main.overflow-y-auto { overflow-y: visible !important; overflow-x: hidden !important; min-width: 0 !important; }
 `;
 
 const selected = process.argv.slice(2);
@@ -144,17 +144,30 @@ for (const [vpName, vp] of Object.entries(VIEWPORTS)) {
         log[key].error = `redirected to ${pg.url()}`;
         failures++;
       }
+      // Elements wider than the viewport, except those inside a horizontal scroll
+      // container that itself fits (tables and code may scroll inside their own box).
       log[key].overflow = await pg.evaluate(() => {
         const vw = document.documentElement.clientWidth;
+        const scrollsX = (el) => /auto|scroll/.test(getComputedStyle(el).overflowX);
+        const insideFittingScroller = (el) => {
+          for (let p = el.parentElement; p && p.tagName !== 'MAIN'; p = p.parentElement) {
+            if (scrollsX(p) && p.getBoundingClientRect().right <= vw + 2) return true;
+          }
+          return false;
+        };
         const out = [];
         for (const el of document.querySelectorAll('main *')) {
           const r = el.getBoundingClientRect();
-          if (r.right > vw + 2 && r.width > 0) {
+          if (r.right > vw + 2 && r.width > 0 && !insideFittingScroller(el)) {
             out.push(`${el.tagName.toLowerCase()}.${String(el.className).split(' ').slice(0, 3).join('.')} right=${Math.round(r.right)}`);
             if (out.length >= 5) break;
           }
         }
         return out;
+      });
+      log[key].pageScrollWidth = await pg.evaluate(() => {
+        const m = document.querySelector('main');
+        return { main: m ? m.scrollWidth : null, viewport: document.documentElement.clientWidth };
       });
       await capture(pg, path.join(OUT, name, `${vpName}.png`));
       console.log(`${key}: ok${log[key].overflow.length ? ` (overflow: ${log[key].overflow.length})` : ''}${log[key].consoleErrors.length ? ` (console errors: ${log[key].consoleErrors.length})` : ''}`);

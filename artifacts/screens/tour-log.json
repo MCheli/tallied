@@ -1,158 +1,28 @@
 {
-  "capturedAt": "2026-10-29T12:04:44.152Z",
+  "capturedAt": "2026-10-29T12:38:59.556Z",
   "base": "http://localhost:5173",
   "theme": "light",
   "routes": {
     "login/mobile": {
       "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
         "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
       ],
-      "failedRequests": [
-        "POST http://localhost:5173/api/v1/auth/refresh :: net::ERR_ABORTED",
-        "GET http://localhost:5173/api/v1/auth/me :: net::ERR_ABORTED"
-      ],
+      "failedRequests": [],
       "badResponses": [
-        "401 POST http://localhost:5173/api/v1/auth/refresh",
-        "401 POST http://localhost:5173/api/v1/auth/refresh",
         "401 POST http://localhost:5173/api/v1/auth/refresh"
       ],
       "overflow": []
     },
-    "dashboard/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/"
-    },
-    "guide/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/guide"
-    },
-    "spending/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [
-        "div.flex.items-center.gap-2 right=463",
-        "button.px-3.py-1.5.text-sm right=463",
-        "table.w-full.text-sm right=486",
-        "thead. right=486",
-        "tr.border-b.border-gray-100.dark:border-gray-800 right=486"
-      ],
-      "finalUrl": "http://localhost:5173/spending"
-    },
-    "income/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [
-        "div.flex.items-center.gap-1.5 right=399",
-        "span.text-gray-400 right=399",
-        "table.w-full.text-sm right=590",
-        "thead. right=590",
-        "tr.border-b.border-gray-100.dark:border-gray-800 right=590"
-      ],
-      "finalUrl": "http://localhost:5173/income"
-    },
-    "cash/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [
-        "div.flex.items-center.gap-3 right=422",
-        "button.px-3.py-1.5.text-xs right=422"
-      ],
-      "finalUrl": "http://localhost:5173/cash"
-    },
-    "rsu/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/rsu"
-    },
-    "retirement/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [
-        "table.w-full.text-xs right=486",
-        "thead. right=486",
-        "tr.border-b.border-gray-100.dark:border-gray-800 right=486",
-        "th.text-right.px-3.py-2 right=423",
-        "th.text-right.px-3.py-2 right=486"
-      ],
-      "finalUrl": "http://localhost:5173/retirement"
-    },
-    "property/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/property"
-    },
-    "assets/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/assets"
-    },
-    "planning/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [
-        "div.flex.items-center.gap-3 right=589",
-        "span.text-xs.text-gray-400 right=394",
-        "div.flex.items-center.gap-2 right=589",
-        "label.text-xs.font-medium.text-gray-500 right=459",
-        "select.px-3.py-1.5.text-sm right=589"
-      ],
-      "finalUrl": "http://localhost:5173/planning"
-    },
-    "database/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [
-        "div.flex.gap-1 right=510",
-        "button.px-3.py-1.5.rounded-lg right=440",
-        "button.px-3.py-1.5.rounded-lg right=510",
-        "div.flex.items-center.gap-2 right=528",
-        "span.info-tooltip-wrapper right=528"
-      ],
-      "finalUrl": "http://localhost:5173/database"
-    },
-    "developer/mobile": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/developer"
-    },
     "settings/mobile": {
-      "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 404 (Not Found)"
-      ],
+      "consoleErrors": [],
       "failedRequests": [],
-      "badResponses": [
-        "404 GET http://localhost:5173/api/v1/import/log"
-      ],
-      "overflow": [
-        "button.px-4.py-2.text-sm right=461",
-        "button.px-4.py-2.text-sm right=545",
-        "table.w-full.text-sm right=934",
-        "thead. right=934",
-        "tr.border-b.border-gray-100.dark:border-gray-800 right=934"
-      ],
-      "finalUrl": "http://localhost:5173/settings"
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/settings",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
     },
     "login/desktop": {
       "consoleErrors": [
@@ -166,100 +36,16 @@
       ],
       "overflow": []
     },
-    "dashboard/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/"
-    },
-    "guide/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/guide"
-    },
-    "spending/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/spending"
-    },
-    "income/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/income"
-    },
-    "cash/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/cash"
-    },
-    "rsu/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/rsu"
-    },
-    "retirement/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/retirement"
-    },
-    "property/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/property"
-    },
-    "assets/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/assets"
-    },
-    "planning/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/planning"
-    },
-    "database/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/database"
-    },
-    "developer/desktop": {
-      "consoleErrors": [],
-      "failedRequests": [],
-      "badResponses": [],
-      "overflow": [],
-      "finalUrl": "http://localhost:5173/developer"
-    },
     "settings/desktop": {
-      "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 404 (Not Found)"
-      ],
+      "consoleErrors": [],
       "failedRequests": [],
-      "badResponses": [
-        "404 GET http://localhost:5173/api/v1/import/log"
-      ],
+      "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/settings"
+      "finalUrl": "http://localhost:5173/settings",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
     }
   }
 }
