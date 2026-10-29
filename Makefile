@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-.PHONY: dev dev-backend dev-frontend test test-e2e test-all seed-test lint build clean db-start db-migrate pre-commit typecheck setup-db-roles
+.PHONY: dev dev-backend dev-frontend test test-e2e test-all seed-test lint build clean db-start db-migrate pre-commit typecheck setup-db-roles ledger-check tour
 
 # Development
 dev: dev-backend dev-frontend
@@ -46,8 +46,16 @@ lint:
 typecheck:
 	cd frontend && npx vue-tsc --noEmit
 
+# Requirements ledger gate (docs/requirements/ledger.yaml)
+ledger-check:
+	cd backend && source .venv/bin/activate && python ../scripts/ledger_check.py
+
+# Screenshot tour: every route at phone and desktop width into artifacts/screens/ (needs make dev + seeded DB)
+tour:
+	node scripts/screenshot_tour.mjs
+
 # Run before committing — catches what CI would catch
-pre-commit: test typecheck
+pre-commit: test typecheck ledger-check
 
 # Build
 build:
@@ -76,7 +84,9 @@ help:
 	@echo "  make test         Run backend tests (fast, SQLite)"
 	@echo "  make test-e2e     Run E2E tests against PostgreSQL"
 	@echo "  make typecheck    Run frontend TypeScript strict check"
-	@echo "  make pre-commit   Run tests + typecheck (always run before pushing)"
+	@echo "  make ledger-check Validate docs/requirements/ledger.yaml"
+	@echo "  make tour         Screenshot every route into artifacts/screens/"
+	@echo "  make pre-commit   Run tests + typecheck + ledger check (always run before pushing)"
 	@echo "  make lint         Run linters"
 	@echo "  make build        Build Docker image"
 	@echo "  make clean        Remove build artifacts"

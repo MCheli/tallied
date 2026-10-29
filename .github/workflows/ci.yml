@@ -33,6 +33,9 @@ jobs:
           cd backend
           pytest tests/ -v
 
+      - name: Check requirements ledger
+        run: python scripts/ledger_check.py
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
