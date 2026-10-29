@@ -56,12 +56,37 @@ def setup_database():
         Base.metadata.drop_all(bind=test_engine)
 
 
+# Modules that hold their own reference to SessionLocal (imported at module load). The
+# unit suite must never reach the real database, so each one is pointed at the test
+# connection for the duration of a test.
+_SESSIONLOCAL_OWNERS = (
+    "app.dependencies", "app.services.audit_service", "app.api.email_import",
+    "app.services.sync_scheduler", "app.services.tenant_service", "app.middleware.usage_logger", "app.database",
+)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ci_like_settings():
+    """Unit tests behave the same with or without a local backend/.env."""
+    from app.config import settings
+
+    settings.dev_mode = True
+    settings.secret_key = "unit-test-secret-key-not-for-production"
+    settings.credential_key = ""
+    settings.anthropic_api_key = ""
+    settings.email_webhook_secret = ""
+    yield
+
+
 @pytest.fixture(autouse=True)
 def db_session():
     """Provide a clean database session for each test."""
+    import importlib
+
     connection = test_engine.connect()
     transaction = connection.begin()
     session = TestSession(bind=connection)
+    bound_factory = sessionmaker(bind=connection)
 
     # Override dependencies on both app instances (main, v1)
     for a in (app, v1):
@@ -69,8 +94,17 @@ def db_session():
         a.dependency_overrides[get_tenant_db] = lambda: session
         a.dependency_overrides[get_tenant_context] = lambda: MOCK_TENANT_CTX
 
+    patched = []
+    for name in _SESSIONLOCAL_OWNERS:
+        mod = importlib.import_module(name)
+        if hasattr(mod, "SessionLocal"):
+            patched.append((mod, mod.SessionLocal))
+            mod.SessionLocal = bound_factory
+
     yield session
 
+    for mod, original in patched:
+        mod.SessionLocal = original
     session.close()
     transaction.rollback()
     connection.close()
