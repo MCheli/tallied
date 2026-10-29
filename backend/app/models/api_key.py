@@ -1,7 +1,6 @@
 """API key model for programmatic access."""
 import secrets
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,8 +21,8 @@ class ApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String, unique=True, nullable=False)  # SHA-256 hash of full key
     permissions: Mapped[str] = mapped_column(String, default="read")  # read, write, admin
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_used: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
+    last_used: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now())
 
     @staticmethod
     def generate_key() -> str:
@@ -39,5 +38,6 @@ class ApiKey(Base):
         """
         import hashlib
         import hmac
+
         from app.config import settings
         return hmac.new(settings.api_key_pepper.encode(), key.encode(), hashlib.sha256).hexdigest()

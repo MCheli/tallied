@@ -1,6 +1,5 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
 
 from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -18,9 +17,9 @@ class BalanceSnapshot(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     account_id: Mapped[str] = mapped_column(String, ForeignKey("accounts.id"), nullable=False)
     snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
-    balance: Mapped[Optional[Decimal]] = mapped_column(Numeric(19, 4))
-    source: Mapped[Optional[str]] = mapped_column(String)
-    created_at: Mapped[Optional[datetime]] = mapped_column(
+    balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    source: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime | None] = mapped_column(
         DateTime, server_default=func.now()
     )
 

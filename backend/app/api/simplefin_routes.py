@@ -7,23 +7,25 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_tenant_db, get_tenant_context, require_permission, TenantContext
+from app.dependencies import TenantContext, get_tenant_context, get_tenant_db, require_permission
 from app.models.simplefin_link import SimpleFinAccountConfig, SimpleFinLink
 from app.models.sync_job import SyncJob
 from app.services.crypto import encrypt_secret
 from app.services.providers import get_provider
-from app.services.providers.base import KIND_TO_TYPE_AND_GROUP, ProviderError, TYPE_TO_GROUP
+from app.services.providers.base import KIND_TO_TYPE_AND_GROUP, TYPE_TO_GROUP, ProviderError
 from app.services.providers.simplefin import SimpleFinProvider
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/simplefin", tags=["simplefin"])
+
+# Keep references to in-process sync tasks so the event loop cannot drop them mid-run.
+_background_syncs: set[asyncio.Task] = set()
 
 ACCOUNT_TYPES = sorted(TYPE_TO_GROUP)
 
@@ -41,9 +43,9 @@ class ConnectRequest(BaseModel):
 
 
 class AccountConfigUpdate(BaseModel):
-    sync_balances: Optional[bool] = None
-    sync_transactions: Optional[bool] = None
-    account_type: Optional[str] = None
+    sync_balances: bool | None = None
+    sync_transactions: bool | None = None
+    account_type: str | None = None
 
 
 def _serialize_config(c: SimpleFinAccountConfig) -> dict:
@@ -218,7 +220,9 @@ async def sync_simplefin(
             except Exception:
                 logger.exception("Failed to NOTIFY scheduler; claim_orphan_jobs will pick it up")
         else:
-            asyncio.create_task(run_sync_with_job(ctx.tenant_schema, job_id, "simplefin"))
+            task = asyncio.create_task(run_sync_with_job(ctx.tenant_schema, job_id, "simplefin"))
+            _background_syncs.add(task)
+            task.add_done_callback(_background_syncs.discard)
     return {"job_id": job_id, "status": "running", "queued": created}
 
 

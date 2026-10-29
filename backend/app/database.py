@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event, func, text
+from sqlalchemy import create_engine, event, func
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
@@ -23,7 +23,7 @@ def _reset_search_path(dbapi_conn, connection_record, connection_proxy):
     cursor.close()
 
 
-def get_db() -> Generator[Session, None, None]:
+def get_db() -> Generator[Session]:
     """Session for public-schema queries (auth, tenants, api keys)."""
     db = SessionLocal()
     try:

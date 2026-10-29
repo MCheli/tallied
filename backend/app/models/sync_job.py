@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import DateTime, Index, Integer, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -39,9 +38,9 @@ class SyncJob(Base):
     started_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )
-    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
     balances_synced: Mapped[int] = mapped_column(Integer, default=0)
     txn_added: Mapped[int] = mapped_column(Integer, default=0)
     txn_updated: Mapped[int] = mapped_column(Integer, default=0)
-    error: Mapped[Optional[str]] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
 

@@ -1,7 +1,6 @@
 """Asset value history — historical and projected values for vehicles."""
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -18,4 +17,4 @@ class AssetValueHistory(Base):
     value: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     source: Mapped[str] = mapped_column(String, nullable=False)  # "ai_estimate", "purchase", "manual"
     is_projected: Mapped[bool] = mapped_column(Boolean, default=False)  # True for future projections
-    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now())

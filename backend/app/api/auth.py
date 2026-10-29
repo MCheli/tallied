@@ -6,23 +6,22 @@ The rest of the app resolves tenant from the JWT via get_tenant_context dependen
 """
 import hashlib
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
+import jwt
 from authlib.integrations.starlette_client import OAuth
-from fastapi import APIRouter, Depends, HTTPException, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
+from jwt import PyJWTError as JWTError
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-import jwt
-from jwt import PyJWTError as JWTError
 
 from app.config import settings
 from app.database import get_db
-from app.models.user import User
 from app.models.tenant import Tenant, TenantMembership
-from app.services.tenant_service import create_tenant_schema
+from app.models.user import User
 from app.services.audit_service import log_event
+from app.services.tenant_service import create_tenant_schema
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -172,7 +171,7 @@ def _login_response(user: User, tenant: Tenant, tenants: list[Tenant], response:
     }
 
 
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User | None:
     """Extract current user from JWT cookie. Returns None if not authenticated."""
     token = request.cookies.get("tallied_token")
     if not token:
@@ -215,7 +214,6 @@ async def google_callback(request: Request, response: Response, db: Session = De
 
     # Find or create user
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-    is_new_user = user is None
     if not user:
         user = User(
             email=email,
@@ -253,7 +251,7 @@ async def google_callback(request: Request, response: Response, db: Session = De
         return redirect
 
     # Active users get full tenant resolution
-    tenant, tenants = _resolve_tenant(user, db)
+    tenant, _tenants = _resolve_tenant(user, db)
     db.commit()
 
     log_event(
@@ -489,7 +487,7 @@ def seed_users(db: Session = Depends(get_db)):
     return {"created": created}
 
 
-def _serialize_user(user: User, tenant: Tenant = None, tenants: list = None) -> dict:
+def _serialize_user(user: User, tenant: Tenant = None, tenants: list | None = None) -> dict:
     result = {
         "id": user.id,
         "email": user.email,

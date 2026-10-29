@@ -1,0 +1,26 @@
+# ruff configuration for the backend. `make lint` runs `ruff check` and fails on any finding.
+line-length = 120
+target-version = "py313"
+extend-exclude = ["alembic/versions", ".venv"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "C4", "SIM", "RUF"]
+ignore = [
+  "E501",   # line length: handled by formatting, long strings in prompts are fine
+  "B008",   # FastAPI's Depends()/Query() in defaults is the framework idiom
+  "B904",   # raise ... from inside except: not required for HTTPException conversions
+  "SIM108", # ternaries are not always clearer
+  "SIM117", # nested with statements read fine
+  "UP017",  # datetime.timezone.utc is explicit
+  "RUF012", # mutable class attributes on pydantic/sqlalchemy models are intended
+  "E741",   # single-letter names in short comprehensions
+  "B905",   # zip() without strict=: the pairs here are same-length by construction
+  "SIM105", # try/except/pass with a comment is clearer than contextlib.suppress
+  "RUF001", "RUF002", "RUF003",  # unicode punctuation in strings and comments
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["E402", "F401", "F811", "SIM", "B", "RUF"]
+"alembic/env.py" = ["E402"]
+"app/main.py" = ["E402"]
+"app/models/__init__.py" = ["F401"]  # re-exports register models on Base.metadata

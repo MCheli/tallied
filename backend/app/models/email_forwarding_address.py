@@ -1,6 +1,5 @@
 """Email forwarding address model — maps personal emails to users/tenants."""
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -16,4 +15,4 @@ class EmailForwardingAddress(Base):
     tenant_id: Mapped[int] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=False)
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now())

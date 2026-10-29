@@ -3,43 +3,43 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func as sa_func
+from sqlalchemy import func as sa_func
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_tenant_db
+from app.engine.forecast import generate_forecast
+from app.engine.projection import ProjectionAssumptions, run_projection
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 from app.models.income import W2Record
-from app.models.property import Mortgage
-from app.models.investment import VestEvent, RSUGrant
+from app.models.investment import RSUGrant, VestEvent
 from app.models.planning import (
-    PlanVersion,
-    PlanAssumption,
-    PlanProjection,
     ActualSnapshot,
     Forecast,
+    PlanAssumption,
+    PlanVersion,
 )
-from app.engine.forecast import generate_forecast, ForecastRow
+from app.models.property import Mortgage
 from app.schemas.planning import (
-    PlanCreate,
-    PlanUpdate,
-    PlanResponse,
-    PlanListItem,
-    AssumptionInput,
     ActualSnapshotCreate,
     ActualSnapshotResponse,
+    AssumptionInput,
     PlanCompareResponse,
-    SensitivityResponse,
+    PlanCreate,
+    PlanListItem,
+    PlanResponse,
+    PlanUpdate,
     SensitivityItem,
-    VarianceResponse,
+    SensitivityResponse,
     VarianceMetric,
+    VarianceResponse,
 )
 from app.services.planning_service import (
+    build_projection_input,
     create_plan,
     update_plan,
-    build_projection_input,
 )
-from app.engine.projection import run_projection, ProjectionAssumptions
 
 router = APIRouter(prefix="/plans", tags=["planning"])
 

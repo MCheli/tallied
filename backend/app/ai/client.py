@@ -101,7 +101,7 @@ def _check_stop(response: Any, purpose: str) -> None:
         raise AIError(f"The {purpose} response was cut off; the document may be too large.", status_code=502)
 
 
-def extract(
+def extract[T: BaseModel](
     schema: type[T],
     *,
     content: str | list[dict[str, Any]],
@@ -151,7 +151,7 @@ def chat(
     model = model_for(tier)
     client = get_client()
     started = time.monotonic()
-    kwargs: dict[str, Any] = dict(model=model, max_tokens=max_tokens, system=system, messages=messages)
+    kwargs: dict[str, Any] = {"model": model, "max_tokens": max_tokens, "system": system, "messages": messages}
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = {"type": "auto"}

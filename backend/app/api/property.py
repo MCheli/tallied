@@ -9,7 +9,6 @@ import logging
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -18,9 +17,9 @@ from sqlalchemy.orm import Session
 
 from app.ai import AIError, ai_available
 from app.dependencies import get_tenant_db
+from app.models.account import Account
 from app.models.property import Mortgage, PropertyValuation
 from app.models.property_value_history import PropertyValueHistory
-from app.models.account import Account
 from app.services.balances import record_balance
 from app.services.property_valuation import get_property_estimate
 
@@ -213,7 +212,7 @@ def amortization_schedule(db: Session = Depends(get_tenant_db)):
 class ValuationInput(BaseModel):
     value: float
     source: str = "Manual"
-    valuation_date: Optional[str] = None
+    valuation_date: str | None = None
 
 
 @router.post("/valuation")

@@ -4,18 +4,16 @@ RSU (Restricted Stock Unit) endpoints.
 Provides grant overview, vest schedule, tax lot analysis, and summary data
 for the dedicated RSU page and integration with other views.
 """
-from datetime import date, timedelta
-from decimal import Decimal
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, and_
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pydantic import BaseModel
-from typing import Optional
-
 from app.config import settings
-from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
-from app.models.investment import RSUGrant, VestEvent, StockPrice
+from app.dependencies import TenantContext, get_tenant_context, get_tenant_db
+from app.models.investment import RSUGrant, VestEvent
 
 router = APIRouter(prefix="/rsu", tags=["rsu"])
 
@@ -98,23 +96,23 @@ def list_grants(db: Session = Depends(get_tenant_db)):
 
 
 class RSUGrantCreate(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     company: str
-    symbol: Optional[str] = None
-    grant_date: Optional[str] = None
-    total_shares: Optional[int] = None
-    vested_shares: Optional[int] = None
-    unvested_shares: Optional[int] = None
-    sellable_shares: Optional[int] = None
+    symbol: str | None = None
+    grant_date: str | None = None
+    total_shares: int | None = None
+    vested_shares: int | None = None
+    unvested_shares: int | None = None
+    sellable_shares: int | None = None
 
 
 class RSUGrantUpdate(BaseModel):
-    company: Optional[str] = None
-    symbol: Optional[str] = None
-    total_shares: Optional[int] = None
-    vested_shares: Optional[int] = None
-    unvested_shares: Optional[int] = None
-    sellable_shares: Optional[int] = None
+    company: str | None = None
+    symbol: str | None = None
+    total_shares: int | None = None
+    vested_shares: int | None = None
+    unvested_shares: int | None = None
+    sellable_shares: int | None = None
 
 
 @router.get("/grants/{grant_id}")

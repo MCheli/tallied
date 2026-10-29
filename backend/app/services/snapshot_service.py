@@ -4,9 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.income import W2Record
-from app.schemas.snapshot import SnapshotResponse, LiquidityLayer, LayerAccount
+from app.schemas.snapshot import LayerAccount, LiquidityLayer, SnapshotResponse
 from app.services.balances import latest_balances, normalize_group
-
 
 # Map display_group -> liquidity layer ordering
 LAYER_ORDER = {

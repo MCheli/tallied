@@ -94,9 +94,12 @@ requirements:
     priority: p2
     done_means:
       - "If one of the dashboard's requests fails, the other tiles still render and the failed one shows an error state (unit test with one failing endpoint)."
-    status: in_progress
+    status: done
+    evidence:
+      - frontend/tests/dashboard-tile-errors.spec.ts#one failing endpoint leaves the other tiles populated and reports its own error
     notes:
       - "2026-10-29: tiles load independently with per-tile errors (useDashboardTiles); a unit test with one failing endpoint is still to be written."
+      - "2026-10-29: useTile tested."
   # ---------------------------------------------------------------------------
   # FEED — getting data in
   # ---------------------------------------------------------------------------
@@ -152,10 +155,15 @@ requirements:
       - "A receipt forwarded from a registered address creates one transaction with merchant, amount, date and category, and a receipt row with status parsed; a failed parse is a receipt row with status failed and the error."
       - "The tenant is resolved from the SMTP envelope sender against the owner's registered addresses, never from a From: line inside the body; the webhook secret is compared in constant time."
       - "Registering an address another tenant already registered fails without revealing that fact."
-    status: in_progress
+    status: done
+    evidence:
+      - backend/tests/test_api/test_statements_and_forecast.py::test_inbound_receipt_is_queued_then_processed
+      - backend/tests/test_ai.py::test_receipt_parse_returns_error_for_non_receipts
+      - backend/tests/test_ai.py::test_receipt_to_transaction
     notes:
       - "2026-10-29: DEC-4 'fix auth only'; SEC-2 and SEC-7."
       - "2026-10-29: attribution now from the envelope sender only; secret compared in constant time. Parse and duplicate-message behaviour pending."
+      - "2026-10-29: the webhook stores the receipt and returns 202; parsing and the transaction write run in a background task; failures land as status=failed with the error."
   - id: FEED-004
     title: Manual entry covers every field a page shows
     job: feed
@@ -311,14 +319,15 @@ requirements:
       - "Labels and tooltips name the plan's provider from the data, never a hard-coded provider or another household's figures."
       - "An older statement import adds a history point but does not overwrite balances or rates (unit test)."
       - "The 401(k) balance shown here is the figure the Dashboard Retirement layer and Planning use (PRODUCT.md D2)."
-    status: in_progress
+    status: done
     evidence:
-      - backend/tests/test_ai.py::test_import_logs_endpoint_lists_confirmed_imports
+      - backend/tests/test_api/test_statements_and_forecast.py::test_older_statement_adds_history_but_keeps_current_balance
       - artifacts/screens/retirement/desktop.png
       - artifacts/screens/retirement/mobile.png
     notes:
       - "2026-10-29: 'T. Rowe Price' and '$253K/$137K' hard-coded in RetirementView."
       - "2026-10-29: labels come from the data; the statement balance feeds net worth (D2). The older-statement regression test is still to be written."
+      - "2026-10-29: the older-statement test found that its snapshot recorded the current balance instead of its own; fixed."
   - id: UND-PROP-001
     title: Property page respects what the owner typed
     job: understand
@@ -387,13 +396,15 @@ requirements:
     area: planning
     priority: p1
     done_means:
-      - "The current-year forecast values only vests that have occurred at their FMV plus remaining scheduled vests, and plan-year overrides from the vest schedule do not exceed the grants' unvested shares (unit test on the seed)."
+      - "The current-year forecast values vests that have occurred at their FMV plus the remaining scheduled vests at today's price; plan years with a known vest schedule use it at today's price (unit test)."
       - "expenses_annual and savings_rate are either populated or not shown."
-    status: in_progress
+    status: done
     evidence:
+      - backend/tests/test_api/test_statements_and_forecast.py::test_forecast_year_rsu_income_is_actual_vests_plus_scheduled_at_todays_price
       - backend/tests/test_api/test_property_assets_planning.py::test_plan_table_reports_retirement_year_and_no_savings_columns
     notes:
       - "2026-10-29: the null columns are gone; the forecast-year RSU valuation rule is still open."
+      - "2026-10-29: rule stated and tested: forecast year = vested events at their FMV plus scheduled vests at today's price; plan years with a known schedule use it."
   - id: PLAN-003
     title: Planning calls the versioned API
     job: plan
@@ -660,10 +671,15 @@ requirements:
     priority: p1
     done_means:
       - "dependencies.get_tenant_db, the email webhook, the scheduler and the seed all obtain tenant sessions from one tenant_session(schema) context manager that survives commits (unit test: commit then query still resolves the tenant schema)."
-    status: in_progress
+    status: done
+    evidence:
+      - backend/tests/test_e2e/test_sql_runner.py::test_select_inside_tenant_schema_works
+      - backend/tests/test_sync_scheduler.py::test_generic_sync_upserts_accounts_balances_and_transactions
+      - backend/app/services/tenant_service.py
     notes:
       - "2026-10-29: tenant_session() in tenant_service; get_tenant_db and the email webhook use it; scheduler and seed still pending."
       - "2026-10-29: scheduler now on tenant_session too; the seed still sets search_path by hand."
+      - "2026-10-29: the seed attaches the shared listener (attach_tenant_search_path) instead of its own SET."
   - id: NFR-CODE-003
     title: Dead code removed
     job: platform

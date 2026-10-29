@@ -1,6 +1,5 @@
 """Database credential model for direct Postgres access."""
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -20,5 +19,5 @@ class DbCredential(Base):
     access_level: Mapped[str] = mapped_column(String, default="read")  # read, readwrite
     name: Mapped[str] = mapped_column(String, nullable=False)  # user-chosen label
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now())
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

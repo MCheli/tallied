@@ -1,6 +1,5 @@
 """Audit logging service — records security-relevant events."""
 import json
-from typing import Optional
 
 from app.database import SessionLocal
 from app.models.audit_log import AuditLog
@@ -9,10 +8,10 @@ from app.models.audit_log import AuditLog
 def log_event(
     action: str,
     resource_type: str,
-    resource_id: Optional[str] = None,
-    user_id: Optional[int] = None,
-    details: Optional[dict] = None,
-    ip_address: Optional[str] = None,
+    resource_id: str | None = None,
+    user_id: int | None = None,
+    details: dict | None = None,
+    ip_address: str | None = None,
 ):
     """Record an audit event.
 

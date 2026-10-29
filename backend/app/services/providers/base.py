@@ -28,7 +28,7 @@ KIND_TO_TYPE_AND_GROUP: dict[str, tuple[str, str]] = {
     "other": ("cash", "Cash"),
 }
 
-TYPE_TO_GROUP: dict[str, str] = {t: g for t, g in KIND_TO_TYPE_AND_GROUP.values()}
+TYPE_TO_GROUP: dict[str, str] = dict(KIND_TO_TYPE_AND_GROUP.values())
 
 
 class ProviderError(Exception):

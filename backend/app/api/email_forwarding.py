@@ -4,8 +4,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_tenant_context, TenantContext
 from app.database import get_db
+from app.dependencies import TenantContext, get_tenant_context
 from app.models.email_forwarding_address import EmailForwardingAddress
 
 router = APIRouter(prefix="/email-forwarding", tags=["email-import"])

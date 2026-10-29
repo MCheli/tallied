@@ -8,19 +8,19 @@ Usage:
     python scripts/generate_test_documents.py
 """
 from pathlib import Path
-from datetime import date, datetime
-from decimal import Decimal
-
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
-from reportlab.lib.colors import (
-    HexColor, black, white, grey, lightgrey, darkgrey,
-)
-from reportlab.pdfgen import canvas
-from reportlab.platypus import Table, TableStyle
 
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from reportlab.lib.colors import (
+    HexColor,
+    black,
+    grey,
+    lightgrey,
+    white,
+)
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
 
 OUTPUT_DIR = Path(__file__).parent.parent / "fixtures" / "test_documents"
 
@@ -318,7 +318,7 @@ def _draw_footer(c, institution="", page=1):
     c.setFont("Helvetica", 7)
     c.setFillColor(grey)
     c.drawString(0.75 * inch, 0.7 * inch,
-                 f"This statement is provided for informational purposes only. Please retain for your records.")
+                 "This statement is provided for informational purposes only. Please retain for your records.")
     c.drawString(0.75 * inch, 0.55 * inch,
                  f"Questions? Contact {institution or 'your financial institution'} customer service.")
     c.drawRightString(7.75 * inch, 0.55 * inch, f"Page {page}")
@@ -376,8 +376,8 @@ def generate_w2_standard():
 
     # Employer block (top-left)
     y = 9.8 * inch
-    bw = 3.5 * inch  # box width
-    bh = 0.5 * inch
+    3.5 * inch  # box width
+    0.5 * inch
 
     # a - Employee's SSN
     _draw_w2_box(c, 4.25 * inch, y, 3.5 * inch, 0.4 * inch, "a", PERSONA["ssn_masked"], "Employee's social security number")
@@ -608,7 +608,7 @@ def generate_w2_multiple_states():
     c.setFont("Helvetica-Bold", 8)
     c.drawString(0.75 * inch, y, "Box 15")
     c.setFont("Helvetica", 8)
-    c.drawString(1.5 * inch, y, f"State: CA    Employer State ID: 91-1234567")
+    c.drawString(1.5 * inch, y, "State: CA    Employer State ID: 91-1234567")
     y -= 16
     c.setFont("Helvetica-Bold", 8)
     c.drawString(0.75 * inch, y, "Box 16")
@@ -718,9 +718,9 @@ def generate_paystub_adp():
     c.drawString(0.8 * inch, y - 0.15 * inch, "Pay Date: 12/19/2025")
     c.drawString(2.5 * inch, y - 0.15 * inch, "Period: 12/07/2025 - 12/20/2025")
     c.drawString(5 * inch, y - 0.15 * inch, "Pay Frequency: Bi-Weekly")
-    c.drawString(0.8 * inch, y - 0.35 * inch, f"Employee ID: E-482910")
-    c.drawString(2.5 * inch, y - 0.35 * inch, f"Department: Cloud & AI")
-    c.drawString(5 * inch, y - 0.35 * inch, f"Federal Filing Status: Single")
+    c.drawString(0.8 * inch, y - 0.35 * inch, "Employee ID: E-482910")
+    c.drawString(2.5 * inch, y - 0.35 * inch, "Department: Cloud & AI")
+    c.drawString(5 * inch, y - 0.35 * inch, "Federal Filing Status: Single")
     y -= 0.7 * inch
 
     # EARNINGS table
@@ -829,9 +829,9 @@ def generate_paystub_workday():
     c.setFont("Helvetica-Bold", 10)
     c.drawString(0.9 * inch, y - 0.15 * inch, PERSONA["name"])
     c.setFont("Helvetica", 8)
-    c.drawString(0.9 * inch, y - 0.3 * inch, f"Employee ID: E-482910  |  Department: Cloud & AI  |  Location: Springfield, MA")
-    c.drawString(0.9 * inch, y - 0.45 * inch, f"Pay Group: Bi-Weekly  |  Pay Date: December 19, 2025  |  Period End: December 20, 2025")
-    c.drawString(0.9 * inch, y - 0.6 * inch, f"Manager: Jane Smith  |  Position: Senior Software Engineer (Level 63)")
+    c.drawString(0.9 * inch, y - 0.3 * inch, "Employee ID: E-482910  |  Department: Cloud & AI  |  Location: Springfield, MA")
+    c.drawString(0.9 * inch, y - 0.45 * inch, "Pay Group: Bi-Weekly  |  Pay Date: December 19, 2025  |  Period End: December 20, 2025")
+    c.drawString(0.9 * inch, y - 0.6 * inch, "Manager: Jane Smith  |  Position: Senior Software Engineer (Level 63)")
     y -= 1.0 * inch
 
     # Summary boxes at top
@@ -1012,7 +1012,7 @@ def generate_401k_fidelity():
     c.drawString(0.75 * inch, y - 12, f"Participant: {PERSONA['name']}")
     c.drawString(0.75 * inch, y - 24, f"SSN: {PERSONA['ssn_masked']}")
     c.drawString(4.5 * inch, y, f"Statement Period: {r['statement_start']} to {r['statement_end']}")
-    c.drawString(4.5 * inch, y - 12, f"Account Number: Z12-345678")
+    c.drawString(4.5 * inch, y - 12, "Account Number: Z12-345678")
     y -= 45
 
     y = _generate_401k_common(c, r, y, fid_green)
@@ -1425,10 +1425,10 @@ def generate_mortgage_chase():
     _draw_box(c, 0.75 * inch, y - 0.6 * inch, 6.75 * inch, 0.6 * inch, fill=HexColor("#F0F6FC"), stroke=HexColor("#117ACA"))
     c.setFont("Helvetica-Bold", 9)
     c.drawString(0.9 * inch, y - 0.15 * inch, f"Account Number: {m['account_number']}")
-    c.drawString(4 * inch, y - 0.15 * inch, f"Statement Date: 03/01/2026")
+    c.drawString(4 * inch, y - 0.15 * inch, "Statement Date: 03/01/2026")
     c.setFont("Helvetica", 8)
     c.drawString(0.9 * inch, y - 0.3 * inch, f"Borrower: {PERSONA['name']}")
-    c.drawString(4 * inch, y - 0.3 * inch, f"Payment Due Date: 04/01/2026")
+    c.drawString(4 * inch, y - 0.3 * inch, "Payment Due Date: 04/01/2026")
     c.drawString(0.9 * inch, y - 0.45 * inch, f"Property: {m['property_address']}")
     y -= 0.8 * inch
 
@@ -1500,7 +1500,7 @@ def generate_mortgage_chase():
         ("02/01/2026", "Payment Received - Thank You", "", _fmt(m["monthly_payment"])),
         ("01/01/2026", "Payment Received - Thank You", "", _fmt(m["monthly_payment"])),
     ]
-    for dt, desc, debit, credit in activity:
+    for dt, desc, _debit, credit in activity:
         c.drawString(0.75 * inch, y, dt)
         c.drawString(2 * inch, y, desc)
         c.drawRightString(7.5 * inch, y, credit)
@@ -1532,9 +1532,9 @@ def generate_mortgage_wells_fargo():
     c.drawString(0.75 * inch, y, f"Loan Number: {m['account_number']}")
     c.drawString(0.75 * inch, y - 14, f"Borrower: {PERSONA['name']}")
     c.drawString(0.75 * inch, y - 28, f"Property Address: {m['property_address']}")
-    c.drawString(4.5 * inch, y, f"Statement Date: March 1, 2026")
+    c.drawString(4.5 * inch, y, "Statement Date: March 1, 2026")
     c.drawString(4.5 * inch, y - 14, f"Amount Due: {_fmt(m['monthly_payment'])}")
-    c.drawString(4.5 * inch, y - 28, f"Due Date: April 1, 2026")
+    c.drawString(4.5 * inch, y - 28, "Due Date: April 1, 2026")
     y -= 50
 
     # Loan details
@@ -1634,14 +1634,14 @@ def generate_mortgage_refi():
     c.setFont("Helvetica", 8)
 
     # Transaction info
-    c.drawString(0.75 * inch, y, f"Date Issued: 01/15/2026")
-    c.drawString(4.5 * inch, y, f"Closing Date: 01/30/2026")
+    c.drawString(0.75 * inch, y, "Date Issued: 01/15/2026")
+    c.drawString(4.5 * inch, y, "Closing Date: 01/30/2026")
     y -= 14
     c.drawString(0.75 * inch, y, f"Borrower: {PERSONA['name']}")
     c.drawString(4.5 * inch, y, f"Property: {MORTGAGE['property_address']}")
     y -= 14
-    c.drawString(0.75 * inch, y, f"Lender: First National Refinance Corp")
-    c.drawString(4.5 * inch, y, f"Loan Purpose: Refinance")
+    c.drawString(0.75 * inch, y, "Lender: First National Refinance Corp")
+    c.drawString(4.5 * inch, y, "Loan Purpose: Refinance")
     y -= 30
 
     # Loan Terms
@@ -1711,11 +1711,11 @@ def generate_property_tax_bill():
 
     y = 10.0 * inch
     c.setFont("Helvetica", 9)
-    c.drawString(0.75 * inch, y, f"Bill Number: T-2026-045832")
-    c.drawString(4.5 * inch, y, f"Due Date: 02/01/2026")
+    c.drawString(0.75 * inch, y, "Bill Number: T-2026-045832")
+    c.drawString(4.5 * inch, y, "Due Date: 02/01/2026")
     y -= 14
     c.drawString(0.75 * inch, y, f"Owner: {PERSONA['name']}")
-    c.drawString(4.5 * inch, y, f"Map-Lot: 042-0128-0000")
+    c.drawString(4.5 * inch, y, "Map-Lot: 042-0128-0000")
     y -= 14
     c.drawString(0.75 * inch, y, f"Property: {MORTGAGE['property_address']}")
     y -= 30
@@ -2033,11 +2033,11 @@ def generate_rsu_grant_letter():
 
     # Letter content
     c.setFont("Helvetica", 10)
-    c.drawString(0.75 * inch, y, f"Date: May 15, 2024")
+    c.drawString(0.75 * inch, y, "Date: May 15, 2024")
     y -= 20
     c.drawString(0.75 * inch, y, f"To: {PERSONA['first']} {PERSONA['last']}")
-    c.drawString(0.75 * inch, y - 14, f"Employee ID: E-482910")
-    c.drawString(0.75 * inch, y - 28, f"Department: Cloud & AI")
+    c.drawString(0.75 * inch, y - 14, "Employee ID: E-482910")
+    c.drawString(0.75 * inch, y - 28, "Department: Cloud & AI")
     y -= 55
 
     c.setFont("Helvetica", 9)

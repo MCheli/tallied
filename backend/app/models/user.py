@@ -1,6 +1,5 @@
 """User model for authentication."""
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,5 +18,5 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String, default="active")  # "active", "pending_approval", "suspended"
-    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
-    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now())
+    last_login: Mapped[datetime | None] = mapped_column(DateTime)

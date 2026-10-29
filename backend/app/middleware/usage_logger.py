@@ -38,12 +38,13 @@ class UsageLoggerMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _record(request: Request, response: Response, latency_ms: int) -> None:
-        from app.models.api_usage import ApiUsageLog
-        from app.models.api_key import ApiKey
-        from app.dependencies import ALGORITHM
-        from app.config import settings
         import jwt
         from jwt import PyJWTError as JWTError
+
+        from app.config import settings
+        from app.dependencies import ALGORITHM
+        from app.models.api_key import ApiKey
+        from app.models.api_usage import ApiUsageLog
 
         user_id: int | None = None
         tenant_id: int | None = None

@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -12,12 +11,12 @@ class ImportLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source: Mapped[str] = mapped_column(String, nullable=False)
-    capture_mode: Mapped[Optional[str]] = mapped_column(String)
+    capture_mode: Mapped[str | None] = mapped_column(String)
     status: Mapped[str] = mapped_column(String, default="received")
     records_created: Mapped[int] = mapped_column(Integer, default=0)
-    raw_data: Mapped[Optional[str]] = mapped_column(Text)
-    parsed_summary: Mapped[Optional[str]] = mapped_column(Text)
-    error_message: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[Optional[datetime]] = mapped_column(
+    raw_data: Mapped[str | None] = mapped_column(Text)
+    parsed_summary: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime | None] = mapped_column(
         DateTime, server_default=func.now()
     )

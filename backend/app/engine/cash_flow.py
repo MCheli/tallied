@@ -76,7 +76,7 @@ def compute_cash_flow(snapshots: list[dict]) -> list[dict]:
     # ------------------------------------------------------------------ #
     # 3.  Build per-account monthly balance with carry-forward
     # ------------------------------------------------------------------ #
-    current_balance: dict = {acct: 0.0 for acct in all_accounts}
+    current_balance: dict = dict.fromkeys(all_accounts, 0.0)
     monthly_balances: list[dict] = []  # list of {account_id: balance}
 
     for month in all_months:

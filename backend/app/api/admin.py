@@ -1,11 +1,10 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import inspect, text, func, select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
-from app.database import engine, Base
-from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
+from app.dependencies import TenantContext, get_tenant_context, get_tenant_db
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 from app.models.transaction import Transaction

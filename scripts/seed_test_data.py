@@ -15,8 +15,8 @@ Creates a complete financial picture for the test persona including:
 Usage: python scripts/seed_test_data.py [--reset]
   --reset: Drop and recreate all tables first
 """
-import sys
 import random
+import sys
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -24,24 +24,22 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-from sqlalchemy import text
-
-from app.database import engine, SessionLocal, Base
-from app.models.account import Account
-from app.models.balance import BalanceSnapshot
-from app.models.transaction import Transaction
-from app.models.income import W2Record
-from app.models.investment import RSUGrant, VestEvent, StockPrice
-from app.models.property import Mortgage, PropertyValuation
-from app.models.retirement import RetirementAccount, RetirementHolding, RetirementSnapshot
-from app.models.asset import Vehicle
-from app.models.planning import PlanVersion, PlanAssumption, PlanProjection
-from app.models.user import User
-from app.models.tenant import Tenant, TenantMembership
-from app.services.tenant_service import create_tenant_schema, drop_tenant_schema, PLATFORM_TABLES
 
 # Import all models to register them
 import app.models  # noqa
+from app.database import Base, SessionLocal, engine
+from app.models.account import Account
+from app.models.asset import Vehicle
+from app.models.balance import BalanceSnapshot
+from app.models.income import W2Record
+from app.models.investment import RSUGrant, StockPrice, VestEvent
+from app.models.planning import PlanProjection
+from app.models.property import Mortgage, PropertyValuation
+from app.models.retirement import RetirementAccount, RetirementHolding, RetirementSnapshot
+from app.models.tenant import Tenant, TenantMembership
+from app.models.transaction import Transaction
+from app.models.user import User
+from app.services.tenant_service import PLATFORM_TABLES, create_tenant_schema, drop_tenant_schema
 
 TENANT_SCHEMA = "tenant_claudius"
 
@@ -79,7 +77,7 @@ def seed(reset=False):
         import hashlib
         user = User(
             email="claudius@tallied.dev",
-            password_hash=hashlib.sha256("demo123".encode()).hexdigest(),
+            password_hash=hashlib.sha256(b"demo123").hexdigest(),
             display_name="Claudius Banks",
             auth_provider="local",
         )
@@ -106,8 +104,10 @@ def seed(reset=False):
         # Create tenant schema with all financial tables
         create_tenant_schema(TENANT_SCHEMA)
 
-        # Switch session to tenant schema for all financial data
-        db.execute(text(f'SET search_path TO "{TENANT_SCHEMA}", public'))
+        # Switch the session to the tenant schema for all financial data. The listener
+        # re-applies search_path after every commit (the pool checkout hook resets it).
+        from app.services.tenant_service import attach_tenant_search_path
+        attach_tenant_search_path(db, TENANT_SCHEMA)
 
         # ── Accounts ──
         accounts = [
@@ -438,10 +438,6 @@ def seed(reset=False):
                 for key, display, value, category, sensitivity in assumptions
             ],
         )
-        # create_plan commits, and the pool checkout hook resets search_path
-        # to public on the next connection, so re-point at the tenant schema
-        # before touching tenant tables again.
-        db.execute(text(f'SET search_path TO "{TENANT_SCHEMA}", public'))
         n_proj = db.query(PlanProjection).filter_by(plan_id=plan.id).count()
         if n_proj:
             print(f"  ✓ Plan + {n_proj} projection rows")
@@ -471,8 +467,9 @@ def seed(reset=False):
 
 def _stamp_alembic_head():
     """Record that the freshly built database matches the migration head."""
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     backend_dir = Path(__file__).resolve().parents[1] / "backend"
     cfg = Config(str(backend_dir / "alembic.ini"))

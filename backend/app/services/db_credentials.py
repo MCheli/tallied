@@ -1,11 +1,11 @@
 """Service for managing Postgres roles for tenant direct access."""
-import secrets
 import logging
+import secrets
 
 from sqlalchemy import text
 
-from app.database import engine
 from app.config import settings
+from app.database import engine
 
 logger = logging.getLogger("tallied")
 

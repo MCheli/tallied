@@ -1,6 +1,5 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -16,16 +15,16 @@ class Transaction(Base):
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    account_id: Mapped[Optional[str]] = mapped_column(String, ForeignKey("accounts.id"))
+    account_id: Mapped[str | None] = mapped_column(String, ForeignKey("accounts.id"))
     date: Mapped[date] = mapped_column(Date, nullable=False)
-    amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(19, 4))
-    merchant: Mapped[Optional[str]] = mapped_column(String)
-    category: Mapped[Optional[str]] = mapped_column(String)
-    category_group: Mapped[Optional[str]] = mapped_column(String)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    merchant: Mapped[str | None] = mapped_column(String)
+    category: Mapped[str | None] = mapped_column(String)
+    category_group: Mapped[str | None] = mapped_column(String)
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
-    notes: Mapped[Optional[str]] = mapped_column(Text)
-    source: Mapped[Optional[str]] = mapped_column(String)
-    created_at: Mapped[Optional[datetime]] = mapped_column(
+    notes: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime | None] = mapped_column(
         DateTime, server_default=func.now()
     )
 

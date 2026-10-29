@@ -8,7 +8,7 @@ source, model and confidence.
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from app.ai import extract, model_for
 from app.ai.schemas import PropertyOutlook, VehicleValuation

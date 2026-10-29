@@ -5,14 +5,13 @@ import time
 import urllib.request
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.models.investment import StockPrice
 
 
-def fetch_price(symbol: str) -> Optional[float]:
+def fetch_price(symbol: str) -> float | None:
     """Get the current market price for a stock symbol via Yahoo Finance."""
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -63,9 +62,9 @@ def fetch_price_history(symbol: str, range_: str = "5y", interval: str = "1wk") 
     return points
 
 
-def get_or_fetch_price(db: Session, symbol: str) -> Optional[float]:
+def get_or_fetch_price(db: Session, symbol: str) -> float | None:
     """Get today's Yahoo price from DB cache, or fetch live and cache it."""
-    from sqlalchemy import select, and_
+    from sqlalchemy import and_, select
     today = date.today()
 
     # One row per (symbol, day). Any row for today, whatever its source (yahoo, seed,

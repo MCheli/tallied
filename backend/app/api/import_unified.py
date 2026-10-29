@@ -8,26 +8,29 @@ import json
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import AIError, ai_available, chat, extract
 from app.ai.schemas import (
-    GeneralExtraction, IncomeExtraction, MortgageExtraction, RSUExtraction, RetirementExtraction,
+    GeneralExtraction,
+    IncomeExtraction,
+    MortgageExtraction,
+    RetirementExtraction,
+    RSUExtraction,
 )
-from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
-from app.services.audit_service import log_event
+from app.dependencies import TenantContext, get_tenant_context, get_tenant_db
+from app.models.account import Account
+from app.models.import_log import ImportLog
 from app.models.import_session import ImportSession
 from app.models.income import W2Record
+from app.models.investment import RSUGrant, VestEvent
 from app.models.property import Mortgage
 from app.models.retirement import RetirementAccount, RetirementHolding, RetirementSnapshot
-from app.models.import_log import ImportLog
-from app.models.account import Account
-from app.models.investment import RSUGrant, VestEvent
+from app.services.audit_service import log_event
 
 router = APIRouter(prefix="/import", tags=["import-v1"])
 
@@ -741,12 +744,10 @@ def _build_proposed_changes(findings: list[dict], context: str, db: Session, fil
             total = grant_data.get("total_shares")
             vested = grant_data.get("vested_shares")
             unvested = grant_data.get("unvested_shares")
-            vest_count = len(grant_data.get("vest_events", []))
+            len(grant_data.get("vest_events", []))
 
             # Check for existing grant
             existing = db.get(RSUGrant, grant_num) if grant_num else None
-            old_total = existing.total_shares if existing else None
-            old_vested = existing.vested_shares if existing else None
 
             fields = []
             for col, val in [
@@ -784,7 +785,6 @@ def _build_proposed_changes(findings: list[dict], context: str, db: Session, fil
         return changes
 
     # Fields that are percentages (stored as decimals, AI reports as whole numbers)
-    PERCENTAGE_FIELDS = {"mortgage_rate", "mortgage_escrow_balance"}
     # Fields stored as decimals in DB (rate is 0.0375, AI says 3.75)
     RATE_DB_FIELDS = {"rate"}
 
@@ -855,11 +855,11 @@ def _build_proposed_changes(findings: list[dict], context: str, db: Session, fil
                     display_new = new_val if new_val > 1 else new_val * 100
 
                 # Skip if value is unchanged
-                if old_val is not None:
-                    if is_rate and abs(old_val - new_val_normalized) < 0.0001:
-                        continue
-                    elif not is_rate and abs(old_val - new_val) < 1.0:
-                        continue
+                unchanged = old_val is not None and (
+                    (is_rate and abs(old_val - new_val_normalized) < 0.0001) or (not is_rate and abs(old_val - new_val) < 1.0)
+                )
+                if unchanged:
+                    continue
 
                 mortgage_fields.append({
                     "column": col, "old_value": display_old, "new_value": display_new,
@@ -944,7 +944,7 @@ def _generate_summary(findings: list, proposed: list, missing: list, filename: s
     return ". ".join(parts) if parts else "No financial data found in this document."
 
 
-def _apply_w2_changes(fields: list[dict], tax_year: Optional[int], db: Session) -> int:
+def _apply_w2_changes(fields: list[dict], tax_year: int | None, db: Session) -> int:
     """Apply W2 field changes to database."""
     year = tax_year or date.today().year
     w2 = db.execute(select(W2Record).where(W2Record.tax_year == year)).scalar_one_or_none()
@@ -1004,7 +1004,6 @@ def _apply_retirement_changes(fields: list[dict], db: Session) -> int:
     (older statements only create snapshots, don't overwrite current account data).
     """
     from datetime import date as date_type
-    from app.models.retirement import RetirementSnapshot, RetirementHolding
 
     # Field name mapping: AI field name → model column name
     FIELD_MAP = {
@@ -1059,19 +1058,21 @@ def _apply_retirement_changes(fields: list[dict], db: Session) -> int:
                     count += 1
                 except (ValueError, TypeError):
                     pass
-        elif hasattr(acct, db_col):
-            if is_newer:
-                try:
-                    setattr(acct, db_col, Decimal(str(val)))
-                except Exception:
-                    setattr(acct, db_col, str(val))
-                count += 1
+        elif hasattr(acct, db_col) and is_newer:
+            try:
+                setattr(acct, db_col, Decimal(str(val)))
+            except Exception:
+                setattr(acct, db_col, str(val))
+            count += 1
 
     db.flush()
 
-    # Create/update balance snapshot for historical tracking
+    # Create/update balance snapshot for historical tracking. An older statement does
+    # not touch the account, but its own balance is still recorded for its own date.
     stmt_end = new_stmt_end or acct.statement_end
-    total_balance = acct.total_balance
+    incoming_total = next((f.get("_store_value", f["new_value"]) for f in fields
+                           if f["column"] == "total_balance" and f.get("new_value") is not None), None)
+    total_balance = acct.total_balance if is_newer or incoming_total is None else Decimal(str(incoming_total))
     if stmt_end and total_balance:
         existing_snap = db.execute(
             select(RetirementSnapshot).where(
@@ -1105,7 +1106,6 @@ def _apply_retirement_changes(fields: list[dict], db: Session) -> int:
 
 def _apply_retirement_holdings(holdings: list[dict], account_id: int, db: Session) -> int:
     """Import fund holdings for a retirement account."""
-    from app.models.retirement import RetirementHolding
 
     if not holdings:
         return 0

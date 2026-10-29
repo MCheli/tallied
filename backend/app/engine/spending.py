@@ -19,9 +19,7 @@ def _in_range(date_str: str, from_date: str | None, to_date: str | None) -> bool
     """Check whether *date_str* falls within [from_date, to_date] (inclusive)."""
     if from_date and date_str < from_date:
         return False
-    if to_date and date_str > to_date:
-        return False
-    return True
+    return not (to_date and date_str > to_date)
 
 
 def spending_by_category(

@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,11 +18,11 @@ class SimpleFinLink(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     access_url: Mapped[str] = mapped_column(Text, nullable=False)
-    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    created_at: Mapped[Optional[datetime]] = mapped_column(
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime | None] = mapped_column(
         DateTime, server_default=func.now()
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(
+    updated_at: Mapped[datetime | None] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
 
@@ -41,12 +40,12 @@ class SimpleFinAccountConfig(Base):
     )
     simplefin_account_id: Mapped[str] = mapped_column(String, nullable=False)
     account_name: Mapped[str] = mapped_column(String, nullable=False)
-    account_type: Mapped[Optional[str]] = mapped_column(String)
-    institution: Mapped[Optional[str]] = mapped_column(String)
+    account_type: Mapped[str | None] = mapped_column(String)
+    institution: Mapped[str | None] = mapped_column(String)
     sync_balances: Mapped[bool] = mapped_column(Boolean, default=True)
     sync_transactions: Mapped[bool] = mapped_column(Boolean, default=False)
-    local_account_id: Mapped[Optional[str]] = mapped_column(String)
-    created_at: Mapped[Optional[datetime]] = mapped_column(
+    local_account_id: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime | None] = mapped_column(
         DateTime, server_default=func.now()
     )
 

@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import year_month
@@ -19,8 +19,8 @@ def net_worth_trend(
     db: Session = Depends(get_tenant_db),
 ):
     """Net worth by display_group over time."""
-    from app.services.snapshot_service import LAYER_NAMES
     from app.services.balances import normalize_group
+    from app.services.snapshot_service import LAYER_NAMES
 
     stmt = (
         select(

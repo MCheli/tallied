@@ -1,6 +1,4 @@
 """Platform admin endpoints for managing users and tenants."""
-from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,13 +6,13 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import require_admin, TenantContext
-from app.models.user import User
-from app.models.tenant import Tenant, TenantMembership
+from app.dependencies import TenantContext, require_admin
 from app.models.api_key import ApiKey
 from app.models.db_credential import DbCredential
-from app.services.tenant_service import create_tenant_schema, PLATFORM_TABLES
+from app.models.tenant import Tenant, TenantMembership
+from app.models.user import User
 from app.services.audit_service import log_event
+from app.services.tenant_service import create_tenant_schema
 
 router = APIRouter(prefix="/platform", tags=["platform-admin"])
 
@@ -23,13 +21,13 @@ router = APIRouter(prefix="/platform", tags=["platform-admin"])
 
 
 class UserUpdate(BaseModel):
-    is_active: Optional[bool] = None
-    is_admin: Optional[bool] = None
+    is_active: bool | None = None
+    is_admin: bool | None = None
 
 
 class TenantUpdate(BaseModel):
-    display_name: Optional[str] = None
-    is_active: Optional[bool] = None
+    display_name: str | None = None
+    is_active: bool | None = None
 
 
 # ── Users ────────────────────────────────────────────────────────────────────

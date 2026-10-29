@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
+from app.dependencies import TenantContext, get_tenant_context, get_tenant_db
 
 router = APIRouter(prefix="/admin", tags=["schema"])
 

@@ -65,8 +65,26 @@ def validate_schema_name(schema: str) -> bool:
     return Tenant.validate_schema_name(schema)
 
 
+def attach_tenant_search_path(db: Session, schema: str, *, include_public: bool = True):
+    """Make an existing Session resolve `schema` on every transaction (survives commits).
+
+    Returns the listener so the caller can `event.remove(db, "after_begin", listener)`.
+    Prefer `tenant_session()`; this exists for scripts that already hold a session.
+    """
+    if not validate_schema_name(schema):
+        raise ValueError(f"Invalid tenant schema name: {schema!r}")
+    path = f'"{schema}", public' if include_public else f'"{schema}"'
+
+    def _set_search_path(session, transaction, connection):
+        connection.execute(text(f"SET search_path TO {path}"))
+
+    event.listen(db, "after_begin", _set_search_path)
+    db.connection().execute(text(f"SET search_path TO {path}"))
+    return _set_search_path
+
+
 @contextmanager
-def tenant_session(schema: str, *, include_public: bool = True) -> Generator[Session, None, None]:
+def tenant_session(schema: str, *, include_public: bool = True) -> Generator[Session]:
     """Yield a Session whose search_path is the tenant schema on every transaction.
 
     `include_public=True` appends `public` so ORM queries that join platform

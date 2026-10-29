@@ -6,11 +6,9 @@ Pure computation, depends only on projection.py.
 
 from __future__ import annotations
 
-from dataclasses import asdict, fields
-from typing import Any
+from dataclasses import asdict
 
 from .projection import ProjectionAssumptions, ProjectionInput, run_projection
-
 
 # Each entry: (field_name, display_name, bump_amount)
 _SENSITIVITY_PARAMS: list[tuple[str, str, float]] = [

@@ -7,7 +7,7 @@ Takes current financial state + assumptions, returns year-by-year projections to
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass

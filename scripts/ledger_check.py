@@ -63,7 +63,7 @@ SCREENSHOT_RE = re.compile(r"\.(png|jpg|jpeg|webp)$", re.IGNORECASE)
 class Report:
     found: bool = False
     total: int = 0
-    counts: dict[str, int] = field(default_factory=lambda: {s: 0 for s in STATUSES})
+    counts: dict[str, int] = field(default_factory=lambda: dict.fromkeys(STATUSES, 0))
     problems: list[str] = field(default_factory=list)
 
     @property

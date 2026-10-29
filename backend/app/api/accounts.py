@@ -2,20 +2,20 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_tenant_db
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
-from app.models.transaction import Transaction
 from app.models.property import Mortgage, PropertyValuation
 from app.models.property_value_history import PropertyValueHistory
 from app.models.simplefin_link import SimpleFinAccountConfig
+from app.models.transaction import Transaction
 from app.schemas.account import (
     AccountCreate,
-    AccountUpdate,
     AccountResponse,
+    AccountUpdate,
     AccountWithBalance,
 )
 

@@ -84,7 +84,7 @@ def compute_net_worth_series(snapshots: list[dict]) -> dict:
     # 3.  For each month, resolve balance per account (carry-forward)
     # ------------------------------------------------------------------ #
     # current_balance[account_id] -> latest known balance
-    current_balance: dict = {acct: 0.0 for acct in all_accounts}
+    current_balance: dict = dict.fromkeys(all_accounts, 0.0)
 
     # group -> [balance_per_month]
     group_series: dict[str, list[float]] = defaultdict(list)

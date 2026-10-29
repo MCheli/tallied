@@ -1,10 +1,10 @@
 """Request-scoped dependencies for tenant context and database sessions."""
-from dataclasses import dataclass
 from collections.abc import Generator
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from fastapi import Depends, HTTPException, Request
 import jwt
+from fastapi import Depends, HTTPException, Request
 from jwt import PyJWTError as JWTError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -69,8 +69,8 @@ def get_tenant_context(request: Request) -> TenantContext:
 def _resolve_api_key(key: str, request: Request | None = None) -> TenantContext:
     """Validate an API key and return its tenant context."""
     from app.models.api_key import ApiKey
-    from app.models.user import User
     from app.models.tenant import Tenant
+    from app.models.user import User
 
     key_hash = ApiKey.hash_key(key)
     db = SessionLocal()
@@ -149,7 +149,7 @@ def require_admin(ctx: TenantContext = Depends(get_tenant_context)) -> TenantCon
 
 def get_tenant_db(
     ctx: TenantContext = Depends(get_tenant_context),
-) -> Generator[Session, None, None]:
+) -> Generator[Session]:
     """Provide a DB session scoped to the authenticated tenant's schema.
 
     Delegates to `tenant_service.tenant_session`, which re-applies the

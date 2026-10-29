@@ -11,7 +11,6 @@ import logging
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Optional
 
 from app.config import settings
 
@@ -20,7 +19,7 @@ log = logging.getLogger(__name__)
 RAPIDAPI_HOST = "realty-in-us.p.rapidapi.com"
 
 
-def get_property_estimate(address: str) -> Optional[dict]:
+def get_property_estimate(address: str) -> dict | None:
     """Look up property value via Realtor.com API.
 
     Returns dict with estimate, details, and tax history — or None on failure.
@@ -43,7 +42,7 @@ def get_property_estimate(address: str) -> Optional[dict]:
     return _get_property_detail(property_id, headers)
 
 
-def _find_property_id(address: str, headers: dict) -> Optional[str]:
+def _find_property_id(address: str, headers: dict) -> str | None:
     """Use the auto-complete endpoint to find a property's mpr_id."""
     try:
         encoded = urllib.parse.quote(address)
@@ -67,7 +66,7 @@ def _find_property_id(address: str, headers: dict) -> Optional[str]:
         return None
 
 
-def _get_property_detail(property_id: str, headers: dict) -> Optional[dict]:
+def _get_property_detail(property_id: str, headers: dict) -> dict | None:
     """Fetch property detail including estimates and tax history."""
     try:
         url = (

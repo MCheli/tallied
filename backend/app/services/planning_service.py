@@ -1,24 +1,22 @@
-from datetime import date
 import logging
+from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.engine.projection import ProjectionInput, ProjectionAssumptions, run_projection
+from app.engine.projection import ProjectionAssumptions, ProjectionInput, run_projection
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 from app.models.income import W2Record
-from app.models.investment import RSUGrant
 from app.models.planning import (
-    PlanVersion,
+    ContributionConfig,
     PlanAssumption,
     PlanProjection,
-    ContributionConfig,
+    PlanVersion,
 )
 from app.models.property import Mortgage
 from app.schemas.planning import AssumptionInput
-
 
 logger = logging.getLogger("tallied.planning")
 
@@ -58,7 +56,7 @@ def build_projection_input(db: Session, assumptions: dict[str, float] | None = N
     rows = db.execute(stmt).all()
 
     balances: dict[str, float] = {}
-    for display_group, acct_type, total in rows:
+    for display_group, _acct_type, total in rows:
         key = display_group.lower().replace(" ", "_")
         balances[key] = balances.get(key, 0.0) + (float(total) if total else 0.0)
 

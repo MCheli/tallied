@@ -6,9 +6,8 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
 
@@ -37,7 +36,7 @@ for _noisy in ("aiohttp", "aiohttp.access", "urllib3", "asyncio"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 # Import all models to register them
-import app.models  # noqa
+import app.models
 
 
 @asynccontextmanager
@@ -88,8 +87,10 @@ async def lifespan(app: FastAPI):
     run_scheduler_in_web = role not in ("web", "scheduler")
     if run_scheduler_in_web:
         from app.services.sync_scheduler import (
-            mark_running_jobs_failed, reap_stuck_jobs,
-            start_scheduler, stop_scheduler,
+            mark_running_jobs_failed,
+            reap_stuck_jobs,
+            start_scheduler,
+            stop_scheduler,
         )
         try:
             reap_stuck_jobs()
@@ -126,7 +127,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from starlette.middleware.sessions import SessionMiddleware  # noqa: E402
+from starlette.middleware.sessions import SessionMiddleware
+
 # SessionMiddleware only on sub-apps (not main app) to avoid duplicate session cookies
 
 # SEC-6.2: Add HSTS header in production to enforce HTTPS
@@ -141,30 +143,30 @@ if not settings.dev_mode:
 
 # ── Import all routers ────────────────────────────────────────────────────────
 
-from app.api import (  # noqa: E402
+from app.api import (
     accounts,
-    transactions,
-    snapshot,
-    trends,
-    spending,
+    admin,
+    api_keys,
+    assets,
+    auth,
+    db_credentials,
+    email_forwarding,
+    email_import,
+    import_unified,
     income,
     planning,
-    admin,
-    simplefin_routes,
-    rsu,
-    property,
-    assets,
-    retirement,
-    import_unified,
-    auth,
-    schema,
-    tenants,
-    api_keys,
-    db_credentials,
     platform_admin,
+    property,
+    retirement,
+    rsu,
+    schema,
+    simplefin_routes,
+    snapshot,
+    spending,
+    tenants,
+    transactions,
+    trends,
     webhooks,
-    email_import,
-    email_forwarding,
 )
 
 # ── v1 API (versioned, with OpenAPI docs) ─────────────────────────────────────
@@ -229,7 +231,8 @@ class RateLimitHeaderMiddleware(BaseHTTPMiddleware):
 
 v1.add_middleware(RateLimitHeaderMiddleware)
 
-from app.middleware.usage_logger import UsageLoggerMiddleware  # noqa: E402
+from app.middleware.usage_logger import UsageLoggerMiddleware
+
 v1.add_middleware(UsageLoggerMiddleware)
 
 # Financial data routes (tenant-scoped)
@@ -267,7 +270,7 @@ def health():
     return {"status": "ok", "version": "1.0.0"}
 
 
-from fastapi.responses import HTMLResponse  # noqa: E402
+from fastapi.responses import HTMLResponse
 
 
 @v1.get("/scalar", response_class=HTMLResponse, include_in_schema=False)

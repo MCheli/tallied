@@ -1,6 +1,6 @@
-from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,8 +8,6 @@ from app.dependencies import get_tenant_db
 from app.models.income import W2Record
 from app.models.investment import RSUGrant
 from app.schemas.snapshot import IncomeBreakdown
-
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/income", tags=["income"])
 
@@ -80,9 +78,7 @@ def income_history(db: Session = Depends(get_tenant_db)):
 
 @router.get("/current", response_model=IncomeBreakdown)
 def current_income(db: Session = Depends(get_tenant_db)):
-    """Current year income breakdown (latest W2 + RSU grants)."""
-    current_year = date.today().year
-
+    """Income breakdown from the latest W-2 on file."""
     w2 = db.execute(
         select(W2Record).order_by(W2Record.tax_year.desc()).limit(1)
     ).scalar_one_or_none()

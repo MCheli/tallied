@@ -5,9 +5,7 @@ Provides account summary, contribution breakdown, holdings with live prices,
 historical balance trend, and contribution-rate edits. Statements are imported through the unified import flow.
 """
 import json
-from datetime import date
 from decimal import Decimal
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -114,13 +112,13 @@ def retirement_summary(db: Session = Depends(get_tenant_db)):
 
 
 class RetirementAccountUpdate(BaseModel):
-    plan_name: Optional[str] = None
-    provider: Optional[str] = None
-    total_balance: Optional[float] = None
-    vested_balance: Optional[float] = None
-    roth_balance: Optional[float] = None
-    pretax_balance: Optional[float] = None
-    employer_match_balance: Optional[float] = None
+    plan_name: str | None = None
+    provider: str | None = None
+    total_balance: float | None = None
+    vested_balance: float | None = None
+    roth_balance: float | None = None
+    pretax_balance: float | None = None
+    employer_match_balance: float | None = None
 
 
 @router.put("/account")
@@ -163,8 +161,8 @@ def update_retirement_account(body: RetirementAccountUpdate, db: Session = Depen
 
 
 class UpdateRatesRequest(BaseModel):
-    pretax_deferral_rate: Optional[float] = None  # as decimal, e.g., 0.14
-    roth_deferral_rate: Optional[float] = None  # as decimal, e.g., 0.01
+    pretax_deferral_rate: float | None = None  # as decimal, e.g., 0.14
+    roth_deferral_rate: float | None = None  # as decimal, e.g., 0.01
 
 
 @router.put("/rates")
@@ -190,7 +188,7 @@ def update_deferral_rates(body: UpdateRatesRequest, db: Session = Depends(get_te
     }
 
 
-def _dec(val) -> Optional[Decimal]:
+def _dec(val) -> Decimal | None:
     if val is None:
         return None
     try:
@@ -199,7 +197,7 @@ def _dec(val) -> Optional[Decimal]:
         return None
 
 
-def _fetch_fund_price(ticker: str) -> Optional[float]:
+def _fetch_fund_price(ticker: str) -> float | None:
     """Fetch current fund/ETF price from Yahoo Finance."""
     import urllib.request
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1d"

@@ -2,7 +2,6 @@
 import re
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -20,7 +19,7 @@ class Tenant(Base):
     display_name: Mapped[str] = mapped_column(String, nullable=False)
     schema_name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now())
 
     @staticmethod
     def generate_schema_name() -> str:
@@ -43,4 +42,4 @@ class TenantMembership(Base):
     tenant_id: Mapped[int] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=False)
     role: Mapped[str] = mapped_column(String, default="owner")  # owner, viewer
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now())

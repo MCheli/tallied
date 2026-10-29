@@ -43,11 +43,11 @@ async def _run() -> None:
     # Import here so logging is configured first.
     import app.models  # noqa: F401  — register all SQLAlchemy models
     from app.services.sync_scheduler import (
+        _scheduler_loop,
         claim_orphan_jobs,
         mark_running_jobs_failed,
         notify_listener_loop,
         reap_stuck_jobs,
-        _scheduler_loop,
     )
 
     # 1. Reap any 'running' rows older than the watchdog cutoff — leftovers

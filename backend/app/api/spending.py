@@ -1,14 +1,14 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, case
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import year_month
 from app.dependencies import get_tenant_db
 from app.models.account import Account
 from app.models.transaction import Transaction
-from app.schemas.transaction import CategorySummary, RecurringExpense, MonthlySpending
+from app.schemas.transaction import CategorySummary, MonthlySpending, RecurringExpense
 from app.services.spending_rules import EXCLUDED_CATEGORIES, spending_filter
 
 router = APIRouter(prefix="/spending", tags=["spending"])

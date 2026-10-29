@@ -1,11 +1,9 @@
 """
 Fixed capital assets API — vehicles and future asset types.
 """
-import json
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -26,20 +24,20 @@ class VehicleCreate(BaseModel):
     year: int
     make: str
     model: str
-    trim: Optional[str] = None
-    vin: Optional[str] = None
-    mileage: Optional[int] = None
-    condition: Optional[str] = "good"
-    purchase_price: Optional[float] = None
-    purchase_date: Optional[str] = None
-    notes: Optional[str] = None
+    trim: str | None = None
+    vin: str | None = None
+    mileage: int | None = None
+    condition: str | None = "good"
+    purchase_price: float | None = None
+    purchase_date: str | None = None
+    notes: str | None = None
 
 
 class VehicleUpdate(BaseModel):
-    mileage: Optional[int] = None
-    condition: Optional[str] = None
-    notes: Optional[str] = None
-    purchase_price: Optional[float] = None
+    mileage: int | None = None
+    condition: str | None = None
+    notes: str | None = None
+    purchase_price: float | None = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -225,7 +223,7 @@ def get_aggregate_value_history(db: Session = Depends(get_tenant_db)):
     vehicle_names = sorted(vehicle_map.values())
 
     # Build per-vehicle arrays
-    vehicles_data: dict[str, list[Optional[float]]] = {name: [] for name in vehicle_names}
+    vehicles_data: dict[str, list[float | None]] = {name: [] for name in vehicle_names}
     totals: list[float] = []
 
     for d in sorted_dates:

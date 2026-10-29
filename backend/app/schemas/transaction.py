@@ -1,5 +1,5 @@
-from datetime import date as _date, datetime
-from typing import Optional
+from datetime import date as _date
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
@@ -17,14 +17,14 @@ class TransactionCreate(BaseModel):
 
 
 class TransactionUpdate(BaseModel):
-    account_id: Optional[str] = None
-    date: Optional[_date] = None
-    amount: Optional[float] = None
-    merchant: Optional[str] = None
-    category: Optional[str] = None
-    category_group: Optional[str] = None
-    is_recurring: Optional[bool] = None
-    notes: Optional[str] = None
+    account_id: str | None = None
+    date: _date | None = None
+    amount: float | None = None
+    merchant: str | None = None
+    category: str | None = None
+    category_group: str | None = None
+    is_recurring: bool | None = None
+    notes: str | None = None
 
 
 class TransactionResponse(BaseModel):

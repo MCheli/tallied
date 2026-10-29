@@ -1,7 +1,6 @@
 """Property value history — tax assessments, estimates, sales, and AI projections."""
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -18,5 +17,5 @@ class PropertyValueHistory(Base):
     value: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     source: Mapped[str] = mapped_column(String, default="tax_assessment")  # tax_assessment, realtor_estimate, sale, ai_projection, manual
     is_projected: Mapped[bool] = mapped_column(Boolean, default=False)
-    details: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # JSON string with extra info
-    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
+    details: Mapped[str | None] = mapped_column(String, nullable=True)  # JSON string with extra info
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now())

@@ -1,5 +1,4 @@
 """Generate trend-based forecasts from historical balance data."""
-from datetime import datetime
 from dataclasses import dataclass
 
 
@@ -97,7 +96,7 @@ def generate_forecast(
     sorted_months = sorted(all_months)
     latest_month = sorted_months[-1]
     latest_year = int(latest_month[:4])
-    latest_mo = int(latest_month[5:7])
+    int(latest_month[5:7])
 
     def month_to_x(month_key: str) -> float:
         """Convert YYYY-MM to months since 2000-01."""
