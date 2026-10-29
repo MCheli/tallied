@@ -31,7 +31,7 @@ PG_URL = os.getenv(
 ALGORITHM = "HS256"
 from app.config import settings  # noqa: E402
 
-SECRET_KEY = settings.secret_key  # the running app's key, so test JWTs verify
+# Read settings.secret_key at call time: the unit conftest's session fixture may change it after import.
 
 
 def _hash_password(password: str) -> str:
@@ -293,7 +293,7 @@ def _make_jwt(user_id: int, email: str, tenant_id: int, tenant_schema: str) -> s
             "tenant_schema": tenant_schema,
             "exp": expire,
         },
-        SECRET_KEY,
+        settings.secret_key,
         algorithm=ALGORITHM,
     )
 
