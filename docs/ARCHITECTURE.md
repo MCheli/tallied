@@ -105,7 +105,7 @@ Local dev on a machine without Docker: `brew services start postgresql@16`, then
 
 - `make test`: backend unit tests on SQLite in memory. These cover the engines, services and route shapes.
 - `make test-e2e`: tests marked `e2e` against the local Postgres with the Claudius seed.
-- `make typecheck`: `vue-tsc --noEmit`.
+- `make typecheck`: `vue-tsc -b`.
 - `make test-frontend`: Vitest (`frontend/tests/*.spec.ts`, jsdom, Vue Test Utils). Page logic that needs testing lives in composables so the specs stay small.
 - `make tour`: `scripts/screenshot_tour.mjs` logs in as Claudius and captures every route at 390 and 1440 into `artifacts/screens/<route>/{mobile,desktop}.png`, writing console errors, failed requests and overflow to `artifacts/screens/tour-log.json`. Requires `make dev` and a seeded database.
 - `make ledger-check`: validates the requirements ledger (below).

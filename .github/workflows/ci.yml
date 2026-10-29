@@ -54,7 +54,7 @@ jobs:
       - name: TypeScript check
         run: |
           cd frontend
-          npx vue-tsc --noEmit
+          npx vue-tsc -b
 
       - name: Frontend unit tests
         run: |

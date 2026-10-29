@@ -37,8 +37,8 @@ export interface IncomeSplit {
 export interface WaterfallStep {
   label: string
   value: number
-  kind: 'start' | 'deduction' | 'end'
-  group: 'gross' | 'tax' | 'retirement' | 'benefit' | 'takeHome'
+  kind: 'deduction' | 'end' | 'start'
+  group: 'benefit' | 'gross' | 'retirement' | 'takeHome' | 'tax'
 }
 
 const n = (v: number | null | undefined): number => (v == null || Number.isNaN(v) ? 0 : v)
@@ -87,7 +87,7 @@ export function splitW2(w: Partial<W2Record> | null | undefined): IncomeSplit {
 
 /** Steps for the gross-to-take-home waterfall; the final step equals split.takeHome. */
 export function waterfallSteps(split: IncomeSplit): WaterfallStep[] {
-  const deductions: WaterfallStep[] = [
+  const all: WaterfallStep[] = [
     { label: 'Federal', value: split.federal, kind: 'deduction', group: 'tax' },
     { label: 'State', value: split.state, kind: 'deduction', group: 'tax' },
     { label: 'Soc. Security', value: split.socialSecurity, kind: 'deduction', group: 'tax' },
@@ -96,7 +96,8 @@ export function waterfallSteps(split: IncomeSplit): WaterfallStep[] {
     { label: '401(k) Roth', value: split.roth401k, kind: 'deduction', group: 'retirement' },
     { label: 'Cafeteria/FSA', value: split.cafeteria, kind: 'deduction', group: 'benefit' },
     { label: 'Transit', value: split.transit, kind: 'deduction', group: 'benefit' },
-  ].filter(d => d.value > 0)
+  ]
+  const deductions = all.filter(d => d.value > 0)
   return [
     { label: 'Gross Pay', value: split.gross, kind: 'start', group: 'gross' },
     ...deductions,

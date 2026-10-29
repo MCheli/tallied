@@ -35,7 +35,7 @@ make seed-test     # drop and rebuild the Claudius Banks tenant from fixtures/
 make dev           # backend :8000 (uvicorn --reload) + frontend :5173 (vite)
 make test          # backend unit tests (SQLite, fast)
 make test-e2e      # backend e2e tests (Postgres + seed)
-make typecheck     # vue-tsc --noEmit
+make typecheck     # vue-tsc -b
 make test-frontend # vitest (frontend/tests/*.spec.ts)
 make tour          # screenshots of every route into artifacts/screens/
 make ledger-check  # validate the requirements ledger

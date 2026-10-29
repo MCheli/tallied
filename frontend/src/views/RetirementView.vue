@@ -207,7 +207,7 @@ const allocationPieOption = computed(() => {
           <ChartContainer title="Balance Breakdown" subtitle="Roth · pre-tax · employer match · other"
             info="<strong>Balance breakdown</strong><br>How the balance splits by money type: Roth (after-tax, tax-free growth), pre-tax (taxed at withdrawal), employer match (taxed at withdrawal), other (rollovers etc.)."
             :sql="SQL.breakdown" :sql-tables="['retirement_accounts']" :empty="!breakdownBarOption" empty-text="No balance on the newest statement">
-            <div style="height: 64px"><VChart :option="breakdownBarOption" autoresize /></div>
+            <div style="height: 64px"><VChart v-if="breakdownBarOption" :option="breakdownBarOption" autoresize /></div>
             <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-gray-500 dark:text-gray-400">
               <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm" :style="{ background: BREAKDOWN_COLORS.roth }"></span>Roth {{ Math.round(breakdown?.roth_pct || 0) }}%</span>
               <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm" :style="{ background: BREAKDOWN_COLORS.pretax }"></span>Pre-tax {{ Math.round(breakdown?.pretax_pct || 0) }}%</span>

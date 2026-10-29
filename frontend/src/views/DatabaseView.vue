@@ -543,8 +543,6 @@ function nextPage() {
 }
 
 const highlightedSqlText = computed(() => highlightSql(sqlText.value) + '\n')
-// Template ref (ref="sqlEditorRef")
-const sqlEditorRef = ref<HTMLTextAreaElement | null>(null)
 
 function syncScroll(e: Event) {
   const ta = e.target as HTMLTextAreaElement
@@ -1201,7 +1199,6 @@ onUnmounted(() => {
                 ><code v-html="highlightedSqlText"></code></pre>
                 <!-- Textarea (transparent text, visible caret) -->
                 <textarea
-                  ref="sqlEditorRef"
                   v-model="sqlText"
                   @keydown="handleSqlKeydown"
                   @scroll="syncScroll"

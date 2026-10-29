@@ -17,7 +17,7 @@ export const DASH = '—'
 export function useFormatters() {
   const isNil = (v: unknown): v is null | undefined => v == null || (typeof v === 'number' && Number.isNaN(v))
 
-  const money = (val: number | null | undefined, opts: { compact?: boolean; cents?: boolean } = {}) => {
+  const money = (val: number | null | undefined, opts: { compact?: boolean; cents?: boolean } = {}): string => {
     if (isNil(val)) return DASH
     if (opts.compact) return compact(val)
     return new Intl.NumberFormat('en-US', {
@@ -30,7 +30,7 @@ export function useFormatters() {
 
   const currency = (val: number | null | undefined) => money(val)
 
-  const compact = (val: number | null | undefined) => {
+  const compact = (val: number | null | undefined): string => {
     if (isNil(val)) return DASH
     const sign = val < 0 ? '-' : ''
     const abs = Math.abs(val)

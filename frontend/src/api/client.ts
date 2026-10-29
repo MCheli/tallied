@@ -281,7 +281,7 @@ export const api = {
     aggregateHistory: () => fetchJson<AggregateVehicleHistory>('/assets/value-history/aggregate'),
     vehicleHistory: (id: number) => fetchJson<VehicleHistory>(`/assets/vehicles/${id}/value-history`),
     createVehicle: (data: VehicleInput) => fetchJson<Vehicle>('/assets/vehicles', { method: 'POST', body: JSON.stringify(data) }),
-    updateVehicle: (id: number, data: Partial<VehicleInput> & { mileage?: number | null; condition?: string | null; notes?: string | null; purchase_price?: number | null }) =>
+    updateVehicle: (id: number, data: { mileage?: number | null; condition?: string | null; notes?: string | null; purchase_price?: number | null; purchase_date?: string | null; vin?: string | null; trim?: string | null }) =>
       fetchJson<Vehicle>(`/assets/vehicles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteVehicle: (id: number) => fetchJson<{ deleted: boolean }>(`/assets/vehicles/${id}`, { method: 'DELETE' }),
     refreshValue: (id: number) => fetchJson<VehicleRefreshResult>(`/assets/vehicles/${id}/refresh-value`, { method: 'POST' }),

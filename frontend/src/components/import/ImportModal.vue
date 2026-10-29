@@ -313,8 +313,9 @@ const sqlPreview = computed(() => {
   return statements
 })
 
-function fmt(n: number | null | undefined, format?: string, column?: string): string {
+function fmt(n: unknown, format?: string, column?: string): string {
   if (n == null) return '--'
+  if (typeof n !== 'number') return String(n)
   if (format === 'percent') return `${n}%`
   // Auto-detect percentage fields by column name
   if (column && (column.endsWith('_pct') || column.endsWith('_rate') || column === 'allocation_pct' || column === 'account_return')) return `${n}%`

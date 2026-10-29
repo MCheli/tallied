@@ -44,7 +44,7 @@ lint:
 	cd frontend && npm run lint
 
 typecheck:
-	cd frontend && npx vue-tsc --noEmit
+	cd frontend && npx vue-tsc -b
 
 # Requirements ledger gate (docs/requirements/ledger.yaml)
 ledger-check:

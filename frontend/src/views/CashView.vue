@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
+import type { ECElementEvent } from 'echarts/core'
 import { LineChart, PieChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, MarkPointComponent, MarkLineComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -217,8 +218,8 @@ const cashHistoryOption = computed(() => {
   }
 })
 
-function onChartClick(params: { componentType?: string; data?: { txnIdx?: number } }) {
-  const idx = params.data?.txnIdx
+function onChartClick(params: ECElementEvent) {
+  const idx = (params.data as { txnIdx?: number } | undefined)?.txnIdx
   if (params.componentType === 'markPoint' && idx !== undefined) {
     highlightedTxnIdx.value = idx
     setTimeout(() => { document.getElementById(`txn-row-${idx}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }, 100)
