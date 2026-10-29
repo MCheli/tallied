@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import TenantContext, get_tenant_context
 from app.models.webhook import WEBHOOK_EVENTS, WebhookSubscription
-from app.services.webhook_service import send_test_event
+from app.services.webhook_service import send_test_event, validate_webhook_url
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -75,6 +75,9 @@ def create_webhook(
         raise HTTPException(status_code=400, detail=f"Invalid event types: {', '.join(invalid)}. Valid: {', '.join(WEBHOOK_EVENTS)}")
     if not body.events:
         raise HTTPException(status_code=400, detail="At least one event type is required")
+    url_problem = validate_webhook_url(body.url)
+    if url_problem:
+        raise HTTPException(status_code=400, detail=url_problem)
 
     secret = WebhookSubscription.generate_secret()
     sub = WebhookSubscription(
@@ -119,6 +122,9 @@ def update_webhook(
         raise HTTPException(status_code=404, detail="Webhook not found")
 
     if body.url is not None:
+        url_problem = validate_webhook_url(body.url)
+        if url_problem:
+            raise HTTPException(status_code=400, detail=url_problem)
         sub.url = body.url
     if body.events is not None:
         invalid = [e for e in body.events if e not in WEBHOOK_EVENTS]

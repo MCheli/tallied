@@ -11,10 +11,9 @@ IMPORTANT: The parent tests/conftest.py has autouse fixtures that override DB
 dependencies to use SQLite. We must undo those overrides here so e2e tests
 hit the real PostgreSQL database.
 """
-import hashlib
 import os
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,11 +29,15 @@ PG_URL = os.getenv(
 )
 
 ALGORITHM = "HS256"
-SECRET_KEY = "tallied-dev-secret-change-in-production"
+from app.config import settings  # noqa: E402
+
+SECRET_KEY = settings.secret_key  # the running app's key, so test JWTs verify
 
 
 def _hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    from app.api.auth import _hash_password as app_hash
+
+    return app_hash(password)
 
 
 # ── Undo parent conftest autouse overrides ─────────────────────────────────────
@@ -47,12 +50,12 @@ def _clear_dependency_overrides():
     get_tenant_db, and get_tenant_context to use in-memory SQLite. For E2E
     tests we need the REAL dependencies so requests hit PostgreSQL.
     """
-    from app.main import app, v1, legacy
+    from app.main import app, v1
     from app.database import get_db
     from app.dependencies import get_tenant_db, get_tenant_context
 
     # Clear any overrides that the parent conftest may have set
-    for a in (app, v1, legacy):
+    for a in (app, v1):
         a.dependency_overrides.pop(get_db, None)
         a.dependency_overrides.pop(get_tenant_db, None)
         a.dependency_overrides.pop(get_tenant_context, None)
@@ -60,7 +63,7 @@ def _clear_dependency_overrides():
     yield
 
     # Re-clear after test in case anything re-set them
-    for a in (app, v1, legacy):
+    for a in (app, v1):
         a.dependency_overrides.pop(get_db, None)
         a.dependency_overrides.pop(get_tenant_db, None)
         a.dependency_overrides.pop(get_tenant_context, None)
@@ -80,7 +83,7 @@ def pg_engine():
 @pytest.fixture(scope="module")
 def test_schema_name():
     """Generate a unique schema name for this test module."""
-    return f"test_e2e_{uuid.uuid4().hex[:8]}"
+    return f"tenant_e2e{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture(scope="module")
@@ -112,8 +115,8 @@ def e2e_setup(pg_engine, test_schema_name, test_user_email):
     try:
         # 1. Create test user
         db.execute(text(
-            "INSERT INTO users (email, password_hash, display_name, auth_provider, is_admin, is_active) "
-            "VALUES (:email, :pw, :name, 'local', false, true) RETURNING id"
+            "INSERT INTO users (email, password_hash, display_name, auth_provider, is_admin, is_active, status) "
+            "VALUES (:email, :pw, :name, 'local', false, true, 'active') RETURNING id"
         ), {
             "email": test_user_email,
             "pw": _hash_password("testpass123"),
@@ -174,6 +177,10 @@ def e2e_setup(pg_engine, test_schema_name, test_user_email):
                 "DELETE FROM api_keys WHERE user_id IN "
                 "(SELECT id FROM users WHERE email = :email)"
             ), {"email": test_user_email})
+            for table in ("api_usage_logs", "db_credentials", "webhook_subscriptions", "email_forwarding_addresses"):
+                db.execute(text(
+                    f"DELETE FROM {table} WHERE tenant_id IN (SELECT id FROM tenants WHERE schema_name = :schema)"
+                ), {"schema": test_schema_name})
             db.execute(text(
                 "DELETE FROM tenants WHERE schema_name = :schema"
             ), {"schema": test_schema_name})
@@ -324,13 +331,13 @@ def second_tenant_setup(pg_engine, e2e_setup):
     """Create a second user + tenant for isolation testing."""
     Session = sessionmaker(bind=pg_engine)
     db = Session()
-    schema2 = f"test_e2e_{uuid.uuid4().hex[:8]}"
+    schema2 = f"tenant_e2e{uuid.uuid4().hex[:8]}"
     email2 = f"e2e_test2_{uuid.uuid4().hex[:8]}@tallied.dev"
 
     try:
         db.execute(text(
-            "INSERT INTO users (email, password_hash, display_name, auth_provider, is_admin, is_active) "
-            "VALUES (:email, :pw, :name, 'local', false, true)"
+            "INSERT INTO users (email, password_hash, display_name, auth_provider, is_admin, is_active, status) "
+            "VALUES (:email, :pw, :name, \'local\', false, true, \'active\')"
         ), {"email": email2, "pw": _hash_password("testpass456"), "name": "E2E Test User 2"})
 
         user_row = db.execute(text("SELECT id FROM users WHERE email = :email"), {"email": email2}).fetchone()
@@ -377,6 +384,10 @@ def second_tenant_setup(pg_engine, e2e_setup):
                 "DELETE FROM api_keys WHERE user_id IN "
                 "(SELECT id FROM users WHERE email = :email)"
             ), {"email": email2})
+            for table in ("api_usage_logs", "db_credentials", "webhook_subscriptions", "email_forwarding_addresses"):
+                db.execute(text(
+                    f"DELETE FROM {table} WHERE tenant_id IN (SELECT id FROM tenants WHERE schema_name = :schema)"
+                ), {"schema": schema2})
             db.execute(text("DELETE FROM tenants WHERE schema_name = :schema"), {"schema": schema2})
             db.execute(text("DELETE FROM users WHERE email = :email"), {"email": email2})
             db.commit()

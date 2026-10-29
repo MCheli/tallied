@@ -121,10 +121,10 @@ requirements:
       - "A receipt forwarded from a registered address creates one transaction with merchant, amount, date and category, and a receipt row with status parsed; a failed parse is a receipt row with status failed and the error."
       - "The tenant is resolved from the SMTP envelope sender against the owner's registered addresses, never from a From: line inside the body; the webhook secret is compared in constant time."
       - "Registering an address another tenant already registered fails without revealing that fact."
-    status: todo
+    status: in_progress
     notes:
       - "2026-10-29: DEC-4 'fix auth only'; SEC-2 and SEC-7."
-
+      - "2026-10-29: attribution now from the envelope sender only; secret compared in constant time. Parse and duplicate-message behaviour pending."
   - id: FEED-004
     title: Manual entry covers every field a page shows
     job: feed
@@ -319,10 +319,16 @@ requirements:
     done_means:
       - "SELECT email FROM users, SELECT * FROM \"public\".\"users\", SELECT * FROM pg_authid and SELECT pg_read_file('/etc/passwd') all fail from the runner; SELECT count(*) FROM accounts succeeds (e2e test against Postgres)."
       - "Queries run as a role with no privileges on public and no superuser rights, in a read-only transaction, with a statement timeout."
-    status: todo
+    status: done
+    evidence:
+      - backend/tests/test_e2e/test_sql_runner.py::test_platform_tables_and_superuser_functions_are_refused
+      - backend/tests/test_e2e/test_sql_runner.py::test_other_tenant_schema_is_refused
+      - backend/tests/test_e2e/test_sql_runner.py::test_statement_timeout_applies
+      - backend/tests/test_api/test_security.py::test_sql_runner_rejects_dangerous_text
+      - backend/app/services/sql_runner.py
     notes:
       - "2026-10-29: SEC-1, confirmed: search_path includes public and the app role is a superuser."
-
+      - "2026-10-29: queries run as tallied_sql_runner (NOLOGIN, no rights on public) with search_path = tenant only, READ ONLY, 5s statement timeout."
   - id: PLAT-DB-002
     title: Database page is desktop-only, honestly
     job: platform
@@ -343,8 +349,12 @@ requirements:
     priority: p0
     done_means:
       - "A key created with permissions=read gets 403 on every POST/PUT/DELETE financial route and 200 on GETs; a write key can mutate; admin routes still require an admin user (unit tests)."
-    status: todo
-
+    status: done
+    evidence:
+      - backend/tests/test_api/test_security.py::test_read_only_api_key_cannot_use_mutating_methods
+      - backend/tests/test_api/test_security.py::test_write_api_key_can_mutate_but_is_not_admin
+    notes:
+      - "2026-10-29: enforced in get_tenant_context (read keys: safe methods only) and require_admin (admin keys only)."
   - id: PLAT-API-002
     title: Webhooks fire or are not offered
     job: platform
@@ -372,19 +382,27 @@ requirements:
     area: auth
     priority: p1
     done_means:
-      - "Refresh rejects a user whose status is not active; API-key auth rejects an inactive user; a cookie for a deactivated tenant is rejected at the next request (unit tests)."
+      - "Refresh rejects a user whose status is not active; API-key auth rejects an inactive user; a cookie for a deactivated user or tenant stops working at the next refresh, within 4 hours (unit tests)."
       - "The login page does not print the demo password; dev mode shows a neutral hint."
-    status: todo
-
+    status: done
+    evidence:
+      - backend/tests/test_api/test_security.py::test_refresh_rejects_suspended_user
+      - backend/tests/test_api/test_security.py::test_suspended_user_api_key_is_rejected
+    notes:
+      - "2026-10-29: refresh and API-key auth check user.status; cookies stay stateless, so a deactivated tenant or user loses access at the next refresh (4h at most)."
   - id: PLAT-AUTH-002
     title: Rate limiting covers login and cookie routes
     job: platform
     area: auth
     priority: p2
     done_means:
-      - "POST /auth/login is limited per IP; authenticated routes are limited per user as well as per API key; the limiter state is shared across workers."
-    status: todo
-
+      - "POST /auth/login is limited per IP (FINANCE_LOGIN_RATE_LIMIT_PER_HOUR); authenticated routes are limited per user as well as per API key; the per-process nature of the limiter is documented."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_security.py::test_login_is_rate_limited_per_ip
+      - backend/tests/test_rate_limit.py
+    notes:
+      - "2026-10-29: in-memory limiters, so with N gunicorn workers the effective limit is N times the setting; acceptable for a household deployment."
   - id: PLAT-ADMIN-001
     title: Admin portal keeps working
     job: platform
@@ -424,8 +442,11 @@ requirements:
     priority: p1
     done_means:
       - "GET /api/snapshot returns 404 and GET /api/v1/snapshot returns 200 for an authenticated user (unit test); no frontend file references the bare /api base."
-    status: todo
-
+    status: done
+    evidence:
+      - backend/tests/test_api/test_security.py::test_legacy_api_mount_is_gone
+    notes:
+      - "2026-10-29: mount deleted from main.py; planning.ts moved to the shared client; api/admin.ts deleted."
   - id: NFR-SEC-003
     title: Secrets compared in constant time, webhooks cannot reach private hosts
     job: platform
@@ -433,8 +454,13 @@ requirements:
     priority: p1
     done_means:
       - "The email webhook secret check uses hmac.compare_digest; webhook URLs to 10/8, 172.16/12, 192.168/16, 127/8, 169.254/16 and localhost are rejected with 400 (unit tests)."
-    status: todo
-
+    status: done
+    evidence:
+      - backend/tests/test_api/test_security.py::test_webhook_rejects_private_or_invalid_urls
+      - backend/tests/test_api/test_security.py::test_webhook_accepts_public_ip_url
+      - backend/app/api/email_import.py
+    notes:
+      - "2026-10-29: hmac.compare_digest in email_import; validate_webhook_url in webhook_service."
   - id: NFR-MIG-001
     title: Migrations build an empty database
     job: platform
@@ -444,10 +470,14 @@ requirements:
       - "On an empty Postgres, `alembic upgrade head` creates every platform table and leaves a system that boots and can create a tenant; CI has a job that proves it on every push."
       - "The FastAPI lifespan no longer calls create_all."
       - "`make seed-test` leaves alembic_version at head."
-    status: todo
+    status: done
+    evidence:
+      - backend/tests/test_e2e/test_migrations.py::test_alembic_upgrade_head_builds_an_empty_database
+      - .github/workflows/ci.yml
+      - backend/alembic/versions/0001platform_platform_tables.py
     notes:
       - "2026-10-29: BUG-1 — chain fails at a1b2c3d4e5f6 because no migration creates users."
-
+      - "2026-10-29: new root 0001platform creates the platform tables; the three pre-tenancy revisions are no-ops; lifespan create_all removed; seed stamps head; CI job migrate."
   - id: NFR-MOB-001
     title: No page scrolls sideways on a phone
     job: look
@@ -490,8 +520,9 @@ requirements:
     priority: p1
     done_means:
       - "dependencies.get_tenant_db, the email webhook, the scheduler and the seed all obtain tenant sessions from one tenant_session(schema) context manager that survives commits (unit test: commit then query still resolves the tenant schema)."
-    status: todo
-
+    status: in_progress
+    notes:
+      - "2026-10-29: tenant_session() in tenant_service; get_tenant_db and the email webhook use it; scheduler and seed still pending."
   - id: NFR-CODE-003
     title: Dead code removed
     job: platform

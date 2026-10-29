@@ -51,9 +51,73 @@ jobs:
           cd frontend
           npx vue-tsc --noEmit
 
+  migrate:
+    name: Migrate an empty database
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tallied
+          POSTGRES_PASSWORD: tallied_dev
+          POSTGRES_DB: tallied
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tallied"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      FINANCE_DATABASE_URL: postgresql://tallied:tallied_dev@localhost:5432/tallied
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: alembic upgrade head on an empty database
+        run: |
+          cd backend
+          alembic upgrade head
+          alembic current
+
+      - name: Create a tenant schema and check the platform tables exist
+        run: |
+          cd backend
+          python - <<'PY'
+          from sqlalchemy import create_engine, text
+          from app.config import settings
+          from app.services.tenant_service import PLATFORM_TABLES, create_tenant_schema
+          create_tenant_schema("tenant_ci000001")
+          e = create_engine(settings.database_url)
+          with e.connect() as c:
+              public = {r[0] for r in c.execute(text("select table_name from information_schema.tables where table_schema='public'"))}
+              tenant = c.execute(text("select count(*) from information_schema.tables where table_schema='tenant_ci000001'")).scalar()
+          missing = PLATFORM_TABLES - public
+          assert not missing, f"platform tables missing after migration: {missing}"
+          assert tenant >= 20, f"tenant schema has only {tenant} tables"
+          print("platform tables:", sorted(public))
+          print("tenant tables:", tenant)
+          PY
+
+      - name: e2e tests against the migrated database
+        run: |
+          cd backend
+          pytest tests/test_e2e -m e2e -q -x --deselect tests/test_e2e/test_import_documents.py
+        env:
+          E2E_DATABASE_URL: postgresql://tallied:tallied_dev@localhost:5432/tallied
+
   build-and-push:
     name: Build & Push Docker Image
-    needs: test
+    needs: [test, migrate]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:

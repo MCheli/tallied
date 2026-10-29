@@ -7,7 +7,7 @@ import pytest
 
 
 def test_snapshot_empty(client):
-    res = client.get("/api/snapshot")
+    res = client.get("/api/v1/snapshot")
     assert res.status_code == 200
     data = res.json()
     assert data["net_worth"] == 0.0
@@ -15,13 +15,13 @@ def test_snapshot_empty(client):
 
 
 def test_accounts_empty(client):
-    res = client.get("/api/accounts/")
+    res = client.get("/api/v1/accounts/")
     assert res.status_code == 200
     assert res.json() == []
 
 
 def test_transactions_empty(client):
-    res = client.get("/api/transactions/?limit=10")
+    res = client.get("/api/v1/transactions/?limit=10")
     assert res.status_code == 200
     data = res.json()
     assert data["items"] == []
@@ -29,26 +29,26 @@ def test_transactions_empty(client):
 
 
 def test_spending_by_category_empty(client):
-    res = client.get("/api/spending/by-category")
+    res = client.get("/api/v1/spending/by-category")
     assert res.status_code == 200
     assert res.json() == []
 
 
 def test_spending_recurring_empty(client):
-    res = client.get("/api/spending/recurring")
+    res = client.get("/api/v1/spending/recurring")
     assert res.status_code == 200
     assert res.json() == []
 
 
 def test_spending_monthly_trend_empty(client):
-    res = client.get("/api/spending/monthly-trend")
+    res = client.get("/api/v1/spending/monthly-trend")
     assert res.status_code == 200
     assert res.json() == []
 
 
 def test_income_current_empty(client):
     """Should return zeros, not 404."""
-    res = client.get("/api/income/current")
+    res = client.get("/api/v1/income/current")
     assert res.status_code == 200
     data = res.json()
     assert data["salary"] == 0
@@ -56,14 +56,14 @@ def test_income_current_empty(client):
 
 
 def test_income_history_empty(client):
-    res = client.get("/api/income/history")
+    res = client.get("/api/v1/income/history")
     assert res.status_code == 200
     data = res.json()
     assert data["w2_records"] == []
 
 
 def test_rsu_summary_empty(client):
-    res = client.get("/api/rsu/summary")
+    res = client.get("/api/v1/rsu/summary")
     assert res.status_code == 200
     data = res.json()
     assert data["held_shares"] == 0
@@ -71,14 +71,14 @@ def test_rsu_summary_empty(client):
 
 
 def test_rsu_grants_empty(client):
-    res = client.get("/api/rsu/grants")
+    res = client.get("/api/v1/rsu/grants")
     assert res.status_code == 200
     data = res.json()
     assert data["grants"] == []
 
 
 def test_retirement_summary_empty(client):
-    res = client.get("/api/retirement/summary")
+    res = client.get("/api/v1/retirement/summary")
     assert res.status_code == 200
     data = res.json()
     assert data["account"] is None
@@ -86,7 +86,7 @@ def test_retirement_summary_empty(client):
 
 
 def test_property_summary_empty(client):
-    res = client.get("/api/property/summary")
+    res = client.get("/api/v1/property/summary")
     assert res.status_code == 200
     data = res.json()
     assert data["property"] is None
@@ -94,7 +94,7 @@ def test_property_summary_empty(client):
 
 
 def test_assets_summary_empty(client):
-    res = client.get("/api/assets/summary")
+    res = client.get("/api/v1/assets/summary")
     assert res.status_code == 200
     data = res.json()
     assert data["total_value"] == 0
@@ -102,39 +102,39 @@ def test_assets_summary_empty(client):
 
 
 def test_trends_net_worth_empty(client):
-    res = client.get("/api/trends/net-worth")
+    res = client.get("/api/v1/trends/net-worth")
     assert res.status_code == 200
     data = res.json()
     assert data["dates"] == []
 
 
 def test_trends_balances_empty(client):
-    res = client.get("/api/trends/balances")
+    res = client.get("/api/v1/trends/balances")
     assert res.status_code == 200
     data = res.json()
     assert data["accounts"] == []
 
 
 def test_trends_cash_flow_empty(client):
-    res = client.get("/api/trends/cash-flow")
+    res = client.get("/api/v1/trends/cash-flow")
     assert res.status_code == 200
     data = res.json()
     assert data["months"] == []
 
 
 def test_plans_empty(client):
-    res = client.get("/api/plans/")
+    res = client.get("/api/v1/plans/")
     assert res.status_code == 200
     assert res.json() == []
 
 
 def test_plaid_links_empty(client):
-    res = client.get("/api/plaid/links")
+    res = client.get("/api/v1/plaid/links")
     assert res.status_code == 200
     assert res.json() == []
 
 
 def test_transactions_large_empty(client):
-    res = client.get("/api/transactions/large?threshold=500&days=30")
+    res = client.get("/api/v1/transactions/large?threshold=500&days=30")
     assert res.status_code == 200
     assert res.json() == []

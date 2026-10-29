@@ -150,6 +150,9 @@ def _resolve_tenant(user: User, db: Session) -> tuple[Tenant, list[Tenant]]:
         select(Tenant).where(Tenant.id.in_(tenant_ids)).where(Tenant.is_active.is_(True))
     ).scalars().all()
 
+    if not tenants:
+        raise HTTPException(status_code=403, detail="No active tenant for this account")
+
     # Pick the default tenant, or the first one
     default_membership = next((m for m in memberships if m.is_default), memberships[0])
     active_tenant = next((t for t in tenants if t.id == default_membership.tenant_id), tenants[0])
@@ -280,6 +283,8 @@ def dev_login(body: LoginRequest, request: Request, response: Response, db: Sess
         raise HTTPException(status_code=403, detail="Dev login disabled. Use Google SSO.")
 
     client_ip = request.client.host if request.client else None
+    from app.middleware.rate_limit import login_limiter
+    login_limiter.check(f"login:{client_ip or 'unknown'}")
     user = db.execute(select(User).where(User.email == body.email)).scalar_one_or_none()
     if not user or not user.password_hash:
         log_event(
@@ -391,7 +396,7 @@ def refresh_token(request: Request, response: Response, db: Session = Depends(ge
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
     user = db.get(User, user_id)
-    if not user or not user.is_active:
+    if not user or not user.is_active or getattr(user, "status", "active") != "active":
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
     # Resolve tenant for new access token

@@ -45,7 +45,7 @@ async function tryRefreshToken(): Promise<boolean> {
   }
 }
 
-async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+export async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',

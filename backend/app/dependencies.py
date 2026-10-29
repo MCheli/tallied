@@ -5,13 +5,17 @@ from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException, Request
 from jose import jwt, JWTError
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
 
 ALGORITHM = "HS256"
+
+# API key permission levels, weakest first.
+PERMISSION_ORDER = {"read": 0, "write": 1, "admin": 2}
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 @dataclass
@@ -20,6 +24,8 @@ class TenantContext:
     email: str
     tenant_id: int
     tenant_schema: str
+    auth_method: str = "cookie"  # "cookie" | "api_key"
+    permissions: str = "admin"  # effective permission level; cookies act as the user
 
 
 def get_tenant_context(request: Request) -> TenantContext:
@@ -27,20 +33,22 @@ def get_tenant_context(request: Request) -> TenantContext:
 
     Supports two auth methods:
     1. JWT cookie (tallied_token) — set by browser login
-    2. X-API-Key header — for programmatic access
+    2. X-API-Key header — for programmatic access; the key's `permissions`
+       decide which HTTP methods it may use (read: safe methods only).
     """
-    # Try API key first
     api_key = request.headers.get("X-API-Key")
     if api_key:
-        return _resolve_api_key(api_key, request)
+        ctx = _resolve_api_key(api_key, request)
+        if ctx.permissions == "read" and request.method.upper() not in SAFE_METHODS:
+            raise HTTPException(status_code=403, detail="This API key is read-only")
+        return ctx
 
-    # Fall back to JWT cookie
     token = request.cookies.get("tallied_token")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
-        return TenantContext(
+        ctx = TenantContext(
             user_id=int(payload["sub"]),
             email=payload["email"],
             tenant_id=int(payload["tenant_id"]),
@@ -48,6 +56,13 @@ def get_tenant_context(request: Request) -> TenantContext:
         )
     except (JWTError, KeyError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid token")
+
+    from app.middleware.rate_limit import rate_limiter
+
+    rl_key = f"user:{ctx.user_id}"
+    rate_limiter.check(rl_key)
+    request.state.rate_limit_key = rl_key
+    return ctx
 
 
 def _resolve_api_key(key: str, request: Request | None = None) -> TenantContext:
@@ -79,24 +94,48 @@ def _resolve_api_key(key: str, request: Request | None = None) -> TenantContext:
         tenant = db.get(Tenant, api_key.tenant_id)
         if not user or not tenant or not tenant.is_active:
             raise HTTPException(status_code=401, detail="Invalid API key")
+        if not user.is_active or getattr(user, "status", "active") != "active":
+            raise HTTPException(status_code=401, detail="User is not active")
 
         # Update last_used
         api_key.last_used = datetime.now(timezone.utc)
         db.commit()
 
+        permissions = api_key.permissions if api_key.permissions in PERMISSION_ORDER else "read"
         return TenantContext(
             user_id=user.id,
             email=user.email,
             tenant_id=tenant.id,
             tenant_schema=tenant.schema_name,
+            auth_method="api_key",
+            permissions=permissions,
         )
     finally:
         db.close()
 
 
+def require_permission(level: str):
+    """Dependency factory: require at least `level` ("read" | "write" | "admin").
+
+    Cookie sessions act as the user and always pass. API keys pass when their
+    stored permission level is at least `level`.
+    """
+    needed = PERMISSION_ORDER[level]
+
+    def _check(ctx: TenantContext = Depends(get_tenant_context)) -> TenantContext:
+        if ctx.auth_method == "api_key" and PERMISSION_ORDER.get(ctx.permissions, 0) < needed:
+            raise HTTPException(status_code=403, detail=f"This API key does not have {level} permission")
+        return ctx
+
+    return _check
+
+
 def require_admin(ctx: TenantContext = Depends(get_tenant_context)) -> TenantContext:
-    """Verify the authenticated user has admin privileges."""
+    """Verify the authenticated user has admin privileges (and, for API keys, an admin-level key)."""
     from app.models.user import User
+
+    if ctx.auth_method == "api_key" and ctx.permissions != "admin":
+        raise HTTPException(status_code=403, detail="Admin API key required")
     db = SessionLocal()
     try:
         user = db.get(User, ctx.user_id)
@@ -112,34 +151,14 @@ def get_tenant_db(
 ) -> Generator[Session, None, None]:
     """Provide a DB session scoped to the authenticated tenant's schema.
 
-    The search_path is set via an after_begin event so it is re-applied on
-    every new transaction (including after commit + refresh patterns).
-    The pool checkout event in database.py resets it to 'public' whenever a
-    connection is returned, preventing leaks between requests.
+    Delegates to `tenant_service.tenant_session`, which re-applies the
+    search_path on every new transaction (the pool checkout event in
+    database.py resets it to 'public' whenever a connection is returned).
     """
-    from sqlalchemy import event
-    from app.models.tenant import Tenant
+    from app.services.tenant_service import tenant_session
 
-    schema = ctx.tenant_schema
-
-    # SEC-3.2: Validate schema name before interpolating into SQL
-    if not Tenant.validate_schema_name(schema):
-        raise HTTPException(status_code=400, detail="Invalid tenant schema")
-
-    def _set_search_path(session, transaction, connection):
-        connection.execute(text(f'SET search_path TO "{schema}", public'))
-
-    db = SessionLocal()
-    event.listen(db, "after_begin", _set_search_path)
     try:
-        # Force a connection + transaction so search_path is set immediately
-        conn = db.connection()
-        conn.execute(text(f'SET search_path TO "{schema}", public'))
-        yield db
-    finally:
-        event.remove(db, "after_begin", _set_search_path)
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        db.close()
+        with tenant_session(ctx.tenant_schema) as db:
+            yield db
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid tenant schema")

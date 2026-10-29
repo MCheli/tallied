@@ -21,8 +21,9 @@ export default {
     // Read the raw email body
     const rawBody = await new Response(message.raw).text();
 
-    // Extract forwarded-from email from common forwarding headers or body patterns
-    const forwardedBy = extractForwarder(message.headers, rawBody, fromEmail);
+    // Attribute the receipt to the SMTP envelope sender only. Headers and the
+    // body of a forwarded message are under the sender's control and can be forged.
+    const forwardedBy = fromEmail;
 
     // Extract text content from the raw email
     const textContent = extractTextFromRaw(rawBody);
@@ -52,27 +53,6 @@ export default {
   },
 };
 
-function extractForwarder(
-  headers: Headers,
-  body: string,
-  fallback: string
-): string {
-  // Check common forwarding headers
-  const xForwardedFor = headers.get("x-forwarded-for");
-  if (xForwardedFor) return xForwardedFor;
-
-  const xOriginalFrom = headers.get("x-original-from");
-  if (xOriginalFrom) return xOriginalFrom;
-
-  // Look for "From: user@example.com" in forwarded body
-  const fromMatch = body.match(
-    /(?:^|\n)From:\s*(?:.*<)?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})>?/m
-  );
-  if (fromMatch) return fromMatch[1];
-
-  // The sender IS the forwarder in most cases
-  return fallback;
-}
 
 function extractTextFromRaw(raw: string): string {
   // For multipart emails, try to find the text/plain part

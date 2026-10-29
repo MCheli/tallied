@@ -58,5 +58,7 @@ class RateLimiter:
         return self.requests_per_hour, remaining, reset_ts
 
 
-# Module-level singleton used by dependencies and middleware
+# Module-level singletons used by dependencies and middleware.
+# Both are per process: with N workers the effective limit is N times this.
 rate_limiter = RateLimiter()
+login_limiter = RateLimiter(requests_per_hour=settings.login_rate_limit_per_hour)

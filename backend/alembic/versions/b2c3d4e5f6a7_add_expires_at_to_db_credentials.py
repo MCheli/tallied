@@ -18,7 +18,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("db_credentials", sa.Column("expires_at", sa.DateTime(), nullable=True))
+    conn = op.get_bind()
+    cols = {c["name"] for c in sa.inspect(conn).get_columns("db_credentials", schema="public")}
+    if "expires_at" not in cols:
+        op.add_column("db_credentials", sa.Column("expires_at", sa.DateTime(), nullable=True))
 
 
 def downgrade() -> None:

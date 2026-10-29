@@ -18,6 +18,41 @@ MAX_FAILURES = 10
 DELIVERY_TIMEOUT = 10  # seconds
 
 
+def validate_webhook_url(url: str) -> str | None:
+    """Return a problem description, or None when `url` is an acceptable delivery target.
+
+    Accepts http(s) URLs to public hosts only, so the test and delivery POSTs
+    cannot be pointed at localhost, the database, or other private services.
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return "Invalid URL"
+    if parsed.scheme not in ("http", "https"):
+        return "Webhook URL must start with http:// or https://"
+    host = parsed.hostname
+    if not host:
+        return "Webhook URL must include a host"
+    if host in ("localhost",) or host.endswith(".localhost") or host.endswith(".local") or host.endswith(".internal"):
+        return "Webhook URL must point at a public host"
+    try:
+        addresses = {ipaddress.ip_address(host)}
+    except ValueError:
+        try:
+            infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+        except socket.gaierror:
+            return "Webhook host could not be resolved"
+        addresses = {ipaddress.ip_address(info[4][0]) for info in infos}
+    for addr in addresses:
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_reserved or addr.is_unspecified:
+            return "Webhook URL must point at a public host"
+    return None
+
+
 def sign_payload(payload: bytes, secret: str) -> str:
     """Create an HMAC-SHA256 signature for the payload."""
     return hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()

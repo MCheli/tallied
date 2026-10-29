@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from app.database import Base, get_db
 from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
-from app.main import app, v1, legacy
+from app.main import app, v1
 
 # In-memory SQLite for tests (fast, no Docker needed)
 TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -63,8 +63,8 @@ def db_session():
     transaction = connection.begin()
     session = TestSession(bind=connection)
 
-    # Override dependencies on all three app instances (main, v1, legacy)
-    for a in (app, v1, legacy):
+    # Override dependencies on both app instances (main, v1)
+    for a in (app, v1):
         a.dependency_overrides[get_db] = lambda: session
         a.dependency_overrides[get_tenant_db] = lambda: session
         a.dependency_overrides[get_tenant_context] = lambda: MOCK_TENANT_CTX

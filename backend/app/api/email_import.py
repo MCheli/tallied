@@ -1,4 +1,5 @@
-"""Email receipt import — webhook endpoint for Cloudflare Email Worker."""
+"""Email receipt import — webhook endpoint for the Cloudflare Email Worker."""
+import hmac
 import json
 import logging
 import re
@@ -6,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import event, select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -19,6 +20,7 @@ from app.services.email_receipt_service import (
     parse_receipt_with_ai,
     create_transaction_from_receipt,
 )
+from app.services.tenant_service import tenant_session
 
 logger = logging.getLogger("tallied.email_import")
 
@@ -26,51 +28,53 @@ router = APIRouter(prefix="/email-import", tags=["email-import"])
 
 
 class InboundEmail(BaseModel):
-    from_email: str  # Original sender (e.g., order-update@amazon.com)
-    forwarded_by: str  # User's personal email that forwarded it
-    to: str  # receipts@tallied.dev
+    from_email: str  # Original sender as seen by the worker (e.g. order-update@amazon.com)
+    forwarded_by: str  # SMTP envelope sender: the registered address that forwarded the receipt
+    to: str  # receipts@<domain>
     subject: str
     text: str = ""
     html: Optional[str] = None
 
 
+def _secret_ok(presented: str) -> bool:
+    expected = settings.email_webhook_secret
+    if not expected:
+        return False
+    return hmac.compare_digest(presented.encode(), expected.encode())
+
+
 @router.post("/inbound")
 def receive_email(body: InboundEmail, request: Request):
-    """Webhook endpoint called by Cloudflare Email Worker when a receipt is forwarded."""
-    # Validate webhook secret
-    secret = request.headers.get("X-Email-Webhook-Secret", "")
-    if not settings.email_webhook_secret or secret != settings.email_webhook_secret:
+    """Webhook called by the Cloudflare Email Worker when a receipt is forwarded.
+
+    The tenant is resolved from `forwarded_by`, which the worker sets from the
+    SMTP envelope sender only (never from a From: line inside the body), so a
+    receipt lands in a tenant only if it was sent from an address that tenant
+    registered on Settings → Email Receipts.
+    """
+    if not _secret_ok(request.headers.get("X-Email-Webhook-Secret", "")):
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
-    # Resolve forwarding email to user/tenant
     db = SessionLocal()
     try:
         fwd = resolve_forwarding_email(body.forwarded_by, db)
         if not fwd:
-            logger.warning(f"Unknown forwarding email: {body.forwarded_by}")
+            logger.warning("Receipt from unregistered address rejected: %s", body.forwarded_by)
             raise HTTPException(status_code=422, detail="Forwarding email not registered")
 
         tenant = db.get(Tenant, fwd.tenant_id)
         if not tenant or not tenant.is_active:
             raise HTTPException(status_code=422, detail="Tenant not found or inactive")
-
         schema = tenant.schema_name
-        if not Tenant.validate_schema_name(schema):
-            raise HTTPException(status_code=400, detail="Invalid tenant schema")
     finally:
         db.close()
 
-    # Open a tenant-scoped session
-    def _set_search_path(session, transaction, connection):
-        connection.execute(text(f'SET search_path TO "{schema}", public'))
-
-    tenant_db = SessionLocal()
-    event.listen(tenant_db, "after_begin", _set_search_path)
     try:
-        conn = tenant_db.connection()
-        conn.execute(text(f'SET search_path TO "{schema}", public'))
+        session_cm = tenant_session(schema)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid tenant schema")
 
-        # Create receipt record
+    with session_cm as tenant_db:
         receipt = EmailReceipt(
             from_email=body.from_email,
             forwarded_by=body.forwarded_by,
@@ -82,7 +86,6 @@ def receive_email(body: InboundEmail, request: Request):
         tenant_db.add(receipt)
         tenant_db.flush()
 
-        # Parse with AI
         try:
             email_body = body.text or _strip_html(body.html or "")
             parsed = parse_receipt_with_ai(body.subject, email_body, body.from_email)
@@ -101,7 +104,7 @@ def receive_email(body: InboundEmail, request: Request):
             receipt.transaction_id = txn.id
             tenant_db.commit()
 
-            logger.info(f"Created transaction {txn.id} from email receipt {receipt.id} for tenant {schema}")
+            logger.info("Created transaction %s from email receipt %s for tenant %s", txn.id, receipt.id, schema)
             return {
                 "status": "ok",
                 "receipt_id": receipt.id,
@@ -114,16 +117,8 @@ def receive_email(body: InboundEmail, request: Request):
             receipt.status = "failed"
             receipt.error_message = str(e)
             tenant_db.commit()
-            logger.error(f"Failed to parse email receipt {receipt.id}: {e}")
+            logger.exception("Failed to parse email receipt %s", receipt.id)
             return {"status": "parse_failed", "error": str(e), "receipt_id": receipt.id}
-
-    finally:
-        event.remove(tenant_db, "after_begin", _set_search_path)
-        try:
-            tenant_db.rollback()
-        except Exception:
-            pass
-        tenant_db.close()
 
 
 def _strip_html(html: str) -> str:

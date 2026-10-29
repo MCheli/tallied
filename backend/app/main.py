@@ -13,7 +13,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
 
 from app.config import settings
-from app.database import engine, Base
 
 # ── Logging config ────────────────────────────────────────────────────────────
 # Under gunicorn, app loggers don't propagate to the gunicorn error logger
@@ -75,14 +74,9 @@ async def lifespan(app: FastAPI):
     if not settings.dev_mode and not settings.google_client_id:
         logger.warning("Neither dev mode nor Google SSO is configured. Users will not be able to log in.")
 
-    # Create platform tables in public schema.
-    # Tenant financial tables are created per-schema via create_tenant_schema().
-    from app.services.tenant_service import PLATFORM_TABLES
-    all_tables = Base.metadata.sorted_tables
-    platform_tables = [t for t in all_tables if t.name in PLATFORM_TABLES]
-    logger.info(f"Creating {len(platform_tables)} platform tables: {[t.name for t in platform_tables]}")
-    Base.metadata.create_all(bind=engine, tables=platform_tables)
-    logger.info("Platform tables created successfully")
+    # Platform tables are created by Alembic (backend/entrypoint.sh runs
+    # `alembic upgrade head` before the server starts; locally `make seed-test`
+    # builds and stamps the database). Nothing is created here.
 
     # APP_ROLE controls whether this process runs the Monarch scheduler:
     #   - "scheduler" → handled by app/scheduler/__main__.py, NOT here
@@ -312,44 +306,6 @@ def scalar_docs(dark: str = "0"):
 # Mount v1 as a sub-application at /api/v1 (has its own OpenAPI at /api/v1/docs)
 app.mount("/api/v1", v1)
 
-# ── Legacy /api mount (backwards compat for frontend during transition) ───────
-# Frontend currently calls /api/accounts, /api/snapshot, etc.
-# These are the same routers, just mounted at /api instead of /api/v1.
-
-legacy = FastAPI(title="Tallied API (legacy)", docs_url=None, redoc_url=None)
-# No SessionMiddleware on legacy — OAuth only runs on v1
-legacy.include_router(accounts.router)
-legacy.include_router(transactions.router)
-legacy.include_router(snapshot.router)
-legacy.include_router(trends.router)
-legacy.include_router(spending.router)
-legacy.include_router(income.router)
-legacy.include_router(planning.router)
-legacy.include_router(import_data.router)
-legacy.include_router(import_unified.router)
-legacy.include_router(plaid_routes.router)
-legacy.include_router(ingest.router)
-legacy.include_router(rsu.router)
-legacy.include_router(property.router)
-legacy.include_router(assets.router)
-legacy.include_router(retirement.router)
-legacy.include_router(admin.router)
-legacy.include_router(schema.router)
-legacy.include_router(auth.router)
-legacy.include_router(tenants.router)
-legacy.include_router(api_keys.router)
-legacy.include_router(db_credentials.router)
-legacy.include_router(webhooks.router)
-legacy.include_router(mock.router)
-legacy.include_router(platform_admin.router)
-
-
-@legacy.get("/health")
-def legacy_health():
-    return {"status": "ok", "version": "1.0.0"}
-
-
-app.mount("/api", legacy)
 
 # ── Static file serving (production: serves Vue SPA) ──────────────────────────
 

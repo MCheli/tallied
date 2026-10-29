@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # Rate limiting
-    rate_limit_per_hour: int = 1000  # Max requests per hour per API key / IP
+    rate_limit_per_hour: int = 1000  # Max requests per hour per API key / user
+    login_rate_limit_per_hour: int = 30  # Max dev-login attempts per hour per IP
 
     # App
     base_url: str = "http://localhost:8000"  # Used for OAuth redirect URLs

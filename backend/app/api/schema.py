@@ -266,67 +266,24 @@ class SQLQuery(BaseModel):
 
 
 @router.post("/query")
-def run_query(body: SQLQuery, db: Session = Depends(get_tenant_db)):
-    """Execute a read-only SQL query and return results.
+def run_query(
+    body: SQLQuery,
+    db: Session = Depends(get_tenant_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Execute a read-only SQL query against the tenant's own schema.
 
-    Only SELECT statements are allowed. DML (INSERT, UPDATE, DELETE)
-    and DDL (CREATE, DROP, ALTER) are blocked.
+    Only SELECT/WITH/EXPLAIN statements are accepted. The query runs as a
+    role with no privileges outside the tenant schema, in a read-only
+    transaction with a statement timeout (see services/sql_runner.py).
     """
-    sql = body.sql.strip()
-
-    # Safety: only allow SELECT statements
-    first_word = sql.split()[0].upper() if sql else ""
-    if first_word not in ("SELECT", "WITH", "EXPLAIN"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Only SELECT queries are allowed. Got: {first_word}",
-        )
-
-    # Block dangerous patterns
-    dangerous = ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "TRUNCATE", "GRANT", "REVOKE"]
-    sql_upper = sql.upper()
-    for word in dangerous:
-        if f" {word} " in f" {sql_upper} ":
-            raise HTTPException(status_code=400, detail=f"Dangerous keyword detected: {word}")
-
-    # Block cross-schema access (tenant isolation)
-    import re
-    # Block schema-qualified table references (e.g., tenant_xxx.accounts, public.users)
-    if re.search(r'\b(public|pg_catalog|pg_|information_schema|tenant_)\w*\.', sql, re.IGNORECASE):
-        raise HTTPException(status_code=400, detail="Schema-qualified table names are not allowed")
-    # Block SET search_path
-    if re.search(r'\bSET\s+search_path\b', sql, re.IGNORECASE):
-        raise HTTPException(status_code=400, detail="Cannot modify search_path")
-
-    # Add LIMIT if not present
-    if "LIMIT" not in sql_upper:
-        sql = f"{sql} LIMIT {body.limit}"
+    from app.services.sql_runner import QueryRejected, run_readonly_query
 
     try:
-        # SEC-3.1: Execute in a read-only transaction so that even if the
-        # keyword detection above is bypassed, the database itself prevents
-        # any writes (INSERT, UPDATE, DELETE, DDL, etc.).
-        db.execute(text("SET TRANSACTION READ ONLY"))
-
-        # Use a savepoint so that query errors don't break the session
-        db.execute(text("SAVEPOINT sql_runner"))
-        try:
-            result = db.execute(text(sql))
-            columns = list(result.keys())
-            rows = [dict(zip(columns, row)) for row in result.fetchall()]
-        except Exception as e:
-            db.execute(text("ROLLBACK TO SAVEPOINT sql_runner"))
-            raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
-        finally:
-            db.execute(text("RELEASE SAVEPOINT sql_runner"))
-
-        return {
-            "columns": columns,
-            "rows": rows,
-            "row_count": len(rows),
-            "query": sql,
-        }
+        return run_readonly_query(db, ctx.tenant_schema, body.sql, body.limit)
+    except QueryRejected as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Query error: {str(e).splitlines()[0]}")

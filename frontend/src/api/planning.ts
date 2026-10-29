@@ -1,12 +1,4 @@
-const BASE = '/api'
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
-  })
-  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
-  return res.json()
-}
+import { fetchJson } from './client'
 
 export interface PlanListItem {
   id: number
@@ -35,10 +27,8 @@ export interface PlanTable {
   rows: Record<string, PlanTableRow>
 }
 
+/** Planning calls go through the shared /api/v1 client (credentials + 401 refresh). */
 export const planningApi = {
-  listPlans: () =>
-    fetchJson<PlanListItem[]>('/plans/'),
-
-  getPlanTable: (id: number) =>
-    fetchJson<PlanTable>(`/plans/${id}/table`),
+  listPlans: () => fetchJson<PlanListItem[]>('/plans/'),
+  getPlanTable: (id: number) => fetchJson<PlanTable>(`/plans/${id}/table`),
 }

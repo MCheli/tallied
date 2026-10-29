@@ -55,6 +55,7 @@ def seed(reset=False):
         # Recreate only platform tables in public
         platform_tables = [t for t in Base.metadata.sorted_tables if t.name in PLATFORM_TABLES]
         Base.metadata.create_all(bind=engine, tables=platform_tables)
+        _stamp_alembic_head()
 
     db = SessionLocal()
 
@@ -447,6 +448,18 @@ def seed(reset=False):
         raise
     finally:
         db.close()
+
+
+def _stamp_alembic_head():
+    """Record that the freshly built database matches the migration head."""
+    from alembic import command
+    from alembic.config import Config
+
+    backend_dir = Path(__file__).resolve().parents[1] / "backend"
+    cfg = Config(str(backend_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+    command.stamp(cfg, "head")
+    print("  ✓ alembic stamped at head")
 
 
 if __name__ == "__main__":

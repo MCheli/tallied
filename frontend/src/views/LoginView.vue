@@ -124,7 +124,7 @@ function handleGoogleLogin() {
         <!-- Dev mode hint -->
         <div v-if="devMode" class="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
           <p class="text-[10px] text-gray-400 text-center">
-            Dev mode &middot; claudius@tallied.dev / demo123 &middot; admin account also available
+            Dev mode &middot; local email/password sign-in is enabled (see backend/.env)
           </p>
         </div>
 
