@@ -46,6 +46,10 @@ lint:
 typecheck:
 	cd frontend && npx vue-tsc -b
 
+build-smoke:  ## build the production bundle and load it in a real browser (catches chunk-order bugs the dev server never shows)
+	cd frontend && npm run build
+	node scripts/build_smoke.mjs
+
 # Requirements ledger gate (docs/requirements/ledger.yaml)
 ledger-check:
 	cd backend && source .venv/bin/activate && python ../scripts/ledger_check.py
@@ -55,7 +59,7 @@ tour:
 	node scripts/screenshot_tour.mjs
 
 # Run before committing — catches what CI would catch
-pre-commit: lint test typecheck test-frontend ledger-check
+pre-commit: lint test typecheck test-frontend build-smoke ledger-check
 
 # Build
 build:

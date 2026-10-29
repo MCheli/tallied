@@ -752,3 +752,21 @@ requirements:
     notes:
       - "2026-10-29: tour runs; the route-list test is pending."
       - "2026-10-29: route-list test added."
+
+  - id: NFR-PROC-003
+    title: Production bundle loads in a real browser before every commit and image build
+    job: platform
+    area: process
+    priority: p0
+    done_means:
+      - "`make build-smoke` builds frontend/dist, serves it with `vite preview` and loads `/` and `/login` in headless Chrome; any uncaught error, console error or empty `#app` fails it."
+      - "`make pre-commit` and the CI Test job run it; CI runs it before the Docker image is built."
+      - "A test asserts the Makefile and workflow still wire it in."
+    status: done
+    evidence:
+      - frontend/tests/build-smoke-gate.spec.ts#pre-commit runs build-smoke
+      - frontend/tests/build-smoke-gate.spec.ts#CI runs the smoke test before the image is built
+      - frontend/tests/build-smoke-gate.spec.ts#the smoke script loads the root and login routes and fails on uncaught errors
+      - scripts/build_smoke.mjs
+    notes:
+      - "Added 2026-10-29 after the first deploy of the October overhaul shipped a bundle whose entry chunk imported a Rolldown runtime helper from the echarts chunk, which imported InfoTooltip, which imported the entry: production rendered nothing (TypeError: d is not a function) while typecheck, vitest, the tour and CI were all green."

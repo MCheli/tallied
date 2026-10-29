@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -125,8 +126,6 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   if (to.meta.public) return true
 
-  // Check auth status
-  const { useAuthStore } = await import('../stores/auth')
   const auth = useAuthStore()
 
   if (!auth.authenticated) {

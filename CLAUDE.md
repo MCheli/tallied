@@ -24,7 +24,7 @@ FastAPI + Vue 3 + PostgreSQL (schema per tenant). One household's accounts, tran
 - Every tile has an `InfoTooltip` that is true, and an empty state.
 - Views call `frontend/src/api/client.ts`; no `fetch` in a view. Page chrome comes from the shared components.
 - No `except Exception: pass`. Log what you swallow.
-- `make pre-commit` must pass before every commit.
+- `make pre-commit` must pass before every commit. It includes `build-smoke`: the minified production bundle served and loaded in a real browser. The dev server and the tour run unbundled modules and cannot see chunk-ordering failures (2026-10-29: a circular chunk blanked production).
 
 ## Quick start
 
@@ -37,9 +37,10 @@ make test          # backend unit tests (SQLite, fast)
 make test-e2e      # backend e2e tests (Postgres + seed)
 make typecheck     # vue-tsc -b
 make test-frontend # vitest (frontend/tests/*.spec.ts)
+make build-smoke   # build the production bundle and load it in headless Chrome (dev server never runs the real chunks)
 make tour          # screenshots of every route into artifacts/screens/
 make ledger-check  # validate the requirements ledger
-make pre-commit    # test + typecheck + test-frontend + ledger-check (same as CI)
+make pre-commit    # lint + test + typecheck + test-frontend + build-smoke + ledger-check (same as CI)
 ```
 
 Backend venv: `backend/.venv`. Env: `backend/.env` (prefix `FINANCE_`; see `backend/app/config.py`). Dev login: `claudius@tallied.dev` / `demo123` with `FINANCE_DEV_MODE=true`. API at `/api/v1`, reference at `/api/v1/scalar`.

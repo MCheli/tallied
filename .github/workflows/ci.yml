@@ -55,6 +55,11 @@ jobs:
         run: |
           cd frontend
           npx vue-tsc -b
+      - name: Production bundle smoke test (serves the real build in Chrome)
+        working-directory: frontend
+        run: |
+          npm run build
+          node ../scripts/build_smoke.mjs
 
       - name: Frontend unit tests
         run: |

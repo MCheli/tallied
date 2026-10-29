@@ -111,6 +111,8 @@ Local dev on a machine without Docker: `brew services start postgresql@16`, then
 - `make ledger-check`: validates the requirements ledger (below).
 - `make pre-commit` runs backend tests, typecheck, frontend tests and the ledger check. It must pass before every commit; CI runs the same.
 
+`make build-smoke` (`scripts/build_smoke.mjs`) builds the production bundle, serves it with `vite preview` and loads `/` and `/login` in headless Chrome, failing on any uncaught error or an empty `#app`. It exists because Rolldown's chunking can produce a circular chunk graph that the dev server and the tour (both unbundled) never execute; CI runs it before the Docker build.
+
 AI paths are tested with recorded responses, never with live calls in CI. `fixtures/test_documents/` plus its manifest is the evaluation set for document import.
 
 ## Requirements ledger

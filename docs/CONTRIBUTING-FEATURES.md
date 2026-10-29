@@ -20,8 +20,9 @@ make test          # backend unit tests (SQLite)
 make test-e2e      # backend e2e tests (Postgres + seed)
 make typecheck     # vue-tsc
 make tour          # screenshots of every route into artifacts/screens/
+make build-smoke   # production bundle served and loaded in headless Chrome (chunk-order bugs only show here)
 make ledger-check  # validate docs/requirements/ledger.yaml
-make pre-commit    # test + typecheck + ledger-check
+make pre-commit    # lint + test + typecheck + test-frontend + build-smoke + ledger-check
 ```
 
 ## 1. A new tile or chart on an existing page
@@ -98,7 +99,7 @@ Evidence strings:
 
 ## 9. Before you commit
 
-- `make pre-commit`
+- `make pre-commit` (includes `build-smoke`: the real production bundle must load without an uncaught error)
 - `make tour` for any visible change; commit the new captures
 - Ledger updated
 - No secrets, no personal documents (`.gitignore` blocks `*.pdf` outside `fixtures/`)
