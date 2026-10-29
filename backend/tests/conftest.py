@@ -79,9 +79,13 @@ def _ci_like_settings():
 
 
 @pytest.fixture(autouse=True)
-def db_session():
-    """Provide a clean database session for each test."""
+def db_session(request):
+    """Provide a clean SQLite session for each unit test. e2e tests use the real Postgres untouched."""
     import importlib
+
+    if request.node.get_closest_marker("e2e"):
+        yield None
+        return
 
     connection = test_engine.connect()
     transaction = connection.begin()
