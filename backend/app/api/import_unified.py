@@ -10,13 +10,15 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-import anthropic
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.ai import AIError, ai_available, chat, extract
+from app.ai.schemas import (
+    GeneralExtraction, IncomeExtraction, MortgageExtraction, RSUExtraction, RetirementExtraction,
+)
 from app.dependencies import get_tenant_db, get_tenant_context, TenantContext
 from app.services.audit_service import log_event
 from app.models.import_session import ImportSession
@@ -33,125 +35,87 @@ router = APIRouter(prefix="/import", tags=["import-v1"])
 
 CONTEXT_CONFIG = {
     "income": {
-        "prompt": """You are analyzing a financial document related to income (W2, pay stub, or similar).
-Extract all financial values and return them as a JSON array.
-
-Return ONLY a valid JSON array (no markdown, no explanation):
-[{"field": "name", "value": "displayed value", "value_numeric": 12345.67, "category": "income", "confidence": "high", "db_field": "field_key_or_null"}]
-
-db_field mapping:
-- Gross pay / total compensation → w2_gross_pay
-- Base salary / regular pay (YTD) → w2_base_salary
-- RSU income / RSU gain (YTD) → w2_rsu_income
-- Federal income tax → w2_federal_tax
-- State income tax → w2_state_tax
-- Social security tax → w2_social_security
-- Medicare tax → w2_medicare
-- Pre-tax 401(k) → w2_pretax_401k
-- Roth 401(k) → w2_roth_401k
-- Employer health insurance (Box 12 DD) → w2_employer_health
-- Transit/commuter → w2_transit
-- Cafeteria/Section 125 → w2_cafeteria_125
-
-For W2 forms: use official box labels. For pay stubs: use YTD totals, not per-period amounts.
-If a field doesn't match above, use null for db_field. If nothing found, return: []""",
+        "schema": IncomeExtraction,
+        "prompt": """You are reading a document related to income: a W2, a pay stub, or similar.
+Return every financial value you can see as a finding. Set db_field to the Tallied field it maps to:
+- Gross pay / total compensation -> w2_gross_pay
+- Base salary / regular pay (YTD) -> w2_base_salary
+- RSU income / RSU gain (YTD) -> w2_rsu_income
+- Federal income tax -> w2_federal_tax
+- State income tax -> w2_state_tax
+- Social security tax -> w2_social_security
+- Medicare tax -> w2_medicare
+- Pre-tax 401(k) -> w2_pretax_401k
+- Roth 401(k) -> w2_roth_401k
+- Employer health insurance (Box 12 DD) -> w2_employer_health
+- Transit/commuter -> w2_transit
+- Cafeteria/Section 125 -> w2_cafeteria_125
+For W2 forms use the official box labels. For pay stubs use YTD totals, not per-period amounts.
+Use null for db_field when a value matches none of the above. Return no findings if the document has none.""",
         "expected_fields": ["w2_gross_pay", "w2_federal_tax", "w2_state_tax", "w2_social_security", "w2_medicare"],
         "guidance": "Upload a W2 form, pay stub, or other income document.",
         "examples": ["W2 form (annual tax summary)", "Pay stub (YTD salary/RSU breakdown)"],
     },
     "retirement": {
-        "prompt": """You are analyzing a 401(k) or retirement account statement.
-Extract key account details and return as a JSON object (NOT array):
-{"plan_name": "...", "provider": "...", "total_balance": 123, "vested_balance": 123,
-"roth_balance": 123, "pretax_balance": 123, "employer_match_balance": 123,
-"pretax_deferral_rate_pct": 8, "roth_deferral_rate_pct": 2,
-"total_employee_contributions_lifetime": 123, "total_employer_contributions_lifetime": 123,
-"roth_basis": 123, "account_return_pct": 14.74, "estimated_monthly_income": 7976,
-"statement_start": "YYYY-MM-DD", "statement_end": "YYYY-MM-DD",
-"holdings": [{"fund_name": "...", "ticker": "...", "balance": 123, "allocation_pct": 100, "gain_loss": 123}]}
-Use null for fields not found.""",
+        "schema": RetirementExtraction,
+        "prompt": """You are reading a 401(k) or retirement account statement. Fill in every field you can find;
+use null for anything the statement does not show. Percent fields are whole numbers (8, not 0.08).
+Dates are YYYY-MM-DD. List every fund holding with its ticker when known.""",
         "expected_fields": ["total_balance", "pretax_deferral_rate_pct", "roth_deferral_rate_pct"],
         "guidance": "Upload your quarterly or annual 401(k) statement.",
-        "examples": ["401(k) statement from T. Rowe Price, Fidelity, Vanguard, etc."],
+        "examples": ["401(k) statement from Fidelity, Vanguard, T. Rowe Price, etc."],
     },
     "property": {
-        "prompt": """You are analyzing a mortgage statement.
-Extract key mortgage details as a JSON array:
-[{"field": "name", "value": "displayed", "value_numeric": 123, "category": "mortgage", "confidence": "high", "db_field": "key_or_null"}]
-
-db_field mapping:
-- Unpaid principal balance → mortgage_balance
-- Interest rate → mortgage_rate
-- Monthly payment / total payment due → mortgage_monthly_payment
-- Original principal balance / original loan amount → mortgage_original_amount
-- Escrow balance → mortgage_escrow_balance
-- Principal portion of payment → mortgage_principal_payment
-- Interest portion of payment → mortgage_interest_payment
-- Escrow portion of payment → mortgage_escrow_payment
-- Property address (the address of the mortgaged property) → mortgage_property_address
-
-For the property address, set value to the full address string (e.g., "123 Main St, Springfield, MA 01101") and value_numeric to null.
-If nothing found, return: []""",
+        "schema": MortgageExtraction,
+        "prompt": """You are reading a mortgage statement. Return each value as a finding with db_field set to:
+- Unpaid principal balance -> mortgage_balance
+- Interest rate -> mortgage_rate
+- Monthly payment / total payment due -> mortgage_monthly_payment
+- Original principal balance / original loan amount -> mortgage_original_amount
+- Escrow balance -> mortgage_escrow_balance
+- Principal portion of payment -> mortgage_principal_payment
+- Interest portion of payment -> mortgage_interest_payment
+- Escrow portion of payment -> mortgage_escrow_payment
+- Property address (of the mortgaged property) -> mortgage_property_address
+For the property address put the full address in value and null in value_numeric.""",
         "expected_fields": ["mortgage_balance", "mortgage_rate", "mortgage_monthly_payment"],
         "guidance": "Upload your monthly mortgage statement.",
         "examples": ["Monthly mortgage statement from Chase, Wells Fargo, etc."],
     },
     "rsu": {
-        "prompt": """You are analyzing an E-Trade RSU vesting schedule spreadsheet (.xlsx).
-The spreadsheet has a "Restricted Stock" sheet with these row types:
-- "Grant" rows: high-level grant info (Symbol, Grant Date, Granted Qty., Vested Qty., Unvested Qty., Sellable Qty., Est. Market Value, Grant Number)
-- "Vest Schedule" rows: per-period vest details (Grant Number, Vest Period, Vest Date, Vested Qty., Released Qty, Total Taxes Paid, Shares Traded for taxes)
-- "Tax Withholding" rows: tax detail per vest (Grant Number, Vest Period, Tax Description, Taxable Gain, Effective Tax Rate, Withholding Amount)
-
-Extract ALL grants and their vest events. Return ONLY a valid JSON array (no markdown, no explanation):
-[
-  {
-    "grant_number": "094907",
-    "symbol": "MSFT",
-    "grant_date": "2023-05-15",
-    "total_shares": 200,
-    "vested_shares": 150,
-    "unvested_shares": 50,
-    "sellable_shares": 90,
-    "share_price": 95.50,
-    "vest_events": [
-      {
-        "vest_period": 1,
-        "vest_date": "2024-05-15",
-        "shares": 60,
-        "fmv_at_vest": 127.70,
-        "shares_withheld": 22,
-        "shares_released": 60,
-        "total_taxes_paid": 2847.60,
-        "is_actual": true
-      }
-    ]
-  }
-]
-
-Rules:
-- share_price = Est. Market Value / Granted Qty. (compute from Grant row)
-- fmv_at_vest = Taxable Gain / Vested Qty. for that vest period (from Tax Withholding rows)
-- total_taxes_paid = sum of all Withholding Amount values for that vest period
-- is_actual = true if Vested Qty. > 0 for that vest period, false otherwise
-- Convert dates to YYYY-MM-DD format
-- If a field is missing or zero, use null
-- Return [] if no grants found""",
+        "schema": RSUExtraction,
+        "prompt": """You are reading an E-Trade RSU vesting schedule export (.xlsx converted to text).
+The "Restricted Stock" sheet has three row types:
+- "Grant" rows: Symbol, Grant Date, Granted Qty., Vested Qty., Unvested Qty., Sellable Qty., Est. Market Value, Grant Number
+- "Vest Schedule" rows: Grant Number, Vest Period, Vest Date, Vested Qty., Released Qty, Total Taxes Paid, Shares Traded for taxes
+- "Tax Withholding" rows: Grant Number, Vest Period, Tax Description, Taxable Gain, Effective Tax Rate, Withholding Amount
+Return every grant with all of its vest events.
+Rules: share_price = Est. Market Value / Granted Qty.; fmv_at_vest = Taxable Gain / Vested Qty. for that
+vest period; total_taxes_paid = sum of Withholding Amount for the period; is_actual = Vested Qty. > 0;
+dates as YYYY-MM-DD; null for missing or zero values.""",
         "expected_fields": ["symbol", "total_shares", "grant_number"],
         "guidance": "Upload your E-Trade RSU vesting schedule .xlsx file.",
         "examples": ["E-Trade RSU vesting schedule spreadsheet (.xlsx)"],
     },
     "general": {
-        "prompt": """You are analyzing a financial document. Identify the document type and extract all relevant financial values.
-Return a JSON array:
-[{"field": "name", "value": "displayed", "value_numeric": 123, "category": "income|mortgage|retirement|account_balance|other", "confidence": "high|medium|low", "db_field": null}]
-Try to identify if this is a W2, pay stub, mortgage statement, 401(k) statement, bank statement, or other document.
-If nothing found, return: []""",
+        "schema": GeneralExtraction,
+        "prompt": """You are reading a financial document. Identify the document type and return every relevant
+financial value as a finding with db_field null (this context only reports what it sees).""",
         "expected_fields": [],
-        "guidance": "Upload any financial document — AI will identify the type and extract values.",
+        "guidance": "Upload any financial document; the AI will identify the type and extract values.",
         "examples": ["W2, pay stub, mortgage statement, 401(k) statement, bank statement"],
     },
 }
+
+
+def _findings_from_extraction(context: str, extraction) -> list[dict]:
+    """Flatten a schema instance into the finding dicts the review flow works with."""
+    if context == "retirement":
+        return [extraction.model_dump()]
+    if context == "rsu":
+        return [g.model_dump() for g in extraction.grants]
+    return [f.model_dump() for f in extraction.findings]
+
 
 # W2 field mapping for applying changes
 W2_FIELDS = {
@@ -181,8 +145,8 @@ def upload_and_process(
     db: Session = Depends(get_tenant_db),
 ):
     """Upload a file and start AI processing. Returns session ID."""
-    if not settings.anthropic_api_key:
-        raise HTTPException(status_code=500, detail="Anthropic API key not configured")
+    if not ai_available():
+        raise HTTPException(status_code=503, detail="Document import needs FINANCE_ANTHROPIC_API_KEY. Add it to backend/.env and restart.")
     if context not in CONTEXT_CONFIG:
         context = "general"
 
@@ -203,8 +167,7 @@ def upload_and_process(
     db.add(session)
     db.flush()
 
-    # Send to Claude
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    # Build the document content, then ask Claude for the context's schema.
     try:
         if file_type == "pdf":
             # PDFs: send as document block
@@ -229,28 +192,30 @@ def upload_and_process(
             # CSV and other text: send as text block
             content_block = {"type": "text", "text": f"File contents ({filename}):\n{file_bytes.decode('utf-8', errors='ignore')}"}
 
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=16384,
-            messages=[{"role": "user", "content": [content_block, {"type": "text", "text": config["prompt"]}]}],
-        )
-    except anthropic.APIError as e:
-        session.status = "error"
-        session.raw_ai_response = str(e)
-        db.commit()
-        raise HTTPException(status_code=502, detail=f"AI processing failed: {e}")
     except Exception as e:
         session.status = "error"
         session.raw_ai_response = str(e)
         db.commit()
-        raise HTTPException(status_code=500, detail=f"Processing error: {e}")
+        raise HTTPException(status_code=400, detail=f"Could not read the file: {e}")
 
     try:
-        raw_text = message.content[0].text.strip()
-        session.raw_ai_response = raw_text
+        extraction = extract(
+            config["schema"],
+            content=[content_block, {"type": "text", "text": "Extract the values described in your instructions from this document."}],
+            instructions=config["prompt"],
+            tier="import",
+            max_tokens=16384,
+            purpose=f"import:{context}",
+        )
+    except AIError as e:
+        session.status = "error"
+        session.raw_ai_response = str(e)
+        db.commit()
+        raise HTTPException(status_code=e.status_code, detail=f"AI processing failed: {e}")
 
-        # Parse response
-        findings = _parse_ai_response(raw_text, context)
+    try:
+        findings = _findings_from_extraction(context, extraction)
+        session.raw_ai_response = extraction.model_dump_json()
         session.parsed_findings = json.dumps(findings)
 
         # Build proposed changes
@@ -435,6 +400,7 @@ def confirm_import(session_id: str, db: Session = Depends(get_tenant_db), ctx: T
         user_id=ctx.user_id,
         details={"filename": session.filename, "changes_applied": changes_applied, "results": results},
     )
+    _emit_import_webhook(ctx.tenant_id, session_id, changes_applied, results)
 
     return {"status": "confirmed", "changes_applied": changes_applied, "results": results}
 
@@ -449,8 +415,8 @@ def chat_with_import(session_id: str, body: ChatRequest, db: Session = Depends(g
     session = db.get(ImportSession, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    if not settings.anthropic_api_key:
-        raise HTTPException(status_code=500, detail="API key not configured")
+    if not ai_available():
+        raise HTTPException(status_code=503, detail="The review chat needs FINANCE_ANTHROPIC_API_KEY.")
 
     # Build chat context
     messages = json.loads(session.chat_messages or "[]")
@@ -498,44 +464,25 @@ Current import status:
 - Proposed database changes: {changes_summary}
 - Missing expected fields: {session.missing_fields}
 
-IMPORTANT RULES:
+Everything the extraction found in the document (so you can explain what was and was not detected):
+{json.dumps(findings)[:6000]}
+
+RULES:
 1. Only talk about fields that OUR app actually tracks (listed above). Do not mention fields we don't track.
 2. If no changes are proposed, explain that the data already matches what's in the database.
 3. Be concise and specific. Reference actual dollar amounts and field names from the findings.
-4. If the user asks to correct a value, respond naturally AND include on a SEPARATE line:
-   ACTION: {{"action": "add_field", "table": "w2_records", "column": "base_salary", "value": 155000, "tax_year": 2025}}
+4. When the user asks to add or correct a value, call the propose_field_change tool with the exact
+   table, column and value, and confirm in one sentence. Never invent values the user did not give.
 5. When suggesting missing documents, only suggest ones that would provide data we actually track."""
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    claude_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
     try:
-        # Build message history for Claude
-        claude_messages = []
-        for m in messages:
-            claude_messages.append({"role": m["role"], "content": m["content"]})
+        response = chat(system=system_prompt, messages=claude_messages, tools=[PROPOSE_FIELD_CHANGE_TOOL],
+                        tier="fast", max_tokens=1024, purpose="import:chat")
+    except AIError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=claude_messages,
-        )
-    except anthropic.APIError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-
-    ai_text = response.content[0].text.strip()
-
-    # Check for ACTION commands
-    action = None
-    display_text = ai_text
-    if "ACTION:" in ai_text:
-        parts = ai_text.split("ACTION:", 1)
-        display_text = parts[0].strip()
-        try:
-            action_json = parts[1].strip()
-            if action_json.startswith("{"):
-                action = json.loads(action_json.split("\n")[0])
-        except (json.JSONDecodeError, IndexError):
-            pass
+    display_text, action = _text_and_action(response, session.context)
 
     messages.append({"role": "assistant", "content": display_text, "timestamp": datetime.now().isoformat(), "action": action})
     session.chat_messages = json.dumps(messages)
@@ -565,6 +512,9 @@ def apply_chat_action(session_id: str, db: Session = Depends(get_tenant_db)):
 
     if not action:
         return {"applied": False, "message": "No pending action found"}
+    problem = _validate_action(action)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
 
     proposed = json.loads(session.proposed_changes or "[]")
 
@@ -647,36 +597,88 @@ def get_import_config(context: str):
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _parse_ai_response(raw_text: str, context: str) -> list[dict]:
-    """Parse Claude's response into structured findings."""
-    text = raw_text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
-    text = text.strip()
+PROPOSE_FIELD_CHANGE_TOOL = {
+    "name": "propose_field_change",
+    "description": "Add or correct one value in the proposed database changes for this import. "
+                   "Use it only when the user asks for a value to be added or changed.",
+    "strict": True,
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["add_field", "update_field"]},
+            "table": {"type": "string", "enum": ["w2_records", "mortgages", "retirement_accounts", "rsu_grants"]},
+            "column": {"type": "string", "description": "Column name in that table"},
+            "value": {"type": "string", "description": "The new value; numbers as plain digits like 155000 or 3.75"},
+            "tax_year": {"type": ["integer", "null"], "description": "Tax year for w2_records, else null"},
+        },
+        "required": ["action", "table", "column", "value", "tax_year"],
+        "additionalProperties": False,
+    },
+}
 
+ALLOWED_ACTION_COLUMNS = {
+    "w2_records": set(W2_FIELDS.values()),
+    "mortgages": set(MORTGAGE_FIELDS.values()),
+    "retirement_accounts": {
+        "plan_name", "provider", "total_balance", "vested_balance", "roth_balance", "pretax_balance",
+        "employer_match_balance", "other_balance", "pretax_deferral_rate_pct", "roth_deferral_rate_pct",
+        "total_employee_contributions_lifetime", "total_employer_contributions_lifetime", "roth_basis",
+        "account_return_pct", "estimated_monthly_income", "statement_start", "statement_end",
+    },
+    "rsu_grants": {"symbol", "grant_date", "total_shares", "vested_shares", "unvested_shares", "sellable_shares", "share_price"},
+}
+
+
+def _validate_action(action: dict) -> str | None:
+    """Return a problem description when a chat action names a table/column the app does not write."""
+    table = action.get("table")
+    column = action.get("column")
+    if table not in ALLOWED_ACTION_COLUMNS:
+        return f"Unknown table for a correction: {table}"
+    if column not in ALLOWED_ACTION_COLUMNS[table]:
+        return f"{column} is not a field Tallied tracks in {table}"
+    if action.get("action") not in ("add_field", "update_field"):
+        return "Unknown action"
+    return None
+
+
+def _coerce_value(value):
+    if isinstance(value, (int, float)):
+        return value
+    text = str(value).replace(",", "").replace("$", "").strip()
     try:
-        parsed = json.loads(text)
-        if isinstance(parsed, list):
-            return parsed
-        if isinstance(parsed, dict):
-            return [parsed]  # Retirement returns an object
-    except json.JSONDecodeError:
-        # Try extracting array with bracket matching
-        depth = 0; start = None
-        for i, ch in enumerate(text):
-            if ch == "[":
-                if depth == 0: start = i
-                depth += 1
-            elif ch == "]":
-                depth -= 1
-                if depth == 0 and start is not None:
-                    try:
-                        return json.loads(text[start:i + 1])
-                    except json.JSONDecodeError:
-                        pass
-    return []
+        number = float(text)
+        return int(number) if number.is_integer() and "." not in text else number
+    except ValueError:
+        return str(value)
+
+
+def _text_and_action(response, context: str) -> tuple[str, dict | None]:
+    """Split a chat response into display text and the validated tool action, if any."""
+    texts = [b.text for b in response.content if getattr(b, "type", None) == "text"]
+    action = None
+    for block in response.content:
+        if getattr(block, "type", None) == "tool_use" and block.name == PROPOSE_FIELD_CHANGE_TOOL["name"]:
+            candidate = dict(block.input)
+            candidate["value"] = _coerce_value(candidate.get("value"))
+            if _validate_action(candidate) is None:
+                action = candidate
+            break
+    return " ".join(t.strip() for t in texts if t.strip()), action
+
+
+def _emit_import_webhook(tenant_id: int, session_id: str, changes_applied: int, results: list) -> None:
+    """Deliver import.completed to subscribers; never raises."""
+    try:
+        from app.database import SessionLocal
+        from app.services.webhook_service import deliver_webhook
+
+        with SessionLocal() as public_db:
+            deliver_webhook("import.completed", tenant_id,
+                            {"session_id": session_id, "changes_applied": changes_applied, "results": results}, public_db)
+    except Exception:
+        import logging
+        logging.getLogger("tallied.import").exception("Webhook delivery after import failed")
 
 
 def _build_proposed_changes(findings: list[dict], context: str, db: Session, filename: str = "") -> list[dict]:

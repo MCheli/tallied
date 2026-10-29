@@ -26,5 +26,8 @@ class Vehicle(Base):
     value_last_updated: Mapped[Optional[datetime]] = mapped_column(DateTime)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     valuation_notes: Mapped[Optional[str]] = mapped_column(Text)  # AI reasoning for current valuation
+    valuation_source: Mapped[Optional[str]] = mapped_column(String)  # "ai" | "manual"
+    valuation_model: Mapped[Optional[str]] = mapped_column(String)  # model id that produced the estimate
+    valuation_confidence: Mapped[Optional[str]] = mapped_column(String)  # high | medium | low
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

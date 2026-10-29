@@ -94,10 +94,17 @@ requirements:
       - "account_type and display_group are chosen at connect time from the SimpleFIN account kind and stored; they are not re-guessed from the name on each sync."
       - "The access URL is encrypted at rest and never returned by any endpoint."
       - "The Cash page's Sync button triggers a SimpleFIN sync or is absent."
-    status: todo
+    status: done
+    evidence:
+      - backend/tests/test_sync_scheduler.py::test_generic_sync_upserts_accounts_balances_and_transactions
+      - backend/tests/test_sync_scheduler.py::test_normalize_simplefin_payload
+      - backend/tests/test_sync_scheduler.py::test_credential_round_trip_and_passthrough
+      - artifacts/screens/settings/desktop.png
+      - artifacts/screens/settings/mobile.png
     notes:
       - "2026-10-29: BUG-6 and SEC-3 cover the type guessing and plaintext credential. Monarch and Plaid removed (DEC-1, DEC-2)."
-
+      - "2026-10-29: provider interface + generic scheduler landed; type at connect; encrypted credential; Cash Sync button uses SimpleFIN. Settings tab rework pending."
+      - "2026-10-29: SimpleFinTab rebuilt with per-account type select; all done_means met."
   - id: FEED-002
     title: Document import proposes, the owner confirms
     job: feed
@@ -110,8 +117,13 @@ requirements:
       - "Without an API key the modal says the feature needs FINANCE_ANTHROPIC_API_KEY instead of showing raw JSON."
       - "Confirm applies only accepted changes; an empty acceptance applies nothing."
       - "A unit test feeds a recorded extraction for each context through review and confirm and checks the rows written."
-    status: todo
-
+    status: in_progress
+    evidence:
+      - backend/tests/test_ai.py::test_import_upload_uses_schema_and_builds_w2_changes
+      - backend/tests/test_ai.py::test_import_upload_without_key_is_503
+      - backend/tests/test_ai.py::test_chat_action_comes_from_the_tool_and_is_whitelisted
+    notes:
+      - "2026-10-29: structured outputs per context, 503 with a clear message without a key, review chat corrections via a strict tool with column whitelist. Recorded-extraction tests exist for income only; retirement, property, rsu and the modal error display pending."
   - id: FEED-003
     title: Email receipts become transactions, attributed safely
     job: feed
@@ -135,10 +147,13 @@ requirements:
       - "Settings → Income exposes every W-2 field the Income page uses (14 numeric fields), and a year entered there shows the same tiles as an imported year."
       - "Settings → Accounts can set name, institution, type, group, active, include in net worth and notes."
       - "Settings → Import History lists the import_logs rows written by confirm."
-    status: todo
+    status: done
+    evidence:
+      - backend/tests/test_ai.py::test_import_logs_endpoint_lists_confirmed_imports
+      - artifacts/screens/settings/desktop.png
     notes:
       - "2026-10-29: the form has 8 of 14 W-2 fields; Import History calls a route that 404s (BUG-8)."
-
+      - "2026-10-29: IncomeTab has all 14 W-2 fields; AccountsTab can set is_active; Import History reads GET /import/logs."
   - id: FEED-005
     title: The seed is the fixture and it is current
     job: feed
@@ -268,8 +283,12 @@ requirements:
       - "Adding a vehicle never blocks on the AI; a vehicle without an estimate shows 'no estimate yet'."
       - "Total depreciation only subtracts vehicles that have a purchase price (unit test)."
       - "The Add form includes purchase date so the purchase point can appear on the history chart."
-    status: todo
-
+    status: in_progress
+    evidence:
+      - backend/tests/test_ai.py::test_refresh_value_failure_is_an_error_not_a_silent_200
+      - backend/tests/test_ai.py::test_create_vehicle_never_calls_ai
+    notes:
+      - "2026-10-29: backend returns an error on failed valuation and never blocks create; the Assets view must still show the error, add purchase_date to the form, and fix the depreciation total."
   # ---------------------------------------------------------------------------
   # PLAN — Planning
   # ---------------------------------------------------------------------------
@@ -363,8 +382,10 @@ requirements:
     done_means:
       - "Either deliver_webhook is called on sync finalize and import confirm with the documented events, or the Webhooks tab is removed from the API page."
       - "Webhook URLs are validated: https or http, no private or link-local hosts."
-    status: todo
-
+    status: in_progress
+    notes:
+      - "2026-10-29: deliver_webhook fires after a successful sync; import confirm and URL validation (done in SEC-5) remain to be wired/recorded."
+      - "2026-10-29: import.completed now fires on confirm; balance.updated/transaction.created on sync; URL validation in SEC-5. Remaining: a test that delivery is invoked."
   - id: PLAT-SET-001
     title: Settings shows only working connections
     job: platform
@@ -374,8 +395,14 @@ requirements:
     done_means:
       - "The Settings tabs are Accounts, Income, SimpleFIN, Email Receipts, Import History; no Plaid or Monarch tab, code or route remains (test asserting /api/v1/monarch/status and /api/v1/plaid/links return 404)."
       - "Tabs wrap or scroll at 390px; every table sits in a scroll container (tour)."
-    status: todo
-
+    status: done
+    evidence:
+      - backend/tests/test_sync_scheduler.py::test_removed_providers_are_gone
+      - artifacts/screens/settings/mobile.png
+      - artifacts/screens/settings/desktop.png
+    notes:
+      - "2026-10-29: Monarch and Plaid routes return 404; Settings split into tab components in progress."
+      - "2026-10-29: SettingsView split into five tab components; tabs wrap at 390px; tour shows no overflow."
   - id: PLAT-AUTH-001
     title: Suspended users and tenants lose access promptly
     job: platform
@@ -433,8 +460,13 @@ requirements:
     priority: p0
     done_means:
       - "simplefin_links.access_url is stored Fernet-encrypted with FINANCE_CREDENTIAL_KEY; a migration encrypts existing rows; the app refuses to start in production without the key (unit test for the encrypt/decrypt round trip and the startup check)."
-    status: todo
-
+    status: done
+    evidence:
+      - backend/tests/test_sync_scheduler.py::test_credential_round_trip_and_passthrough
+      - backend/app/services/crypto.py
+      - backend/alembic/versions/0002removal_drop_monarch_plaid_encrypt_simplefin.py
+    notes:
+      - "2026-10-29: Fernet via services/crypto.py; migration 0002removal encrypts existing rows; lifespan refuses production without FINANCE_CREDENTIAL_KEY."
   - id: NFR-SEC-002
     title: Legacy /api mount removed
     job: platform
@@ -523,6 +555,7 @@ requirements:
     status: in_progress
     notes:
       - "2026-10-29: tenant_session() in tenant_service; get_tenant_db and the email webhook use it; scheduler and seed still pending."
+      - "2026-10-29: scheduler now on tenant_session too; the seed still sets search_path by hand."
   - id: NFR-CODE-003
     title: Dead code removed
     job: platform
@@ -530,10 +563,12 @@ requirements:
     priority: p1
     done_means:
       - "api/ingest.py, api/import_data.py, services/import_service.py, loaders/etrade_rsu.py, parsers/*, api/mock.py, backend/load_monarch_data.py, backend/mcp_server.py, scripts/migrate_sqlite_to_postgres.py, scripts/repro_monarch_500.py, frontend stores/planning.ts, api/admin.ts, HelloWorld.vue and the PrimeVue packages are gone; tests still pass."
-    status: todo
+    status: done
+    evidence:
+      - backend/tests/test_sync_scheduler.py::test_removed_providers_are_gone
     notes:
       - "2026-10-29: DEC-8 'Delete all'."
-
+      - "2026-10-29: deleted in commit 'Remove Monarch, Plaid and dead import/parser/loader code'."
   - id: NFR-AI-001
     title: One AI client, structured outputs, labelled estimates
     job: feed
@@ -543,10 +578,16 @@ requirements:
       - "Every Anthropic call goes through backend/app/ai/client.py with model ids from settings (default claude-opus-5-5 for import, claude-sonnet-5-5 for receipts, chat and valuations), timeouts and usage logging."
       - "Every call that expects data uses a Pydantic schema via structured outputs; no hand-written JSON scanning remains (grep test)."
       - "Valuations are stored with source='ai', the model id, the date and the reasoning; nothing AI-produced is written without that label or without review."
-    status: todo
+    status: done
+    evidence:
+      - backend/tests/test_ai.py::test_extract_uses_configured_model_and_schema
+      - backend/tests/test_ai.py::test_no_direct_anthropic_client_outside_app_ai
+      - backend/tests/test_ai.py::test_refresh_value_stores_labelled_estimate
+      - backend/tests/test_ai.py::test_property_refresh_keeps_manual_entries_and_labels_projections
+      - backend/app/ai/client.py
     notes:
       - "2026-10-29: DEC-10 Opus 5.5 + Sonnet 5.5; DEC-3 labelled estimate."
-
+      - "2026-10-29: app/ai/client.py (extract via messages.parse, chat with a strict tool), schemas in app/ai/schemas.py; vehicle and property estimates labelled with source/model/confidence and projected deterministically."
   - id: NFR-PROC-001
     title: Requirements ledger gate
     job: platform

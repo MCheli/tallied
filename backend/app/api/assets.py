@@ -2,19 +2,17 @@
 Fixed capital assets API — vehicles and future asset types.
 """
 import json
-import re
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.ai import AIError, ai_available, extract  # noqa: F401
 from app.dependencies import get_tenant_db
 from app.models.asset import Vehicle
 from app.models.asset_value_history import AssetValueHistory
@@ -72,16 +70,10 @@ def create_vehicle(body: VehicleCreate, db: Session = Depends(get_tenant_db)):
         notes=body.notes,
     )
     db.add(vehicle)
-    db.flush()
-
-    # Auto-estimate value
-    estimate = _estimate_value_simple(vehicle)
-    if estimate:
-        vehicle.estimated_value = Decimal(str(estimate))
-        vehicle.value_last_updated = datetime.now()
-
     db.commit()
     db.refresh(vehicle)
+    # The value is estimated on request (POST /vehicles/{id}/refresh-value), never
+    # synchronously here: adding a vehicle must not depend on the AI being available.
     return _serialize_vehicle(vehicle)
 
 
@@ -118,75 +110,68 @@ def delete_vehicle(vehicle_id: int, db: Session = Depends(get_tenant_db)):
 
 @router.post("/vehicles/{vehicle_id}/refresh-value")
 def refresh_vehicle_value(vehicle_id: int, db: Session = Depends(get_tenant_db)):
-    """Re-estimate the vehicle's market value using AI, including history and projections."""
+    """Estimate the vehicle's market value with Claude and store it as a labelled estimate.
+
+    Claude supplies today's value, a confidence and a depreciation rate; the
+    history and projection points are computed deterministically from those
+    (services/valuation.py). Failure is an HTTP error, never a silent no-op.
+    """
+    from app.services.valuation import estimate_vehicle_value, vehicle_value_curve
+
     vehicle = db.get(Vehicle, vehicle_id)
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
 
-    result = _estimate_value_with_history(vehicle)
-    if result and result.get("current_value"):
-        current_value = result["current_value"]
-        vehicle.estimated_value = Decimal(str(current_value))
-        vehicle.value_last_updated = datetime.now()
-        vehicle.valuation_notes = result.get("reasoning")
+    try:
+        valuation, model_id = estimate_vehicle_value(vehicle)
+    except AIError as e:
+        raise HTTPException(status_code=e.status_code, detail=f"Valuation unavailable: {e}")
 
-        # Clear existing AI estimates for this vehicle (keep manual entries)
-        db.execute(
-            delete(AssetValueHistory).where(
-                AssetValueHistory.vehicle_id == vehicle_id,
-                AssetValueHistory.source.in_(["ai_estimate", "purchase"]),
-            )
+    today = date.today()
+    history, projections = vehicle_value_curve(
+        purchase_price=float(vehicle.purchase_price) if vehicle.purchase_price else None,
+        purchase_year=vehicle.purchase_date.year if vehicle.purchase_date else None,
+        current_value=float(valuation.current_value),
+        current_year=today.year,
+        annual_depreciation_pct=valuation.annual_depreciation_pct,
+    )
+
+    vehicle.estimated_value = Decimal(valuation.current_value)
+    vehicle.value_last_updated = datetime.now()
+    vehicle.valuation_notes = valuation.reasoning
+    vehicle.valuation_source = "ai"
+    vehicle.valuation_model = model_id
+    vehicle.valuation_confidence = valuation.confidence
+
+    # Replace the previous AI curve; manual rows are never touched.
+    db.execute(
+        delete(AssetValueHistory).where(
+            AssetValueHistory.vehicle_id == vehicle_id,
+            AssetValueHistory.source.in_(["ai_estimate", "purchase"]),
         )
-        db.flush()
-
-        # Store purchase price entry if available
-        if vehicle.purchase_price and vehicle.purchase_date:
-            db.add(AssetValueHistory(
-                vehicle_id=vehicle_id,
-                date=vehicle.purchase_date,
-                value=vehicle.purchase_price,
-                source="purchase",
-                is_projected=False,
-            ))
-
-        # Store historical values
-        for entry in result.get("history", []):
-            db.add(AssetValueHistory(
-                vehicle_id=vehicle_id,
-                date=date(entry["year"], 1, 1),
-                value=Decimal(str(entry["value"])),
-                source="ai_estimate",
-                is_projected=False,
-            ))
-
-        # Store projected values
-        for entry in result.get("projections", []):
-            db.add(AssetValueHistory(
-                vehicle_id=vehicle_id,
-                date=date(entry["year"], 1, 1),
-                value=Decimal(str(entry["value"])),
-                source="ai_estimate",
-                is_projected=True,
-            ))
-
-        db.commit()
-        db.refresh(vehicle)
-        return {
-            "estimated_value": current_value,
-            "updated": True,
-            "reasoning": result.get("reasoning", ""),
-        }
-
-    # Fallback: try simple estimate
-    simple = _estimate_value_simple(vehicle)
-    if simple:
-        vehicle.estimated_value = Decimal(str(simple))
-        vehicle.value_last_updated = datetime.now()
-        db.commit()
-        db.refresh(vehicle)
-        return {"estimated_value": simple, "updated": True}
-
-    return {"estimated_value": None, "updated": False, "error": "Could not estimate value"}
+    )
+    db.flush()
+    if vehicle.purchase_price and vehicle.purchase_date:
+        db.add(AssetValueHistory(vehicle_id=vehicle_id, date=vehicle.purchase_date,
+                                 value=vehicle.purchase_price, source="purchase", is_projected=False))
+    for year, value in history:
+        if vehicle.purchase_date and year == vehicle.purchase_date.year:
+            continue
+        db.add(AssetValueHistory(vehicle_id=vehicle_id, date=date(year, 1, 1) if year != today.year else today,
+                                 value=value, source="ai_estimate", is_projected=False))
+    for year, value in projections:
+        db.add(AssetValueHistory(vehicle_id=vehicle_id, date=date(year, 1, 1), value=value,
+                                 source="ai_estimate", is_projected=True))
+    db.commit()
+    db.refresh(vehicle)
+    return {
+        "estimated_value": float(vehicle.estimated_value),
+        "updated": True,
+        "confidence": valuation.confidence,
+        "model": model_id,
+        "reasoning": valuation.reasoning,
+        "annual_depreciation_pct": valuation.annual_depreciation_pct,
+    }
 
 
 @router.get("/vehicles/{vehicle_id}/value-history")
@@ -305,105 +290,8 @@ def _serialize_vehicle(v: Vehicle) -> dict:
         "value_last_updated": v.value_last_updated.isoformat() if v.value_last_updated else None,
         "notes": v.notes,
         "valuation_notes": v.valuation_notes,
+        "valuation_source": v.valuation_source,
+        "valuation_model": v.valuation_model,
+        "valuation_confidence": v.valuation_confidence,
         "depreciation": round(float(v.purchase_price or 0) - float(v.estimated_value or 0), 2) if v.purchase_price and v.estimated_value else None,
     }
-
-
-def _estimate_value_simple(vehicle: Vehicle) -> Optional[float]:
-    """Use Claude AI to estimate a vehicle's current market value (simple, no history)."""
-    if not settings.anthropic_api_key:
-        return None
-
-    prompt = f"""Estimate the current fair market value of this vehicle in USD.
-
-Vehicle: {vehicle.year} {vehicle.make} {vehicle.model} {vehicle.trim or ''}
-Mileage: {vehicle.mileage or 'unknown'} miles
-Condition: {vehicle.condition or 'unknown'}
-
-Return ONLY a single number (the dollar value estimate, no currency symbol, no commas).
-Base your estimate on typical private-party sale prices for this vehicle in the current market.
-Consider the age, mileage, condition, and market demand for this specific vehicle."""
-
-    try:
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=100,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = message.content[0].text.strip().replace(",", "").replace("$", "")
-        match = re.search(r'\d+', text)
-        if match:
-            return float(match.group())
-    except Exception:
-        pass
-
-    return None
-
-
-def _estimate_value_with_history(vehicle: Vehicle) -> Optional[dict]:
-    """Use Claude AI to estimate a vehicle's value with historical and projected data."""
-    if not settings.anthropic_api_key:
-        return None
-
-    current_year = date.today().year
-    purchase_year = vehicle.purchase_date.year if vehicle.purchase_date else vehicle.year
-    history_start = max(purchase_year, current_year - 5)
-
-    prompt = f"""You are a vehicle valuation expert. Research and estimate values for this vehicle.
-
-Vehicle: {vehicle.year} {vehicle.make} {vehicle.model} {vehicle.trim or ''}
-Mileage: {vehicle.mileage or 'unknown'} miles
-Condition: {vehicle.condition or 'unknown'}
-Purchase year: {purchase_year}
-
-Based on typical market values from sources like KBB, Edmunds, and NADA:
-
-1. Estimate the CURRENT fair market value (private-party sale)
-2. Estimate historical values for each year from {history_start} to {current_year}
-3. Project future values for the next 5 years ({current_year + 1} to {current_year + 5})
-4. Consider the vehicle's condition, mileage, and typical depreciation curves
-
-Return ONLY valid JSON (no markdown, no code fences) in this exact format:
-{{
-  "current_value": 25000,
-  "history": [
-    {{"year": {history_start}, "value": 35000}},
-    ...
-  ],
-  "projections": [
-    {{"year": {current_year + 1}, "value": 22000}},
-    ...
-  ],
-  "reasoning": "Brief explanation of the valuation methodology and key factors."
-}}
-
-Important:
-- All values should be integers (whole dollars)
-- History should cover each year from {history_start} to {current_year}
-- Projections should cover each year from {current_year + 1} to {current_year + 5}
-- Use realistic depreciation curves for this specific make/model"""
-
-    try:
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = message.content[0].text.strip()
-
-        # Strip markdown code fences if present
-        if text.startswith("```"):
-            text = re.sub(r'^```(?:json)?\s*', '', text)
-            text = re.sub(r'\s*```$', '', text)
-
-        result = json.loads(text)
-
-        # Validate structure
-        if "current_value" in result and isinstance(result.get("history"), list):
-            return result
-    except Exception:
-        pass
-
-    return None
