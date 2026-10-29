@@ -1,0 +1,553 @@
+# Tallied requirements ledger.
+# Source of truth for scope: docs/PRODUCT.md. Schema and rules: docs/ARCHITECTURE.md "Requirements ledger".
+# Gate: `make ledger-check` (scripts/ledger_check.py), also run by CI and `make pre-commit`.
+#
+# Every entry starts as todo with no evidence. It becomes done only with evidence:
+#   - a test that exercises the real code path:  backend/tests/<file>.py::<test_fn>  or  frontend/tests/<file>.spec.ts#<title>
+#   - for anything visible (visible: true):      artifacts/screens/<route>/<viewport>.png from `make tour`
+#
+# Conventions in done_means:
+#   "the seed"   = `make seed-test`, the Claudius Banks fixture (scripts/seed_test_data.py). Its dates are relative
+#                  to the day it runs, so "last 3 months" style defaults always have data.
+#   "the tour"   = scripts/screenshot_tour.mjs at 390px (mobile) and 1440px (desktop).
+#   Figures quoted are the seed's unless stated.
+#
+# Created 2026-10-29 from docs/REVIEW-2026-10-29.md and the as-built briefs in docs/research/as-built-2026-10/.
+
+requirements:
+
+  # ---------------------------------------------------------------------------
+  # LOOK — Dashboard
+  # ---------------------------------------------------------------------------
+
+  - id: LOOK-001
+    title: Net worth and liquid net worth from the latest balance per account
+    job: look
+    area: dashboard
+    priority: p0
+    visible: true
+    done_means:
+      - "With the seed, the Net Worth tile equals the sum of the latest balance_snapshots row per active account with include_in_nw, and the Liquid Net Worth tile equals the cash plus investments plus company-stock layers; the InfoTooltip states exactly those definitions."
+      - "The Liquidity Layers waterfall's final bar equals the Net Worth tile even when an account has include_in_nw=false (unit test with one excluded account)."
+      - "Each balance-bearing tile shows the as-of date of the newest snapshot it used."
+    status: todo
+    notes:
+      - "2026-10-29: today the tooltip claims credit cards are included in liquid net worth and the waterfall ignores include_in_nw (money brief 1.5)."
+
+  - id: LOOK-002
+    title: Recent spending tile obeys its window
+    job: look
+    area: dashboard
+    priority: p0
+    visible: true
+    done_means:
+      - "The Last 30 Days Spending tile sums only transactions dated within the last 30 days, using the API client's typed call; with the seed it shows the last month's categories, not the all-time totals."
+      - "When there are no transactions in the window the tile shows an empty state saying so."
+    status: todo
+    notes:
+      - "2026-10-29: BUG-2 — the view sends start_date/end_date, the endpoint reads from_date/to_date, so the tile is all-time."
+
+  - id: LOOK-003
+    title: One home-equity number
+    job: look
+    area: dashboard
+    priority: p1
+    visible: true
+    done_means:
+      - "The Property Equity tile and the Home Equity layer show the same figure, because the Property page writes a balance snapshot for the real-estate account whenever the valuation changes (PRODUCT.md decision D2)."
+    status: todo
+
+  - id: LOOK-004
+    title: Net worth over time by layer
+    job: look
+    area: dashboard
+    priority: p1
+    visible: true
+    done_means:
+      - "The trend chart groups accounts by the same normalised display_group names as the snapshot layers, so an account in layer Cash is in the Cash series."
+      - "Liabilities render as a separate negative series, not stacked into the positive area."
+      - "On a 390px screen the x-axis dates do not overlap the legend (tour screenshot)."
+    status: todo
+
+  - id: LOOK-005
+    title: Dashboard degrades per tile, not as a whole
+    job: look
+    area: dashboard
+    priority: p2
+    done_means:
+      - "If one of the dashboard's requests fails, the other tiles still render and the failed one shows an error state (unit test with one failing endpoint)."
+    status: todo
+
+  # ---------------------------------------------------------------------------
+  # FEED — getting data in
+  # ---------------------------------------------------------------------------
+
+  - id: FEED-001
+    title: SimpleFIN is the bank connection
+    job: feed
+    area: connections
+    priority: p0
+    visible: true
+    done_means:
+      - "Settings shows one SimpleFIN tab: connect with a setup token, choose per account whether balances and transactions sync, sync now, refresh credentials, disconnect."
+      - "Each sync is a sync_jobs row that ends succeeded or failed with counts; the scheduler runs one every 12 hours for every tenant with a link."
+      - "account_type and display_group are chosen at connect time from the SimpleFIN account kind and stored; they are not re-guessed from the name on each sync."
+      - "The access URL is encrypted at rest and never returned by any endpoint."
+      - "The Cash page's Sync button triggers a SimpleFIN sync or is absent."
+    status: todo
+    notes:
+      - "2026-10-29: BUG-6 and SEC-3 cover the type guessing and plaintext credential. Monarch and Plaid removed (DEC-1, DEC-2)."
+
+  - id: FEED-002
+    title: Document import proposes, the owner confirms
+    job: feed
+    area: import
+    priority: p0
+    visible: true
+    done_means:
+      - "From Income, RSU, 401(k) and Property, the import modal accepts PDF, XLSX and CSV, shows the AI's proposed changes per field with current and new values, and writes nothing until Accept Selected Changes."
+      - "Extraction uses structured outputs through the shared AI client; each context has a Pydantic schema and a fixture document in fixtures/test_documents with its expected values in MANIFEST.md."
+      - "Without an API key the modal says the feature needs FINANCE_ANTHROPIC_API_KEY instead of showing raw JSON."
+      - "Confirm applies only accepted changes; an empty acceptance applies nothing."
+      - "A unit test feeds a recorded extraction for each context through review and confirm and checks the rows written."
+    status: todo
+
+  - id: FEED-003
+    title: Email receipts become transactions, attributed safely
+    job: feed
+    area: email
+    priority: p1
+    done_means:
+      - "A receipt forwarded from a registered address creates one transaction with merchant, amount, date and category, and a receipt row with status parsed; a failed parse is a receipt row with status failed and the error."
+      - "The tenant is resolved from the SMTP envelope sender against the owner's registered addresses, never from a From: line inside the body; the webhook secret is compared in constant time."
+      - "Registering an address another tenant already registered fails without revealing that fact."
+    status: todo
+    notes:
+      - "2026-10-29: DEC-4 'fix auth only'; SEC-2 and SEC-7."
+
+  - id: FEED-004
+    title: Manual entry covers every field a page shows
+    job: feed
+    area: settings
+    priority: p1
+    visible: true
+    done_means:
+      - "Settings → Income exposes every W-2 field the Income page uses (14 numeric fields), and a year entered there shows the same tiles as an imported year."
+      - "Settings → Accounts can set name, institution, type, group, active, include in net worth and notes."
+      - "Settings → Import History lists the import_logs rows written by confirm."
+    status: todo
+    notes:
+      - "2026-10-29: the form has 8 of 14 W-2 fields; Import History calls a route that 404s (BUG-8)."
+
+  - id: FEED-005
+    title: The seed is the fixture and it is current
+    job: feed
+    area: seed
+    priority: p0
+    done_means:
+      - "`make seed-test` rebuilds the Claudius tenant with transactions and snapshots whose latest month is the month it runs, so every page's default period has data."
+      - "The seed contains no real person's address, employer plan name or figures; the persona matches CLAUDE.md and fixtures/test_documents/MANIFEST.md (456 Oak Street, Springfield MA)."
+      - "The seed's stock price row survives page loads in tests (the price cache does not delete non-yahoo rows for today when a yahoo row cannot be fetched)."
+    status: todo
+    notes:
+      - "2026-10-29: data ends 2026-02/03; seed address was a real-looking Ashland MA address; Yahoo overwrote the seed price (investments brief 1.5)."
+
+  # ---------------------------------------------------------------------------
+  # UNDERSTAND — Spending, Income, Cash, RSU, 401(k), Property, Assets
+  # ---------------------------------------------------------------------------
+
+  - id: UND-SPEND-001
+    title: One period and one account filter scope the whole Spending page
+    job: understand
+    area: spending
+    priority: p0
+    visible: true
+    done_means:
+      - "Changing the date preset changes Spending by Category, Recurring Expenses, Transactions and Monthly Spending Trend; account-type chips apply to all four."
+      - "Recurring 'per month' is the sum per month divided by the number of months in the period, not a per-transaction average."
+      - "Spending excludes the Transfer category and loan payments (PRODUCT.md D1) in every aggregate, including Dashboard and Cash."
+      - "An empty period shows an empty state in each section; the default preset has data with the seed."
+    status: todo
+
+  - id: UND-SPEND-002
+    title: Transactions table is usable on a phone
+    job: understand
+    area: spending
+    priority: p1
+    visible: true
+    done_means:
+      - "At 390px the table sits in its own horizontal scroll container; the page itself has no horizontal overflow in the tour log."
+      - "Search is debounced; paging keeps the other sections unchanged."
+    status: todo
+
+  - id: UND-INC-001
+    title: One take-home definition on the Income page
+    job: understand
+    area: income
+    priority: p0
+    visible: true
+    done_means:
+      - "The five tiles, the gross-to-take-home waterfall, the all-years stacked bar and the year-over-year table use one definition of take-home and of benefits; the stacked bar sums to gross pay and the waterfall lands on the Take-Home tile's value (unit test on the seed's 2025 W-2)."
+      - "Employer-paid health (Box 12 DD) is shown as information, not as a deduction."
+    status: todo
+    notes:
+      - "2026-10-29: stack sums to 218,600 vs gross 210,000; waterfall misses its own final bar by 8,600 (money brief 3.5)."
+
+  - id: UND-CASH-001
+    title: Cash page time range scopes every section
+    job: understand
+    area: cash
+    priority: p0
+    visible: true
+    done_means:
+      - "1M/3M/6M/1Y/All scope the balance chart, the change badge, average monthly spend, runway and notable transactions; when no snapshot falls in the range the chart says so rather than showing all history."
+      - "Average monthly spend uses the spending definition (negative amounts, transfers excluded) over the selected range."
+      - "Each balance shows its as-of date."
+    status: todo
+
+  - id: UND-RSU-001
+    title: RSU page values the grants' own symbol
+    job: understand
+    area: rsu
+    priority: p0
+    visible: true
+    done_means:
+      - "The price chart, the current price and every tooltip use the symbol carried by the grants (MSFT with the seed); no view or tooltip contains a hard-coded ticker."
+      - "The price history endpoint validates the symbol and caches by symbol and day; Yahoo is called at most once per symbol per day."
+      - "After an import the page refreshes its symbol."
+    status: todo
+    notes:
+      - "2026-10-29: BUG-4 — PTC hard-coded in RSUView and Dashboard tooltips."
+
+  - id: UND-RSU-002
+    title: Sell-today estimate accounts for every sellable share
+    job: understand
+    area: rsu
+    priority: p1
+    visible: true
+    done_means:
+      - "The 'If You Sold Today' header covers the same share count as the Sellable tile, or states how many sellable shares could not be assigned to a vest lot and why."
+      - "Tax rates used in the estimate are settings with defaults, shown in the Assumptions block."
+    status: todo
+
+  - id: UND-401K-001
+    title: 401(k) page reflects the newest statement
+    job: understand
+    area: retirement
+    priority: p1
+    visible: true
+    done_means:
+      - "Labels and tooltips name the plan's provider from the data, never a hard-coded provider or another household's figures."
+      - "An older statement import adds a history point but does not overwrite balances or rates (unit test)."
+      - "The 401(k) balance shown here is the figure the Dashboard Retirement layer and Planning use (PRODUCT.md D2)."
+    status: todo
+    notes:
+      - "2026-10-29: 'T. Rowe Price' and '$253K/$137K' hard-coded in RetirementView."
+
+  - id: UND-PROP-001
+    title: Property page respects what the owner typed
+    job: understand
+    area: property
+    priority: p0
+    visible: true
+    done_means:
+      - "A manual valuation of any source (manual, tax assessment, appraisal) survives Refresh from Realtor.com (unit test)."
+      - "Equity Position shows the down payment as down payment when purchase price is unknown, or asks for the purchase price; it never labels loan-minus-value as appreciation."
+      - "Projected values are drawn dashed, labelled as AI projections with their date, and never feed equity, net worth or Planning."
+      - "The amortization schedule starts from the mortgage's own origination date and the view has no hard-coded escrow fallback."
+    status: todo
+
+  - id: UND-ASSET-001
+    title: Vehicle values are labelled estimates and failures are visible
+    job: understand
+    area: assets
+    priority: p1
+    visible: true
+    done_means:
+      - "Refresh Value either updates the value with its date and reasoning or shows an error; the backend returns a non-2xx status on failure."
+      - "Adding a vehicle never blocks on the AI; a vehicle without an estimate shows 'no estimate yet'."
+      - "Total depreciation only subtracts vehicles that have a purchase price (unit test)."
+      - "The Add form includes purchase date so the purchase point can appear on the history chart."
+    status: todo
+
+  # ---------------------------------------------------------------------------
+  # PLAN — Planning
+  # ---------------------------------------------------------------------------
+
+  - id: PLAN-001
+    title: Projection uses the household's age and retirement age
+    job: plan
+    area: planning
+    priority: p0
+    visible: true
+    done_means:
+      - "current_age and retirement_age are plan assumptions (seeded from a household profile setting), used by both the engine and the table's year range; moving the retirement_age slider moves the last working year."
+      - "There is one assumption vocabulary: the seed, DEFAULT_ASSUMPTIONS and the engine agree on keys, categories and labels; editing a slider keeps display names and categories."
+      - "An engine error surfaces as an error on the plan, never as a silently empty projection."
+    status: todo
+    notes:
+      - "2026-10-29: current_age hard-coded 33, retirement age from config.yaml, slider PUT wipes metadata (planning brief 1.5)."
+
+  - id: PLAN-002
+    title: Forecast and plan rows do not double-count RSUs
+    job: plan
+    area: planning
+    priority: p1
+    done_means:
+      - "The current-year forecast values only vests that have occurred at their FMV plus remaining scheduled vests, and plan-year overrides from the vest schedule do not exceed the grants' unvested shares (unit test on the seed)."
+      - "expenses_annual and savings_rate are either populated or not shown."
+    status: todo
+
+  - id: PLAN-003
+    title: Planning calls the versioned API
+    job: plan
+    area: planning
+    priority: p1
+    done_means:
+      - "planning.ts targets /api/v1 through the shared client with credentials and 401 refresh; the legacy /api mount is gone (SEC-8)."
+    status: todo
+
+  # ---------------------------------------------------------------------------
+  # PLATFORM — Database, API, Settings, Admin, auth, Guide
+  # ---------------------------------------------------------------------------
+
+  - id: PLAT-DB-001
+    title: The SQL runner cannot leave the household's schema
+    job: platform
+    area: database
+    priority: p0
+    done_means:
+      - "SELECT email FROM users, SELECT * FROM \"public\".\"users\", SELECT * FROM pg_authid and SELECT pg_read_file('/etc/passwd') all fail from the runner; SELECT count(*) FROM accounts succeeds (e2e test against Postgres)."
+      - "Queries run as a role with no privileges on public and no superuser rights, in a read-only transaction, with a statement timeout."
+    status: todo
+    notes:
+      - "2026-10-29: SEC-1, confirmed: search_path includes public and the app role is a superuser."
+
+  - id: PLAT-DB-002
+    title: Database page is desktop-only, honestly
+    job: platform
+    area: database
+    priority: p1
+    visible: true
+    done_means:
+      - "Below the md breakpoint the Database page shows a message that the explorer needs a wider screen, with a link to the Settings page; it does not render the canvas (tour mobile screenshot)."
+      - "At 1440px the page does not overflow horizontally."
+    status: todo
+    notes:
+      - "2026-10-29: DEC-7 'Desktop-only gate'."
+
+  - id: PLAT-API-001
+    title: API key permissions are enforced
+    job: platform
+    area: api
+    priority: p0
+    done_means:
+      - "A key created with permissions=read gets 403 on every POST/PUT/DELETE financial route and 200 on GETs; a write key can mutate; admin routes still require an admin user (unit tests)."
+    status: todo
+
+  - id: PLAT-API-002
+    title: Webhooks fire or are not offered
+    job: platform
+    area: api
+    priority: p2
+    done_means:
+      - "Either deliver_webhook is called on sync finalize and import confirm with the documented events, or the Webhooks tab is removed from the API page."
+      - "Webhook URLs are validated: https or http, no private or link-local hosts."
+    status: todo
+
+  - id: PLAT-SET-001
+    title: Settings shows only working connections
+    job: platform
+    area: settings
+    priority: p0
+    visible: true
+    done_means:
+      - "The Settings tabs are Accounts, Income, SimpleFIN, Email Receipts, Import History; no Plaid or Monarch tab, code or route remains (test asserting /api/v1/monarch/status and /api/v1/plaid/links return 404)."
+      - "Tabs wrap or scroll at 390px; every table sits in a scroll container (tour)."
+    status: todo
+
+  - id: PLAT-AUTH-001
+    title: Suspended users and tenants lose access promptly
+    job: platform
+    area: auth
+    priority: p1
+    done_means:
+      - "Refresh rejects a user whose status is not active; API-key auth rejects an inactive user; a cookie for a deactivated tenant is rejected at the next request (unit tests)."
+      - "The login page does not print the demo password; dev mode shows a neutral hint."
+    status: todo
+
+  - id: PLAT-AUTH-002
+    title: Rate limiting covers login and cookie routes
+    job: platform
+    area: auth
+    priority: p2
+    done_means:
+      - "POST /auth/login is limited per IP; authenticated routes are limited per user as well as per API key; the limiter state is shared across workers."
+    status: todo
+
+  - id: PLAT-ADMIN-001
+    title: Admin portal keeps working
+    job: platform
+    area: admin
+    priority: p2
+    done_means:
+      - "An admin can approve a pending user (which creates their tenant and schema), toggle active and admin flags, and view tenant stats; a non-admin gets 403 on every /platform route (unit tests with an admin fixture)."
+    status: todo
+
+  - id: PLAT-GUIDE-001
+    title: The Guide matches the product
+    job: platform
+    area: guide
+    priority: p2
+    visible: true
+    done_means:
+      - "Every page paragraph in the Guide matches PRODUCT.md; data sources listed are SimpleFIN, document import, email receipts, Yahoo prices and manual entry; no mention of Plaid or Monarch."
+    status: todo
+
+  # ---------------------------------------------------------------------------
+  # NFR — security, mobile, code health, process
+  # ---------------------------------------------------------------------------
+
+  - id: NFR-SEC-001
+    title: Provider credentials encrypted at rest
+    job: platform
+    area: security
+    priority: p0
+    done_means:
+      - "simplefin_links.access_url is stored Fernet-encrypted with FINANCE_CREDENTIAL_KEY; a migration encrypts existing rows; the app refuses to start in production without the key (unit test for the encrypt/decrypt round trip and the startup check)."
+    status: todo
+
+  - id: NFR-SEC-002
+    title: Legacy /api mount removed
+    job: platform
+    area: security
+    priority: p1
+    done_means:
+      - "GET /api/snapshot returns 404 and GET /api/v1/snapshot returns 200 for an authenticated user (unit test); no frontend file references the bare /api base."
+    status: todo
+
+  - id: NFR-SEC-003
+    title: Secrets compared in constant time, webhooks cannot reach private hosts
+    job: platform
+    area: security
+    priority: p1
+    done_means:
+      - "The email webhook secret check uses hmac.compare_digest; webhook URLs to 10/8, 172.16/12, 192.168/16, 127/8, 169.254/16 and localhost are rejected with 400 (unit tests)."
+    status: todo
+
+  - id: NFR-MIG-001
+    title: Migrations build an empty database
+    job: platform
+    area: database
+    priority: p0
+    done_means:
+      - "On an empty Postgres, `alembic upgrade head` creates every platform table and leaves a system that boots and can create a tenant; CI has a job that proves it on every push."
+      - "The FastAPI lifespan no longer calls create_all."
+      - "`make seed-test` leaves alembic_version at head."
+    status: todo
+    notes:
+      - "2026-10-29: BUG-1 — chain fails at a1b2c3d4e5f6 because no migration creates users."
+
+  - id: NFR-MOB-001
+    title: No page scrolls sideways on a phone
+    job: look
+    area: mobile
+    priority: p0
+    visible: true
+    done_means:
+      - "artifacts/screens/tour-log.json shows an empty overflow list for every route at 390px except Database, which is gated (PLAT-DB-002)."
+      - "Page header toolbars wrap; tables use the shared DataTable scroll container; hover-only controls are reachable by tap."
+    status: todo
+    notes:
+      - "2026-10-29: baseline tour shows overflow on spending, income, cash, retirement, planning, database, settings."
+
+  - id: NFR-MOB-002
+    title: Charts re-theme and read on a phone
+    job: look
+    area: mobile
+    priority: p1
+    visible: true
+    done_means:
+      - "Toggling dark mode re-themes every chart without reload (theme store drives useChartDefaults)."
+      - "At 390px chart legends sit below the plot and axis labels are thinned or rotated so none overlap (tour screenshots of dashboard, income, property)."
+    status: in_progress
+    notes:
+      - "2026-10-29: theme store landed (commit 'Make dark mode reactive'); mobile chart options pending."
+
+  - id: NFR-CODE-001
+    title: Views call one typed API client
+    job: platform
+    area: frontend
+    priority: p1
+    done_means:
+      - "No fetch() call outside frontend/src/api/client.ts (a frontend test greps the views); the client handles credentials, 401 refresh and non-OK responses once."
+    status: todo
+
+  - id: NFR-CODE-002
+    title: One tenant session helper
+    job: platform
+    area: backend
+    priority: p1
+    done_means:
+      - "dependencies.get_tenant_db, the email webhook, the scheduler and the seed all obtain tenant sessions from one tenant_session(schema) context manager that survives commits (unit test: commit then query still resolves the tenant schema)."
+    status: todo
+
+  - id: NFR-CODE-003
+    title: Dead code removed
+    job: platform
+    area: backend
+    priority: p1
+    done_means:
+      - "api/ingest.py, api/import_data.py, services/import_service.py, loaders/etrade_rsu.py, parsers/*, api/mock.py, backend/load_monarch_data.py, backend/mcp_server.py, scripts/migrate_sqlite_to_postgres.py, scripts/repro_monarch_500.py, frontend stores/planning.ts, api/admin.ts, HelloWorld.vue and the PrimeVue packages are gone; tests still pass."
+    status: todo
+    notes:
+      - "2026-10-29: DEC-8 'Delete all'."
+
+  - id: NFR-AI-001
+    title: One AI client, structured outputs, labelled estimates
+    job: feed
+    area: ai
+    priority: p0
+    done_means:
+      - "Every Anthropic call goes through backend/app/ai/client.py with model ids from settings (default claude-opus-5-5 for import, claude-sonnet-5-5 for receipts, chat and valuations), timeouts and usage logging."
+      - "Every call that expects data uses a Pydantic schema via structured outputs; no hand-written JSON scanning remains (grep test)."
+      - "Valuations are stored with source='ai', the model id, the date and the reasoning; nothing AI-produced is written without that label or without review."
+    status: todo
+    notes:
+      - "2026-10-29: DEC-10 Opus 5.5 + Sonnet 5.5; DEC-3 labelled estimate."
+
+  - id: NFR-PROC-001
+    title: Requirements ledger gate
+    job: platform
+    area: process
+    priority: p0
+    done_means:
+      - "scripts/ledger_check.py validates this file: ids, jobs, statuses, evidence that resolves to a real test or screenshot; done needs a test; visible done needs a screenshot; deprecated needs a note and evidence."
+      - "`make pre-commit` and CI run it."
+    status: done
+    evidence:
+      - backend/tests/test_ledger_check.py::test_done_without_evidence_fails
+      - backend/tests/test_ledger_check.py::test_python_test_evidence_checks_def_exists
+      - backend/tests/test_ledger_check.py::test_visible_done_needs_screenshot
+      - backend/tests/test_ledger_check.py::test_real_ledger_if_present_is_valid
+      - Makefile
+      - .github/workflows/ci.yml
+    notes:
+      - "2026-10-29: created."
+
+  - id: NFR-PROC-002
+    title: Screenshot tour as evidence
+    job: platform
+    area: process
+    priority: p0
+    visible: true
+    done_means:
+      - "`make tour` logs in as Claudius and captures every route at 390 and 1440 into artifacts/screens/<route>/, with a JSON log of console errors, failed requests and horizontal overflow; it exits non-zero when login or a route fails."
+      - "A test asserts the route list in the tour matches the router."
+    status: in_progress
+    evidence:
+      - artifacts/screens/dashboard/mobile.png
+      - artifacts/screens/dashboard/desktop.png
+      - artifacts/screens/tour-log.json
+    notes:
+      - "2026-10-29: tour runs; the route-list test is pending."
