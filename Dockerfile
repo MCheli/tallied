@@ -51,7 +51,6 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Copy backend code
 COPY backend/ ./backend/
-COPY config.yaml ./
 
 # Copy built frontend
 COPY --from=frontend-builder /build/dist ./static/

@@ -1,4 +1,5 @@
 from datetime import date
+import logging
 from decimal import Decimal
 
 from sqlalchemy import select, func
@@ -19,8 +20,13 @@ from app.models.property import Mortgage
 from app.schemas.planning import AssumptionInput
 
 
-def build_projection_input(db: Session) -> ProjectionInput:
-    """Build ProjectionInput from current DB state (latest account balances, W2, mortgage, etc.)."""
+logger = logging.getLogger("tallied.planning")
+
+
+def build_projection_input(db: Session, assumptions: dict[str, float] | None = None) -> ProjectionInput:
+    """Build ProjectionInput from current DB state (latest balances, W2, mortgage) plus the plan's own
+    household assumptions (current_age, 401(k) rates)."""
+    assumptions = assumptions or {}
 
     # --- Latest balances by display_group ---
     latest_sub = (
@@ -84,13 +90,12 @@ def build_projection_input(db: Session) -> ProjectionInput:
         select(ContributionConfig).order_by(ContributionConfig.effective_date.desc()).limit(1)
     ).scalar_one_or_none()
 
-    employee_rate = float(contrib.employee_rate) if contrib and contrib.employee_rate else 0.10
-    employer_match = float(contrib.employer_match) if contrib and contrib.employer_match else 0.06
+    employee_rate = float(assumptions.get("employee_401k_rate") or (contrib.employee_rate if contrib and contrib.employee_rate else 0.10))
+    employer_match = float(assumptions.get("employer_match_rate") or (contrib.employer_match if contrib and contrib.employer_match else 0.06))
     irs_limit = float(contrib.annual_irs_limit) if contrib and contrib.annual_irs_limit else 23500.0
 
     current_year = date.today().year
-    # Approximate current age from W2 tax_year or default to 33
-    current_age = 33  # default
+    current_age = int(assumptions.get("current_age") or 30)
 
     return ProjectionInput(
         current_age=current_age,
@@ -167,7 +172,7 @@ def create_plan(
 
     # Build projection input and run
     try:
-        proj_input = build_projection_input(db)
+        proj_input = build_projection_input(db, {a.key: float(a.value) for a in db_assumptions})
         engine_assumptions = _assumptions_to_engine(db_assumptions)
         rows = run_projection(proj_input, engine_assumptions)
 
@@ -189,9 +194,10 @@ def create_plan(
                 withdrawal=Decimal(str(row.withdrawal)),
             )
             db.add(proj)
-    except Exception:
-        # If projection fails (e.g., no data yet), still save the plan with assumptions
-        pass
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Projection failed for plan %s", plan.id if getattr(plan, "id", None) else "(new)")
+        raise ValueError(f"Projection failed: {exc}") from exc
 
     db.commit()
     return plan
@@ -207,7 +213,8 @@ def update_plan(
     if not plan:
         raise ValueError(f"Plan {plan_id} not found")
 
-    # Delete existing assumptions and projections
+    # Remember labels/categories so a slider that sends only {key, value} does not erase them.
+    previous = {a.key: a for a in plan.assumptions}
     for a in list(plan.assumptions):
         db.delete(a)
     for p in list(plan.projections):
@@ -217,14 +224,15 @@ def update_plan(
     # Save new assumptions
     db_assumptions = []
     for a in assumptions_input:
+        old = previous.get(a.key)
         assumption = PlanAssumption(
             plan_id=plan.id,
             key=a.key,
-            display_name=a.display_name or a.key,
-            category=a.category or "general",
+            display_name=a.display_name or (old.display_name if old else None) or a.key,
+            category=a.category or (old.category if old else None) or "general",
             value=Decimal(str(a.value)),
-            description=a.description or "",
-            sensitivity=a.sensitivity or "medium",
+            description=a.description or (old.description if old else None) or "",
+            sensitivity=a.sensitivity or (old.sensitivity if old else None) or "medium",
         )
         db.add(assumption)
         db_assumptions.append(assumption)
@@ -233,7 +241,7 @@ def update_plan(
 
     # Rerun projection
     try:
-        proj_input = build_projection_input(db)
+        proj_input = build_projection_input(db, {a.key: float(a.value) for a in db_assumptions})
         engine_assumptions = _assumptions_to_engine(db_assumptions)
         rows = run_projection(proj_input, engine_assumptions)
 
@@ -255,8 +263,10 @@ def update_plan(
                 withdrawal=Decimal(str(row.withdrawal)),
             )
             db.add(proj)
-    except Exception:
-        pass
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Projection failed for plan %s", plan.id if getattr(plan, "id", None) else "(new)")
+        raise ValueError(f"Projection failed: {exc}") from exc
 
     db.commit()
     return plan

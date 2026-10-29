@@ -19,17 +19,21 @@ def net_worth_trend(
     db: Session = Depends(get_tenant_db),
 ):
     """Net worth by display_group over time."""
+    from app.services.snapshot_service import LAYER_NAMES
+    from app.services.balances import normalize_group
+
     stmt = (
         select(
             BalanceSnapshot.snapshot_date,
+            BalanceSnapshot.account_id,
+            BalanceSnapshot.id,
             Account.display_group,
-            func.sum(BalanceSnapshot.balance).label("total"),
+            BalanceSnapshot.balance,
         )
         .join(Account, BalanceSnapshot.account_id == Account.id)
         .where(Account.include_in_nw.is_(True))
         .where(Account.is_active.is_(True))
-        .group_by(BalanceSnapshot.snapshot_date, Account.display_group)
-        .order_by(BalanceSnapshot.snapshot_date)
+        .order_by(BalanceSnapshot.snapshot_date, BalanceSnapshot.account_id, BalanceSnapshot.id)
     )
 
     if from_date:
@@ -39,15 +43,19 @@ def net_worth_trend(
 
     rows = db.execute(stmt).all()
 
-    # Build series: {date_str: {group: total}}
+    # One balance per (account, date): the newest row wins when two sources wrote the same day.
+    per_day: dict[tuple[str, str], tuple[str, float]] = {}
+    for snap_date, acct_id, _snap_id, group, balance in rows:
+        key = normalize_group(group)
+        per_day[(snap_date.isoformat(), acct_id)] = (LAYER_NAMES.get(key, key.replace("_", " ").title()),
+                                                     float(balance) if balance else 0.0)
+
+    # Build series: {date_str: {group: total}} with the same layer names as /snapshot
     date_groups: dict[str, dict[str, float]] = {}
     all_groups: set[str] = set()
-
-    for snap_date, group, total in rows:
-        d = snap_date.isoformat()
-        if d not in date_groups:
-            date_groups[d] = {}
-        date_groups[d][group] = float(total) if total else 0.0
+    for (d, _acct), (group, val) in per_day.items():
+        date_groups.setdefault(d, {})
+        date_groups[d][group] = date_groups[d].get(group, 0.0) + val
         all_groups.add(group)
 
     dates = sorted(date_groups.keys())

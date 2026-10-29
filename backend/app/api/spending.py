@@ -9,6 +9,7 @@ from app.dependencies import get_tenant_db
 from app.models.account import Account
 from app.models.transaction import Transaction
 from app.schemas.transaction import CategorySummary, RecurringExpense, MonthlySpending
+from app.services.spending_rules import EXCLUDED_CATEGORIES, spending_filter
 
 router = APIRouter(prefix="/spending", tags=["spending"])
 
@@ -41,18 +42,15 @@ def spending_by_category(
     account_types: str | None = Query(None, description="Comma-separated account_types to include"),
     db: Session = Depends(get_tenant_db),
 ):
-    """Category totals for a date range (expenses only, amount < 0)."""
-    stmt = (
+    """Category totals for a date range (spending only: negative amounts, transfers and loan payments excluded)."""
+    stmt = spending_filter(
         select(
             Transaction.category,
             Transaction.category_group,
             func.sum(Transaction.amount).label("total"),
             func.count().label("count"),
         )
-        .where(Transaction.amount < 0)
-        .group_by(Transaction.category, Transaction.category_group)
-        .order_by(func.sum(Transaction.amount))
-    )
+    ).group_by(Transaction.category, Transaction.category_group).order_by(func.sum(Transaction.amount))
 
     if from_date:
         stmt = stmt.where(Transaction.date >= from_date)
@@ -78,50 +76,52 @@ def spending_by_category(
 
 @router.get("/recurring", response_model=list[RecurringExpense])
 def recurring_expenses(
-    months: int = Query(6, ge=1, le=24, description="Lookback months"),
+    from_date: date | None = Query(None),
+    to_date: date | None = Query(None),
+    months: int = Query(6, ge=1, le=24, description="Lookback months when no date range is given"),
     account_types: str | None = Query(None, description="Comma-separated account_types to include"),
     db: Session = Depends(get_tenant_db),
 ):
-    """Detect recurring expenses by merchant frequency."""
+    """Merchants that recur within the period. avg_monthly is the merchant's total divided by the months in the period."""
     from datetime import timedelta
 
-    cutoff = date.today() - timedelta(days=months * 30)
+    end = to_date or date.today()
+    start = from_date or (end - timedelta(days=months * 30))
+    months_in_range = max(1, (end.year - start.year) * 12 + (end.month - start.month) + 1)
+    min_months_seen = 2 if months_in_range < 6 else max(2, months_in_range // 3)
 
-    stmt = (
+    stmt = spending_filter(
         select(
             Transaction.merchant,
             Transaction.category,
-            func.avg(Transaction.amount).label("avg_amount"),
-            func.count(func.distinct(
-                year_month(Transaction.date)
-            )).label("months_seen"),
+            func.sum(Transaction.amount).label("total_amount"),
+            func.count(func.distinct(year_month(Transaction.date))).label("months_seen"),
             func.max(Transaction.date).label("last_date"),
         )
-        .where(Transaction.amount < 0)
-        .where(Transaction.date >= cutoff)
-        .where(Transaction.merchant.isnot(None))
-        .group_by(Transaction.merchant, Transaction.category)
-        .having(
-            func.count(func.distinct(
-                year_month(Transaction.date)
-            )) >= max(2, months // 3)
-        )
-        .order_by(func.avg(Transaction.amount))
-    )
+    ).where(
+        Transaction.date >= start, Transaction.date <= end, Transaction.merchant.isnot(None),
+    ).group_by(Transaction.merchant, Transaction.category).having(
+        func.count(func.distinct(year_month(Transaction.date))) >= min_months_seen
+    ).order_by(func.sum(Transaction.amount))
     stmt = _apply_account_type_filter(stmt, _parse_account_types(account_types))
 
     rows = db.execute(stmt).all()
-
     return [
         RecurringExpense(
             merchant=r.merchant,
             category=r.category or "Uncategorized",
-            avg_monthly=round(abs(float(r.avg_amount)), 2),
+            avg_monthly=round(abs(float(r.total_amount)) / months_in_range, 2),
             months_seen=r.months_seen,
             last_date=r.last_date,
         )
         for r in rows
     ]
+
+
+@router.get("/excluded-categories")
+def excluded_categories():
+    """Categories that never count as spending (transfers and loan/card payments)."""
+    return sorted(EXCLUDED_CATEGORIES)
 
 
 @router.get("/monthly-trend", response_model=list[MonthlySpending])
@@ -131,17 +131,14 @@ def monthly_spending_trend(
     account_types: str | None = Query(None, description="Comma-separated account_types to include"),
     db: Session = Depends(get_tenant_db),
 ):
-    """Monthly spending totals."""
-    stmt = (
+    """Monthly spending totals (same definition as by-category)."""
+    stmt = spending_filter(
         select(
             year_month(Transaction.date).label("month"),
             func.sum(Transaction.amount).label("total"),
             func.count().label("count"),
         )
-        .where(Transaction.amount < 0)
-        .group_by("month")
-        .order_by("month")
-    )
+    ).group_by("month").order_by("month")
 
     if from_date:
         stmt = stmt.where(Transaction.date >= from_date)

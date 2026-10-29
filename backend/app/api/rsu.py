@@ -386,29 +386,12 @@ def rsu_summary(db: Session = Depends(get_tenant_db)):
 
 @router.get("/price-history")
 def price_history(symbol: str = "MSFT", range: str = "5y", _ctx: "TenantContext" = Depends(get_tenant_context)):
-    """Fetch historical stock prices from Yahoo Finance for charting."""
-    import json
-    import urllib.request
+    """Weekly closes from Yahoo Finance for charting (validated symbol, cached six hours)."""
+    from app.services.stock_price import fetch_price_history
 
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1wk&range={range}"
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
-        resp = urllib.request.urlopen(req, timeout=10)
-        data = json.loads(resp.read())
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Yahoo Finance error: {e}")
-
-    result = data["chart"]["result"][0]
-    timestamps = result["timestamp"]
-    closes = result["indicators"]["quote"][0]["close"]
-
-    from datetime import datetime, timezone
-    points = []
-    for ts, close in zip(timestamps, closes):
-        if close is not None:
-            points.append({
-                "date": datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d"),
-                "price": round(close, 2),
-            })
-
-    return {"symbol": symbol, "points": points}
+        points = fetch_price_history(symbol, range)
+    except ValueError as e:
+        status = 400 if "Invalid" in str(e) else 502
+        raise HTTPException(status_code=status, detail=str(e))
+    return {"symbol": symbol.upper(), "points": points}

@@ -21,6 +21,7 @@ from app.dependencies import get_tenant_db
 from app.models.property import Mortgage, PropertyValuation
 from app.models.property_value_history import PropertyValueHistory
 from app.models.account import Account
+from app.services.balances import record_balance
 from app.services.property_valuation import get_property_estimate
 
 log = logging.getLogger(__name__)
@@ -261,6 +262,8 @@ def add_valuation(body: ValuationInput, db: Session = Depends(get_tenant_db)):
         details=json.dumps({"valuation_source": body.source}),
     )
     db.add(pvh)
+    # The valuation is the figure net worth and Planning use for the house (D2).
+    record_balance(db, prop_account.id, pv.value, val_date, "valuation")
     db.commit()
 
     return {"id": pv.id, "value": float(pv.value), "date": pv.valuation_date.isoformat(), "source": pv.source}
@@ -430,6 +433,7 @@ def refresh_history(db: Session = Depends(get_tenant_db)):
             source="Realtor.com",
         )
         db.add(pv)
+        record_balance(db, prop_account.id, pv.value, date.today(), "valuation")
 
     db.flush()
 

@@ -7,12 +7,15 @@ class LayerAccount(BaseModel):
     id: str
     name: str
     balance: float
+    balance_date: date | None = None
+    include_in_nw: bool = True
 
 
 class LiquidityLayer(BaseModel):
     name: str  # e.g. "Cash"
-    total: float
+    total: float  # of accounts included in net worth
     accounts: list[LayerAccount]
+    as_of: date | None = None
 
 
 class SnapshotResponse(BaseModel):
@@ -21,6 +24,7 @@ class SnapshotResponse(BaseModel):
     liquid_net_worth: float
     total_comp_annual: float | None = None
     net_worth_12mo_change: float | None = None
+    as_of: date | None = None  # newest balance date behind these figures
 
 
 class IncomeBreakdown(BaseModel):

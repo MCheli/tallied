@@ -357,6 +357,7 @@ def confirm_import(session_id: str, db: Session = Depends(get_tenant_db), ctx: T
             elif table == "mortgages":
                 changes_applied += _apply_mortgage_changes(fields, db)
                 results.append({"table": "mortgages", "fields": len(fields)})
+                _record_mortgage_balance(db)
 
             elif table == "retirement_accounts":
                 changes_applied += _apply_retirement_changes(fields, db)
@@ -371,6 +372,7 @@ def confirm_import(session_id: str, db: Session = Depends(get_tenant_db), ctx: T
                     if ret_acct:
                         h_count = _apply_retirement_holdings(holdings, ret_acct.id, db)
                         results.append({"table": "retirement_holdings", "count": h_count})
+                _record_retirement_balance(db)
 
             elif table == "rsu_grants":
                 data = change.get("data", {})
@@ -665,6 +667,36 @@ def _text_and_action(response, context: str) -> tuple[str, dict | None]:
                 action = candidate
             break
     return " ".join(t.strip() for t in texts if t.strip()), action
+
+
+def _record_mortgage_balance(db: Session) -> None:
+    """Push the newest mortgage balance into balance_snapshots for the loan account, negative (D2)."""
+    from app.services.balances import record_balance
+
+    mortgage = db.execute(select(Mortgage).order_by(Mortgage.updated_at.desc()).limit(1)).scalar_one_or_none()
+    if not mortgage or mortgage.current_balance is None:
+        return
+    loan = db.execute(select(Account).where(Account.account_type == "loan_mortgage").limit(1)).scalar_one_or_none()
+    if loan is None:
+        return
+    record_balance(db, loan.id, -abs(mortgage.current_balance), date.today(), "statement")
+
+
+def _record_retirement_balance(db: Session) -> None:
+    """Push the newest 401(k) statement balance into balance_snapshots for the 401(k) account (D2)."""
+    from app.services.balances import record_balance
+
+    ret_acct = db.execute(select(RetirementAccount).order_by(RetirementAccount.updated_at.desc()).limit(1)).scalar_one_or_none()
+    if not ret_acct or ret_acct.total_balance is None:
+        return
+    account = None
+    if ret_acct.account_id:
+        account = db.get(Account, ret_acct.account_id)
+    if account is None:
+        account = db.execute(select(Account).where(Account.account_type == "investment_401k").limit(1)).scalar_one_or_none()
+    if account is None:
+        return
+    record_balance(db, account.id, ret_acct.total_balance, ret_acct.statement_end or date.today(), "statement")
 
 
 def _emit_import_webhook(tenant_id: int, session_id: str, changes_applied: int, results: list) -> None:

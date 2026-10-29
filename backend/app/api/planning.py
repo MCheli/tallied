@@ -2,7 +2,6 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func as sa_func
 from sqlalchemy.orm import Session
@@ -46,7 +45,10 @@ router = APIRouter(prefix="/plans", tags=["planning"])
 
 # Default assumptions for new plans
 DEFAULT_ASSUMPTIONS: list[dict] = [
+    {"key": "current_age", "display_name": "Current Age", "category": "career", "value": 30, "sensitivity": "low"},
     {"key": "retirement_age", "display_name": "Retirement Age", "category": "career", "value": 60, "sensitivity": "high"},
+    {"key": "employee_401k_rate", "display_name": "401(k) Employee Contribution", "category": "career", "value": 0.10, "sensitivity": "medium"},
+    {"key": "employer_match_rate", "display_name": "401(k) Employer Match", "category": "career", "value": 0.06, "sensitivity": "low"},
     {"key": "total_comp_growth", "display_name": "Total Comp Growth", "category": "career", "value": 0.04, "sensitivity": "high"},
     {"key": "rsu_pct_of_comp", "display_name": "RSU % of Total Comp", "category": "career", "value": 0.37, "sensitivity": "medium"},
     {"key": "rsu_pct_annual_increase", "display_name": "RSU % Annual Increase", "category": "career", "value": 0.005, "sensitivity": "low"},
@@ -126,13 +128,16 @@ def create_plan_endpoint(payload: PlanCreate, db: Session = Depends(get_tenant_d
                 sensitivity=default["sensitivity"],
             ))
 
-    plan = create_plan(
-        db,
-        name=payload.name,
-        description=payload.description,
-        scenario_type=payload.scenario_type,
-        assumptions_input=assumptions_input,
-    )
+    try:
+        plan = create_plan(
+            db,
+            name=payload.name,
+            description=payload.description,
+            scenario_type=payload.scenario_type,
+            assumptions_input=assumptions_input,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     db.refresh(plan)
     return plan
 
@@ -279,7 +284,10 @@ def update_plan_endpoint(plan_id: int, payload: PlanUpdate, db: Session = Depend
         plan.description = payload.description
 
     if payload.assumptions is not None:
-        plan = update_plan(db, plan_id, payload.assumptions)
+        try:
+            plan = update_plan(db, plan_id, payload.assumptions)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
     else:
         db.commit()
 
@@ -434,8 +442,6 @@ def record_actual(payload: ActualSnapshotCreate, db: Session = Depends(get_tenan
 # Plan table endpoint — year × metric matrix
 # ---------------------------------------------------------------------------
 
-from pathlib import Path as _Path
-_CONFIG_PATH = str(_Path(__file__).resolve().parents[3] / "config.yaml")
 
 _PLAN_METRICS = [
     "gross_income", "base_salary", "rsu_income", "tax_paid", "take_home",
@@ -444,13 +450,6 @@ _PLAN_METRICS = [
     "retirement_balance", "home_equity", "mortgage_balance",
 ]
 
-
-def _load_config() -> dict:
-    try:
-        with open(_CONFIG_PATH) as f:
-            return yaml.safe_load(f) or {}
-    except FileNotFoundError:
-        return {}
 
 
 def _cell(value: float | None, status: str) -> dict:
@@ -549,10 +548,9 @@ def plan_table(plan_id: int, db: Session = Depends(get_tenant_db)):
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    cfg = _load_config()
-    personal = cfg.get("personal", {})
-    user_age: int = personal.get("age", 33)
-    retirement_age: int = personal.get("retirement_age", 60)
+    assumption_ages = {a.key: float(a.value) for a in plan.assumptions}
+    user_age: int = int(assumption_ages.get("current_age", 30))
+    retirement_age: int = int(assumption_ages.get("retirement_age", 60))
 
     today = date.today()
     current_year = today.year
@@ -571,7 +569,7 @@ def plan_table(plan_id: int, db: Session = Depends(get_tenant_db)):
     assumption_map = {a.key: float(a.value) for a in plan.assumptions}
 
     inflation = assumption_map.get("inflation", 0.03)
-    employee_401k_rate = assumption_map.get("employee_401k_rate", 0.15)
+    employee_401k_rate = assumption_map.get("employee_401k_rate", 0.10)
 
     mortgage = db.execute(
         select(Mortgage).order_by(Mortgage.updated_at.desc()).limit(1)

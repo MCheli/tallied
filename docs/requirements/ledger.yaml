@@ -30,10 +30,12 @@ requirements:
       - "With the seed, the Net Worth tile equals the sum of the latest balance_snapshots row per active account with include_in_nw, and the Liquid Net Worth tile equals the cash plus investments plus company-stock layers; the InfoTooltip states exactly those definitions."
       - "The Liquidity Layers waterfall's final bar equals the Net Worth tile even when an account has include_in_nw=false (unit test with one excluded account)."
       - "Each balance-bearing tile shows the as-of date of the newest snapshot it used."
-    status: todo
+    status: in_progress
+    evidence:
+      - backend/tests/test_data_rules.py::test_snapshot_dedupes_same_day_rows_and_reports_as_of
     notes:
       - "2026-10-29: today the tooltip claims credit cards are included in liquid net worth and the waterfall ignores include_in_nw (money brief 1.5)."
-
+      - "2026-10-29: /snapshot returns as_of per layer/account, honours include_in_nw in layer totals, dedupes same-day rows, and the 12-month change uses each account's newest snapshot on or before a year ago. Dashboard tooltip/waterfall wiring pending."
   - id: LOOK-002
     title: Recent spending tile obeys its window
     job: look
@@ -55,8 +57,12 @@ requirements:
     visible: true
     done_means:
       - "The Property Equity tile and the Home Equity layer show the same figure, because the Property page writes a balance snapshot for the real-estate account whenever the valuation changes (PRODUCT.md decision D2)."
-    status: todo
-
+    status: done
+    evidence:
+      - backend/tests/test_data_rules.py::test_property_valuation_writes_the_balance_snapshot
+      - artifacts/screens/dashboard/desktop.png
+    notes:
+      - "2026-10-29: valuations (manual and Realtor) and imported mortgage/401(k) statements write balance snapshots (services/balances.record_balance); the seed mortgage snapshot now ends at the statement balance."
   - id: LOOK-004
     title: Net worth over time by layer
     job: look
@@ -163,10 +169,13 @@ requirements:
       - "`make seed-test` rebuilds the Claudius tenant with transactions and snapshots whose latest month is the month it runs, so every page's default period has data."
       - "The seed contains no real person's address, employer plan name or figures; the persona matches CLAUDE.md and fixtures/test_documents/MANIFEST.md (456 Oak Street, Springfield MA)."
       - "The seed's stock price row survives page loads in tests (the price cache does not delete non-yahoo rows for today when a yahoo row cannot be fetched)."
-    status: todo
+    status: done
+    evidence:
+      - backend/tests/test_data_rules.py::test_seed_months_ago_helper
+      - backend/tests/test_data_rules.py::test_price_cache_keeps_seed_rows
     notes:
       - "2026-10-29: data ends 2026-02/03; seed address was a real-looking Ashland MA address; Yahoo overwrote the seed price (investments brief 1.5)."
-
+      - "2026-10-29: snapshots and transactions end in the current month; persona address only; a seeded price row is used for its day instead of being replaced."
   # ---------------------------------------------------------------------------
   # UNDERSTAND — Spending, Income, Cash, RSU, 401(k), Property, Assets
   # ---------------------------------------------------------------------------
@@ -182,8 +191,12 @@ requirements:
       - "Recurring 'per month' is the sum per month divided by the number of months in the period, not a per-transaction average."
       - "Spending excludes the Transfer category and loan payments (PRODUCT.md D1) in every aggregate, including Dashboard and Cash."
       - "An empty period shows an empty state in each section; the default preset has data with the seed."
-    status: todo
-
+    status: in_progress
+    evidence:
+      - backend/tests/test_data_rules.py::test_spending_excludes_transfers_and_loan_payments
+      - backend/tests/test_data_rules.py::test_recurring_uses_the_period_and_per_month_average
+    notes:
+      - "2026-10-29: backend: one spending definition (services/spending_rules), recurring takes the date range and reports per-month averages. Frontend wiring of the presets to all four sections pending."
   - id: UND-SPEND-002
     title: Transactions table is usable on a phone
     job: understand
@@ -303,10 +316,13 @@ requirements:
       - "current_age and retirement_age are plan assumptions (seeded from a household profile setting), used by both the engine and the table's year range; moving the retirement_age slider moves the last working year."
       - "There is one assumption vocabulary: the seed, DEFAULT_ASSUMPTIONS and the engine agree on keys, categories and labels; editing a slider keeps display names and categories."
       - "An engine error surfaces as an error on the plan, never as a silently empty projection."
-    status: todo
+    status: done
+    evidence:
+      - backend/tests/test_data_rules.py::test_plan_uses_its_own_age_and_keeps_labels_on_update
+      - artifacts/screens/planning/desktop.png
     notes:
       - "2026-10-29: current_age hard-coded 33, retirement age from config.yaml, slider PUT wipes metadata (planning brief 1.5)."
-
+      - "2026-10-29: current_age, retirement_age and 401(k) rates are plan assumptions; config.yaml deleted; one vocabulary in DEFAULT_ASSUMPTIONS and the seed; update_plan keeps labels; engine errors are 422."
   - id: PLAN-002
     title: Forecast and plan rows do not double-count RSUs
     job: plan

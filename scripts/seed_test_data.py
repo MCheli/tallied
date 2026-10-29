@@ -46,6 +46,19 @@ import app.models  # noqa
 TENANT_SCHEMA = "tenant_claudius"
 
 
+MORTGAGE_CURRENT_BALANCE = 362450.75
+
+
+def _months_ago(n: int) -> date:
+    """First day of the month n months before today."""
+    today = date.today()
+    y, m = today.year, today.month - n
+    while m <= 0:
+        y -= 1
+        m += 12
+    return date(y, m, 1)
+
+
 def seed(reset=False):
     if reset:
         print("Resetting database...")
@@ -123,7 +136,8 @@ def seed(reset=False):
 
         # ── Balance Snapshots (monthly, 14 months) ──
         snap_count = 0
-        base_date = date(2025, 1, 1)
+        # Dates are relative to today so every "last N months" default has data (FEED-005 / D3).
+        base_date = _months_ago(14)
         balances = {
             "cb-checking": 10000, "cb-savings": 15000, "cb-hysa": 5000,
             "cb-credit": -800, "cb-brokerage": 45000, "cb-property": 520000,
@@ -138,7 +152,8 @@ def seed(reset=False):
                 noise = random.uniform(-0.03, 0.05)
                 bal = base_bal * (1 + noise * (month_offset / 12))
                 if acct_id == "cb-mortgage":
-                    bal = base_bal + (month_offset * 850)  # Paying down
+                    # Paying down toward the mortgage statement balance (the two must agree, D2)
+                    bal = -MORTGAGE_CURRENT_BALANCE - (14 - month_offset) * 850
                 elif acct_id == "cb-401k":
                     bal = base_bal * (1 + 0.01 * month_offset)  # Growing
                 elif acct_id == "cb-brokerage":
@@ -164,8 +179,10 @@ def seed(reset=False):
             ("Uber", "Auto & Transport", -18), ("DoorDash", "Restaurants & Bars", -28),
         ]
 
-        for month_offset in range(14):
-            month_date = date(2025, 1, 1) + timedelta(days=month_offset * 30)
+        for month_offset in range(15):
+            month_date = base_date + timedelta(days=month_offset * 30)
+            if month_date > date.today():
+                break
             # Paycheck (2x/month)
             for pay_day in [1, 15]:
                 d = month_date.replace(day=min(pay_day, 28))
@@ -242,7 +259,7 @@ def seed(reset=False):
 
         # ── Mortgage ──
         M = {"rate": 4.25, "monthly_payment": 2450.00, "escrow": 450.00,
-             "original_amount": 380000.00, "current_balance": 362450.75}
+             "original_amount": 380000.00, "current_balance": MORTGAGE_CURRENT_BALANCE}
         db.add(Mortgage(
             account_id="cb-mortgage",
             rate=Decimal(str(M["rate"] / 100)),
@@ -387,21 +404,23 @@ def seed(reset=False):
         # ── Planning Scenario ──
         # Add key assumptions
         assumptions = [
-            ("current_age", "Current Age", 33, "personal", "high"),
-            ("retirement_age", "Retirement Age", 60, "personal", "high"),
-            ("life_expectancy", "Life Expectancy", 90, "personal", "medium"),
-            ("total_comp", "Total Compensation", 210000, "income", "high"),
-            ("total_comp_growth", "Comp Growth Rate", 0.04, "income", "high"),
-            ("pretax_401k_pct", "Pre-tax 401(k) %", 0.10, "savings", "medium"),
-            ("roth_401k_pct", "Roth 401(k) %", 0.02, "savings", "medium"),
-            ("employer_match_pct", "Employer Match %", 0.06, "savings", "low"),
-            ("monthly_cash_savings", "Monthly Cash Savings", 500, "savings", "medium"),
-            ("investment_return", "Investment Return", 0.07, "returns", "high"),
-            ("inflation", "Inflation Rate", 0.03, "returns", "medium"),
-            ("home_appreciation", "Home Appreciation", 0.03, "returns", "low"),
-            ("retirement_spending", "Retirement Spending", 100000, "retirement", "high"),
-            ("retirement_tax_rate", "Retirement Tax Rate", 0.20, "retirement", "medium"),
-            ("social_security_monthly", "Social Security", 2500, "retirement", "low"),
+            ("current_age", "Current Age", 30, "career", "low"),
+            ("retirement_age", "Retirement Age", 60, "career", "high"),
+            ("employee_401k_rate", "401(k) Employee Contribution", 0.10, "career", "medium"),
+            ("employer_match_rate", "401(k) Employer Match", 0.06, "career", "low"),
+            ("total_comp_growth", "Total Comp Growth", 0.04, "career", "high"),
+            ("rsu_pct_of_comp", "RSU % of Total Comp", 0.31, "career", "medium"),
+            ("rsu_pct_annual_increase", "RSU % Annual Increase", 0.005, "career", "low"),
+            ("rsu_pct_cap", "RSU % Cap", 0.50, "career", "low"),
+            ("rsu_tax_rate", "RSU Tax Rate at Vest", 0.40, "tax", "medium"),
+            ("investment_return", "Pre-Retirement Return", 0.07, "markets", "high"),
+            ("retirement_return", "Post-Retirement Return", 0.05, "markets", "high"),
+            ("stock_price_growth", "Company Stock Growth", 0.07, "markets", "medium"),
+            ("inflation", "Inflation Rate", 0.03, "markets", "medium"),
+            ("home_appreciation", "Home Appreciation", 0.03, "markets", "low"),
+            ("monthly_cash_savings", "Monthly Cash Savings", 500, "spending", "medium"),
+            ("retirement_spending", "Retirement Spending", 100000, "spending", "high"),
+            ("retirement_tax_rate", "Retirement Tax Rate", 0.20, "tax", "medium"),
         ]
         # Go through the service so projections are computed the same way the
         # API does (it owns the engine call signature and row mapping).
