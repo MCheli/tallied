@@ -66,11 +66,16 @@ A tenant schema is created for the user at first login. Nothing else is seeded i
 
 ```bash
 cd ~/83rr-poweredge
-docker compose pull tallied
-docker compose up -d tallied            # entrypoint runs alembic upgrade head before serving
+docker exec tallied-db pg_dump -U tallied tallied | gzip > ~/tallied-backups/pre-$(date +%F-%H%M).sql.gz
+docker compose pull tallied tallied-scheduler
+docker compose up -d --no-deps tallied tallied-scheduler   # entrypoint runs alembic upgrade head before serving;
+                                                          # --no-deps keeps compose from recreating tallied-db
 docker compose logs --tail 30 tallied
+docker logs --tail 20 tallied-scheduler                   # expect "Sync scheduler started" and a succeeded sync job
 curl -s https://money.markcheli.com/api/v1/health
 ```
+
+Done this way on 2026-10-29 (first deploy of the October overhaul): backup, migrations 0002removal and 0003vehval applied, the SimpleFIN credential encrypted in place, the boot sync succeeded against the real accounts.
 
 If a migration fails the container exits and the old image is not restored automatically: `docker compose logs tallied` shows the Alembic error; fix forward or `docker compose up -d` with the previous image tag (`ghcr.io/mcheli/tallied:<sha>`).
 
