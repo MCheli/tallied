@@ -662,7 +662,7 @@ requirements:
     status: done
     evidence:
       - frontend/tests/no-raw-fetch.spec.ts#finds fetch( only in the allowed files
-      - 'frontend/tests/api-client.spec.ts#fetchJson: retries once after a 401 when the refresh succeeds'
+      - frontend/tests/api-client.spec.ts#retries once after a 401 when the refresh succeeds
     notes:
       - "2026-10-29: the nine data pages use the client; ten files remain (admin views, ApiView, DatabaseView, Login, PendingApproval, DataExplorer, SqlViewerModal, ImportModal), listed as a ratchet in the test."
       - "2026-10-29: every view and component calls the typed client; the ratchet set is empty."
