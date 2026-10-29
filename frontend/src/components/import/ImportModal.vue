@@ -3,13 +3,33 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useImportModal } from '../../composables/useImportModal'
 import { X, Upload, Check, AlertTriangle, Send, Loader2, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 // Configure marked for safe inline rendering
 marked.setOptions({ breaks: true, gfm: true })
 
 function renderMd(text: string): string {
-  return marked.parse(text) as string
+  // Assistant output is untrusted: sanitize before v-html.
+  return DOMPurify.sanitize(marked.parse(text) as string)
 }
+
+/** Turn a failed response body ({"detail": "..."} or text) into one readable sentence. */
+function readableError(text: string, status?: number): string {
+  try {
+    const parsed = JSON.parse(text)
+    const detail = parsed?.detail
+    if (typeof detail === 'string') return detail
+    if (Array.isArray(detail)) return detail.map((d: any) => d?.msg ?? JSON.stringify(d)).join('; ')
+  } catch {}
+  return text || (status ? `Request failed (${status})` : 'Request failed')
+}
+
+const uploadError = ref<string | null>(null)
+const uploadErrorHint = computed(() =>
+  uploadError.value && uploadError.value.includes('FINANCE_ANTHROPIC_API_KEY')
+    ? 'Document import uses Claude. Set FINANCE_ANTHROPIC_API_KEY in backend/.env (see docs/DEPLOYING.md) and restart the backend.'
+    : null,
+)
 
 const API = import.meta.env.VITE_API_URL || ''
 const { isOpen, context, closeImport } = useImportModal()
@@ -94,6 +114,7 @@ async function processFile(idx: number) {
   const file = fileQueue.value[idx]
   if (!file) return
   step.value = 'processing'
+  uploadError.value = null
 
   const formData = new FormData()
   formData.append('file', file)
@@ -103,7 +124,7 @@ async function processFile(idx: number) {
     const res = await fetch(`${API}/api/v1/import/upload`, { method: 'POST', credentials: 'include', body: formData })
     if (!res.ok) {
       const text = await res.text()
-      throw new Error(text)
+      throw new Error(readableError(text, res.status))
     }
     const data = await res.json()
     sessionId.value = data.session_id
@@ -130,7 +151,10 @@ async function processFile(idx: number) {
 
     step.value = 'review'
   } catch (e: any) {
-    aiSummary.value = `Error: ${e.message}`
+    uploadError.value = e?.message || 'Import failed'
+    aiSummary.value = ''
+    proposedChanges.value = []
+    acceptedIds.value = new Set()
     step.value = 'review'
   }
 }
@@ -192,7 +216,7 @@ async function sendChat() {
     chatMessages.value.push({ role: 'assistant', content: data.response, action: data.action })
     if (data.action) pendingAction.value = data.action
   } catch (e: any) {
-    chatMessages.value.push({ role: 'assistant', content: `Error: ${e.message}` })
+    chatMessages.value.push({ role: 'assistant', content: `Error: ${readableError(e?.message || '')}` })
   }
   chatSending.value = false
   await nextTick()
@@ -320,16 +344,15 @@ function fmt(n: number | null | undefined, format?: string, column?: string): st
 
 <template>
   <Teleport to="body">
-    <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center">
+    <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center sm:p-4">
       <!-- Backdrop -->
       <div class="absolute inset-0 bg-black/50" @click="step === 'done' ? closeImport() : null"></div>
 
       <!-- Modal -->
-      <div class="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col"
-        style="width: 90vw; height: 85vh; max-width: 1200px;">
+      <div class="relative bg-white dark:bg-gray-900 shadow-2xl flex flex-col w-full h-full sm:w-[90vw] sm:h-[85vh] sm:max-w-[1200px] sm:rounded-2xl min-w-0">
 
         <!-- Header -->
-        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+        <div class="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-800">
           <div>
             <h2 class="text-lg font-bold text-gray-900 dark:text-white">Import Data</h2>
             <p class="text-xs text-gray-500 mt-0.5">
@@ -339,13 +362,13 @@ function fmt(n: number | null | undefined, format?: string, column?: string): st
               </span>
             </p>
           </div>
-          <button @click="closeImport()" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400">
+          <button @click="closeImport()" aria-label="Close" class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400">
             <X class="w-5 h-5" />
           </button>
         </div>
 
         <!-- Content -->
-        <div class="flex-1 overflow-hidden flex">
+        <div class="flex-1 overflow-hidden flex max-sm:flex-col max-sm:overflow-y-auto min-h-0">
 
           <!-- ═══ UPLOAD STEP ═══ -->
           <div v-if="step === 'upload'" class="flex-1 flex flex-col items-center justify-center p-8">
@@ -393,9 +416,15 @@ function fmt(n: number | null | undefined, format?: string, column?: string): st
           <!-- ═══ REVIEW STEP ═══ -->
           <template v-else-if="step === 'review'">
             <!-- Left panel: changes -->
-            <div class="flex-1 overflow-y-auto p-6 space-y-4">
+            <div class="flex-1 sm:overflow-y-auto p-4 sm:p-6 space-y-4 min-w-0">
+              <!-- Upload error -->
+              <div v-if="uploadError" class="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg p-4">
+                <p class="text-sm font-medium text-red-800 dark:text-red-200">Import failed</p>
+                <p class="text-sm text-red-700 dark:text-red-300 mt-1">{{ uploadError }}</p>
+                <p v-if="uploadErrorHint" class="text-xs text-red-600 dark:text-red-400 mt-2">{{ uploadErrorHint }}</p>
+              </div>
               <!-- AI Summary -->
-              <div class="bg-indigo-50 dark:bg-indigo-950/30 rounded-lg p-4">
+              <div v-else-if="aiSummary" class="bg-indigo-50 dark:bg-indigo-950/30 rounded-lg p-4">
                 <p class="text-sm text-indigo-800 dark:text-indigo-200">{{ aiSummary }}</p>
               </div>
 
@@ -586,7 +615,7 @@ function fmt(n: number | null | undefined, format?: string, column?: string): st
             </div>
 
             <!-- Right panel: Chat -->
-            <div class="w-80 border-l border-gray-200 dark:border-gray-800 flex flex-col">
+            <div v-if="!uploadError" class="sm:w-80 w-full sm:border-l border-t sm:border-t-0 border-gray-200 dark:border-gray-800 flex flex-col max-sm:max-h-80 min-h-0">
               <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
                 <h3 class="text-xs font-semibold text-gray-900 dark:text-white">Ask AI</h3>
                 <p class="text-[10px] text-gray-400 mt-0.5">Ask questions, request corrections</p>
@@ -655,15 +684,15 @@ function fmt(n: number | null | undefined, format?: string, column?: string): st
         </div>
 
         <!-- Footer (review step only) -->
-        <div v-if="step === 'review'" class="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
+        <div v-if="step === 'review'" class="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3">
           <div class="text-xs text-gray-400">
             {{ acceptedIds.size }} of {{ proposedChanges.length }} change{{ proposedChanges.length !== 1 ? 's' : '' }} selected
             <span v-if="fileQueue.length > 1" class="ml-3">
               File {{ currentFileIdx + 1 }} of {{ fileQueue.length }}
             </span>
           </div>
-          <div class="flex gap-3">
-            <button v-if="proposedChanges.length > 0" @click="skipFile" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
+          <div class="flex flex-wrap gap-2">
+            <button v-if="proposedChanges.length > 0" @click="skipFile" class="px-4 py-2 min-h-10 text-sm text-gray-500 hover:text-gray-700">
               {{ currentFileIdx < fileQueue.length - 1 ? 'Skip File' : 'Cancel' }}
             </button>
             <button v-if="proposedChanges.length > 0" @click="confirmChanges" :disabled="acceptedIds.size === 0"
@@ -671,7 +700,7 @@ function fmt(n: number | null | undefined, format?: string, column?: string): st
               Accept Selected Changes
             </button>
             <button v-if="proposedChanges.length === 0" @click="closeImport()"
-              class="px-6 py-2 text-sm font-medium bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+              class="px-6 py-2 min-h-10 text-sm font-medium bg-gray-600 text-white rounded-lg hover:bg-gray-700">
               Close
             </button>
           </div>

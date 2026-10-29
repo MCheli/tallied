@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
+import PageHeader from '../components/common/PageHeader.vue'
 
 const expandedSections = reactive<Record<string, boolean>>({})
 
@@ -8,79 +9,54 @@ function toggle(key: string) {
 }
 
 const navGroups = [
-  {
-    name: 'Overview',
-    icon: '🏠',
-    pages: ['Dashboard', 'Guide'],
-  },
-  {
-    name: 'Money',
-    icon: '💰',
-    pages: ['Spending', 'Income', 'Cash'],
-  },
-  {
-    name: 'Investments',
-    icon: '📈',
-    pages: ['RSU', '401(k)'],
-  },
-  {
-    name: 'Property',
-    icon: '🏡',
-    pages: ['Property', 'Assets'],
-  },
-  {
-    name: 'Planning',
-    icon: '🗺',
-    pages: ['Planning'],
-  },
-  {
-    name: 'Platform',
-    icon: '⚙️',
-    pages: ['Database', 'API', 'Settings', 'Admin Portal'],
-    note: 'Admin Portal is admin-only',
-  },
+  { name: 'Overview', icon: '🏠', pages: ['Dashboard', 'Guide'] },
+  { name: 'Money', icon: '💰', pages: ['Spending', 'Income', 'Cash'] },
+  { name: 'Investments', icon: '📈', pages: ['RSU', '401(k)'] },
+  { name: 'Property', icon: '🏡', pages: ['Property', 'Assets'] },
+  { name: 'Planning', icon: '🗺', pages: ['Planning'] },
+  { name: 'Platform', icon: '⚙️', pages: ['Database', 'API', 'Settings', 'Admin Portal'], note: 'Admin Portal is admin-only' },
 ]
 
 const platformFeatures = [
   {
-    name: 'Multi-tenancy',
+    name: 'One household, one database',
     icon: '🏢',
-    description: 'Each user gets their own isolated data space (tenant). All financial data is scoped to your tenant so nothing leaks between users.',
+    description: 'All financial data lives in a dedicated PostgreSQL schema that the owner can also open with psql or a spreadsheet. The multi-tenant structure keeps it isolated; it is not a sign-up product.',
   },
   {
     name: 'Google SSO',
     icon: '🔐',
-    description: 'Sign in with your Google account. New users are placed in a pending state and need admin approval before they can access the app.',
+    description: 'Sign in with Google in production, email/password in local development. New Google users wait in a pending state until an admin approves them.',
   },
   {
-    name: 'API Keys',
+    name: 'API keys',
     icon: '🔑',
-    description: 'Generate API keys for programmatic access. Pass your key via the X-API-Key header. Manage keys on the API page.',
+    description: 'Create keys on the API page for scripts. Pass them in the X-API-Key header. A read key can only read; a write key is needed for anything that changes data.',
   },
   {
-    name: 'SQL Transparency',
+    name: 'SQL transparency',
     icon: '🔍',
-    description: 'Hover over any metric tile to reveal a </> icon. Click it to see the exact SQL query that produced the number. No black boxes.',
+    description: 'Every tile has an info icon that explains the number and a </> button (tap it on a phone, hover on a desktop) that shows the query behind it.',
   },
   {
-    name: 'Import Workflow',
+    name: 'Import workflow',
     icon: '📤',
-    description: 'Upload PDFs or Excel files. AI parses them and shows you the extracted changes for review. Chat with AI to correct mistakes, then confirm to apply.',
+    description: 'Upload a PDF, Excel or CSV. Claude proposes changes field by field; nothing is written until you accept them. Ask the review chat to add or correct a value.',
   },
   {
-    name: 'API Reference',
+    name: 'API reference',
     icon: '📖',
-    description: 'Scalar-powered interactive API docs available at /developer. Try endpoints directly from the browser with your API key.',
+    description: 'The interactive OpenAPI reference is served at /api/v1/scalar and linked from the API page.',
   },
   {
     name: 'Admin Portal',
     icon: '🛡',
-    description: 'User management, tenant management, and pending user approvals. Only accessible to admin users.',
+    description: 'Approve pending users, toggle admin and active flags, and see tenant stats. Admin-only; kept working, not extended.',
   },
   {
-    name: 'Database Viewer',
+    name: 'Database explorer',
     icon: '🗄',
-    description: 'Interactive ERD canvas with Miro-style pan and zoom. Browse table schemas, preview rows, read column descriptions, and run arbitrary SQL queries.',
+    description: 'An ERD of your schema, row previews, column descriptions and a read-only SQL runner confined to your own schema. Desktop only.',
   },
 ]
 
@@ -88,105 +64,105 @@ const pages = [
   {
     name: 'Dashboard',
     group: 'Overview',
-    description: 'Net worth overview with liquidity layers (cash, investments, home equity, retirement). Compensation split donut, net worth trend chart, upcoming RSU vests, and recent spending summary.',
+    description: 'What you are worth right now: net worth and liquid net worth from the latest balance per account, the liquidity layers (cash, investments, home equity, retirement, liabilities), the compensation split, net worth over time, the next RSU vests and the last 30 days of spending.',
   },
   {
     name: 'Spending',
     group: 'Money',
-    description: 'Category breakdown with bar and donut charts, recurring expense detection, monthly spending trend, and full transaction search with filters.',
+    description: 'Where money went in a period: spending by category, recurring merchants, the transaction table and the monthly trend. One date range and one account filter scope the whole page. Transfers and loan payments are not spending.',
   },
   {
     name: 'Income',
     group: 'Money',
-    description: 'W2 records by tax year. Salary vs RSU income breakdown, tax withholding waterfall (gross to net), year-over-year compensation table.',
+    description: 'For a tax year, how gross pay splits into salary and RSU and where it goes: tax, 401(k), benefits, take-home. One definition of take-home across the tiles, the waterfall and the year-over-year table.',
   },
   {
     name: 'Cash',
     group: 'Money',
-    description: 'Checking and savings balances, balance history chart, and notable transactions. Shows your most liquid money at a glance.',
+    description: 'Checking and savings balances, their trend, months of runway, and the notable transactions behind the movements. The time range scopes every section; Sync runs a SimpleFIN sync.',
   },
   {
     name: 'RSU',
     group: 'Investments',
-    description: 'Grant details with vesting schedule, live stock price chart, tax lot analysis with short-term vs long-term gains, upcoming vest countdown, and "If You Sold Today" liquidation breakdown.',
+    description: 'What the company stock is worth, what selling the vested shares today would net after tax, when the rest vests, and every grant with its vest events. Prices come from Yahoo Finance once a day.',
   },
   {
     name: '401(k)',
     group: 'Investments',
-    description: 'Balance breakdown by bucket (Roth, pre-tax, employer match). Contribution rates, individual holdings, and balance history chart.',
+    description: 'Balance and its Roth / pre-tax / employer-match split, contribution rates (editable here), holdings with live prices, and the balance history built from imported statements.',
   },
   {
     name: 'Property',
     group: 'Property',
-    description: 'Property value, mortgage balance, and equity position. Full amortization schedule chart with "Today" marker. Payment breakdown donut (principal, interest, escrow).',
+    description: 'Value, mortgage balance, equity, the amortization schedule and the payment split. Valuations you type are never overwritten; AI projections are drawn dashed and labelled as estimates.',
   },
   {
     name: 'Assets',
     group: 'Property',
-    description: 'Vehicle tracking with AI-estimated market values based on year, make, model, mileage, and condition. Depreciation tracking over time.',
+    description: 'Vehicles with a labelled AI estimate of their value (source, model, confidence and reasoning shown), depreciation since purchase, and a value history. Adding a vehicle never depends on the AI being available.',
   },
   {
     name: 'Planning',
     group: 'Planning',
-    description: 'Retirement scenarios with year-by-year projections from now to your target retirement age. Assumption sliders for growth rates, returns, and spending. Sensitivity analysis shows which assumptions matter most.',
+    description: 'Year-by-year projections to a target retirement age from your current balances, latest W-2, mortgage and vest schedule plus editable assumptions, with scenario comparison. Sensitivity analysis is available through the API.',
   },
   {
     name: 'Database',
     group: 'Platform',
-    description: 'Interactive ERD canvas with Miro-style navigation. SQL runner for ad hoc queries. Table preview with row data, schema descriptions, and column-level documentation.',
+    description: 'ERD, table previews, column documentation, a read-only SQL runner confined to your schema, and direct-connection credentials for psql or Excel. Needs a desktop-width screen.',
   },
   {
     name: 'API',
     group: 'Platform',
-    description: 'API key management (create, revoke, copy). Code examples for common operations. Link to the interactive Scalar-powered API reference at /developer.',
+    description: 'API keys with read/write scopes, usage, outbound webhooks, and a link to the interactive reference at /api/v1/scalar.',
   },
   {
     name: 'Settings',
     group: 'Platform',
-    description: 'Account management, income record editing, Plaid bank connections for automatic sync, and import history log.',
+    description: 'Accounts, Income (every W-2 field), the SimpleFIN connection with per-account sync options, Email Receipts (registered sender addresses and the receipt log), and Import History.',
   },
   {
     name: 'Admin Portal',
     group: 'Platform',
-    description: 'User management with role assignment, tenant management, and pending user approval queue. Admin-only access.',
+    description: 'User approval and tenant management. Admin-only.',
   },
   {
     name: 'Guide',
     group: 'Overview',
-    description: 'This page — a comprehensive feature tour and reference for how Tallied works.',
+    description: 'This page: what each page is for and how data gets in.',
   },
 ]
 
 const dataSources = [
   {
-    name: 'Plaid',
-    icon: '🔗',
-    description: 'Automatic bank sync for transactions and balances. Connect in Settings, then sync on demand or let it run automatically.',
-    feeds: 'Transactions, account balances',
+    name: 'SimpleFIN',
+    icon: '🏦',
+    description: 'The bank connection. Paste a SimpleFIN setup token in Settings, choose which accounts sync balances and transactions, and it runs every 12 hours or on demand.',
+    feeds: 'Accounts, balances, transactions',
   },
   {
-    name: 'Document Import',
+    name: 'Document import',
     icon: '📄',
-    description: 'Upload W2s, pay stubs, 401(k) statements, or mortgage statements as PDFs. AI parses the document, you review the extracted data, and confirm to apply.',
-    feeds: 'W2 records, mortgage data, 401(k) data',
+    description: 'Upload W-2s, pay stubs, mortgage statements, 401(k) statements or E-Trade RSU exports. Claude reads the document and proposes changes you review before anything is saved.',
+    feeds: 'W-2 records, mortgage, 401(k), RSU grants and vests',
   },
   {
-    name: 'E-Trade',
-    icon: '📊',
-    description: 'RSU grant data via Excel spreadsheet upload. Export "Download by Type (expanded)" and "Download by Status (expanded)" from E-Trade.',
-    feeds: 'RSU grants, vest events',
+    name: 'Email receipts',
+    icon: '✉️',
+    description: 'Forward an order confirmation from an address you registered in Settings and it becomes a transaction. Receipts from unregistered senders are rejected.',
+    feeds: 'Transactions',
   },
   {
     name: 'Yahoo Finance',
     icon: '📈',
-    description: 'Live stock prices fetched automatically and cached daily. Powers current holdings value and the stock price chart on the RSU page.',
+    description: 'Stock and fund prices, fetched once a day per symbol. Powers the RSU values, the price chart and 401(k) holding prices.',
     feeds: 'Stock prices',
   },
   {
-    name: 'Manual Entry',
+    name: 'Manual entry',
     icon: '✏️',
-    description: 'Property valuations, vehicle details, and account configuration. Enter directly through the relevant page or Settings.',
-    feeds: 'Property valuations, vehicles, accounts',
+    description: 'Accounts and W-2 fields in Settings, vehicles on Assets, property valuations on Property, plan assumptions on Planning, and a row editor on the Database page for corrections.',
+    feeds: 'Everything else',
   },
 ]
 
@@ -220,32 +196,33 @@ const wealthLayers = [
     description: '401(k), IRA, and similar accounts. Growing tax-advantaged but penalized if withdrawn before 59 and a half.',
   },
 ]
+
+const importSteps = [
+  { title: '1. Upload', text: 'Drop a PDF, Excel or CSV into the import modal from the page that owns the data (Income, Property, RSU, 401(k)).' },
+  { title: '2. Extract', text: 'Claude reads the document into the fields that page tracks and nothing else.' },
+  { title: '3. Review', text: 'Every proposed change shows the current and new value. Untick what you do not want; ask the chat to add or correct a value.' },
+  { title: '4. Confirm', text: 'Accepted changes are written and listed under Settings → Import History. Nothing is saved before this step.' },
+]
 </script>
 
 <template>
-  <div class="max-w-4xl mx-auto space-y-10">
+  <div class="max-w-4xl mx-auto space-y-10 min-w-0">
 
-    <!-- Header -->
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Tallied Guide</h1>
-      <p class="mt-2 text-gray-500 dark:text-gray-400 text-sm">
-        A comprehensive tour of features, pages, data sources, and platform capabilities.
-      </p>
-    </div>
+    <PageHeader title="Tallied Guide" subtitle="What each page is for, how data gets in, and how the platform pieces fit together." />
 
     <!-- The Big Picture -->
     <section>
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">The Big Picture</h2>
-      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 text-sm text-gray-700 dark:text-gray-300 space-y-3 leading-relaxed">
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 text-sm text-gray-700 dark:text-gray-300 space-y-3 leading-relaxed">
         <p>
-          <strong class="text-gray-900 dark:text-white">Tallied</strong> is a multi-tenant personal finance platform that tracks
-          <strong class="text-gray-900 dark:text-white">net worth, income, spending, investments, property, and retirement planning</strong> in one place.
-          It answers: are you on track to retire when you want to — and where does all your money actually go?
+          <strong class="text-gray-900 dark:text-white">Tallied</strong> is one household's finance dashboard. It keeps
+          <strong class="text-gray-900 dark:text-white">accounts, transactions, income, company stock, 401(k), property and vehicles</strong>
+          in one database, shows what that adds up to, and projects it forward to retirement.
         </p>
         <p>
-          The core loop is: <strong class="text-gray-900 dark:text-white">capture real data &rarr; understand your position &rarr; compare to your plan &rarr; adjust assumptions &rarr; repeat.</strong>
-          Data flows in from Plaid (automatic bank sync), PDF/Excel uploads parsed by AI, Yahoo Finance (live stock prices), and manual entry.
-          Every metric is transparent — hover over any tile to see the exact SQL query behind the number.
+          The loop is: <strong class="text-gray-900 dark:text-white">feed real data &rarr; understand the position &rarr; compare to the plan &rarr; adjust assumptions &rarr; repeat.</strong>
+          Data comes in from SimpleFIN (bank sync), document import (Claude reads statements), email receipts, Yahoo Finance prices, and manual entry.
+          Every number can be explained: each tile has an info icon saying what it is and what feeds it, and a button showing the query behind it.
         </p>
       </div>
     </section>
@@ -253,9 +230,7 @@ const wealthLayers = [
     <!-- Navigation -->
     <section>
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Navigation</h2>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Pages are organized into six groups in the sidebar.
-      </p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Pages are organized into six groups in the sidebar.</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <div v-for="group in navGroups" :key="group.name"
           class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
@@ -273,12 +248,10 @@ const wealthLayers = [
     <!-- Platform Features -->
     <section>
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Platform Features</h2>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Capabilities that power the app beyond the financial dashboards.
-      </p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">The pieces around the financial pages. They must keep working; they are not where new features go.</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div v-for="feature in platformFeatures" :key="feature.name"
-          class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 min-w-0">
           <div class="font-semibold text-gray-900 dark:text-white text-sm mb-1">{{ feature.icon }} {{ feature.name }}</div>
           <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{{ feature.description }}</p>
         </div>
@@ -288,13 +261,11 @@ const wealthLayers = [
     <!-- Wealth Layers -->
     <section>
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">How Wealth Is Organized</h2>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Net worth is broken into four layers ordered by how quickly you can access the money.
-      </p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Net worth is broken into layers ordered by how quickly you can access the money. Credit cards and other loans show as negative layers.</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div v-for="layer in wealthLayers" :key="layer.name"
           class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-          <div class="flex items-center gap-2 mb-2">
+          <div class="flex items-center gap-2 mb-2 flex-wrap">
             <span class="text-lg">{{ layer.icon }}</span>
             <span class="font-semibold text-gray-900 dark:text-white text-sm">{{ layer.name }}</span>
             <span class="ml-auto text-xs px-2 py-0.5 rounded-full font-medium" :class="layer.badgeClass">{{ layer.badge }}</span>
@@ -307,14 +278,13 @@ const wealthLayers = [
     <!-- Pages -->
     <section>
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Pages</h2>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        What each page shows and what it is for.
-      </p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">What each page shows and what it is for.</p>
       <div class="space-y-3">
         <div v-for="page in pages" :key="page.name"
           class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
           <button
-            class="w-full text-left px-5 py-4 flex items-start gap-4"
+            class="w-full text-left px-4 sm:px-5 py-3.5 min-h-[44px] flex items-start gap-4"
+            :aria-expanded="!!expandedSections[page.name]"
             @click="toggle(page.name)"
           >
             <div class="flex-1 min-w-0">
@@ -325,7 +295,7 @@ const wealthLayers = [
             </div>
             <span class="text-gray-400 text-xs mt-1">{{ expandedSections[page.name] ? '&#9650;' : '&#9660;' }}</span>
           </button>
-          <div v-if="expandedSections[page.name]" class="px-5 pb-4 border-t border-gray-100 dark:border-gray-800">
+          <div v-if="expandedSections[page.name]" class="px-4 sm:px-5 pb-4 border-t border-gray-100 dark:border-gray-800">
             <p class="mt-3 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{{ page.description }}</p>
           </div>
         </div>
@@ -335,12 +305,10 @@ const wealthLayers = [
     <!-- Data Sources -->
     <section>
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">How Data Gets In</h2>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Five sources feed data into Tallied.
-      </p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Five sources feed Tallied. Monarch and Plaid were removed in October 2026.</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <div v-for="source in dataSources" :key="source.name"
-          class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 min-w-0">
           <div class="font-semibold text-gray-900 dark:text-white text-sm mb-1">{{ source.icon }} {{ source.name }}</div>
           <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mb-2">{{ source.description }}</p>
           <div class="text-xs text-gray-400 dark:text-gray-500">
@@ -353,23 +321,11 @@ const wealthLayers = [
     <!-- Import Workflow -->
     <section>
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Import Workflow</h2>
-      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
-        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-center text-sm">
-          <div>
-            <div class="text-2xl mb-2">1. Upload</div>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Drop a PDF or Excel file into the import modal. Context-aware: it knows if you are on Income, Property, RSU, etc.</p>
-          </div>
-          <div>
-            <div class="text-2xl mb-2">2. AI Parse</div>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Claude AI extracts structured data from the document and shows you what it found.</p>
-          </div>
-          <div>
-            <div class="text-2xl mb-2">3. Review</div>
-            <p class="text-xs text-gray-500 dark:text-gray-400">See the proposed changes before they are applied. Chat with AI to correct any mistakes.</p>
-          </div>
-          <div>
-            <div class="text-2xl mb-2">4. Confirm</div>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Accept the changes and they are written to your database. Reject to discard.</p>
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+          <div v-for="s in importSteps" :key="s.title" class="min-w-0">
+            <div class="text-base font-semibold text-gray-900 dark:text-white mb-1">{{ s.title }}</div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{{ s.text }}</p>
           </div>
         </div>
       </div>
@@ -378,15 +334,15 @@ const wealthLayers = [
     <!-- Getting Started -->
     <section>
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Getting Started</h2>
-      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 text-sm text-gray-700 dark:text-gray-300 space-y-2 leading-relaxed">
-        <p><strong class="text-gray-900 dark:text-white">1.</strong> Sign in with Google. An admin will approve your account.</p>
-        <p><strong class="text-gray-900 dark:text-white">2.</strong> Connect a bank via Plaid in Settings for automatic transaction and balance sync.</p>
-        <p><strong class="text-gray-900 dark:text-white">3.</strong> Upload your W2s on the Income page to populate income history.</p>
-        <p><strong class="text-gray-900 dark:text-white">4.</strong> Upload your mortgage statement on the Property page.</p>
-        <p><strong class="text-gray-900 dark:text-white">5.</strong> Import RSU data from E-Trade on the RSU page.</p>
-        <p><strong class="text-gray-900 dark:text-white">6.</strong> Add vehicles on the Assets page for AI-estimated values.</p>
-        <p><strong class="text-gray-900 dark:text-white">7.</strong> Create a retirement plan on the Planning page and tune assumptions.</p>
-        <p><strong class="text-gray-900 dark:text-white">8.</strong> Generate an API key on the API page if you want programmatic access.</p>
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 text-sm text-gray-700 dark:text-gray-300 space-y-2 leading-relaxed">
+        <p><strong class="text-gray-900 dark:text-white">1.</strong> Sign in. New Google accounts are approved by an admin first.</p>
+        <p><strong class="text-gray-900 dark:text-white">2.</strong> In Settings, connect SimpleFIN and choose which accounts sync balances and transactions.</p>
+        <p><strong class="text-gray-900 dark:text-white">3.</strong> Import your W-2s on the Income page.</p>
+        <p><strong class="text-gray-900 dark:text-white">4.</strong> Import your mortgage statement on the Property page and add a valuation.</p>
+        <p><strong class="text-gray-900 dark:text-white">5.</strong> Import the E-Trade RSU export on the RSU page and a 401(k) statement on the 401(k) page.</p>
+        <p><strong class="text-gray-900 dark:text-white">6.</strong> Add vehicles on the Assets page and request an estimate.</p>
+        <p><strong class="text-gray-900 dark:text-white">7.</strong> Register your email address under Settings → Email Receipts and forward receipts to the household address.</p>
+        <p><strong class="text-gray-900 dark:text-white">8.</strong> Create a plan on the Planning page and tune the assumptions.</p>
       </div>
     </section>
 

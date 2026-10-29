@@ -3,6 +3,11 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
 import { highlightSql } from '../composables/useSqlHighlight'
 import { useThemeStore } from '../stores/theme'
+import { RouterLink } from 'vue-router'
+import { useMediaQuery } from '../composables/useMediaQuery'
+
+// The explorer (ERD canvas, split panes, SQL runner) needs a desktop-width screen (DEC-7).
+const isNarrow = useMediaQuery('(max-width: 767px)')
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -836,7 +841,12 @@ watch(centerMode, (mode) => {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+watch(isNarrow, (narrow) => {
+  if (!narrow && !schema.value && !schemaLoading.value) loadSchema().then(() => nextTick(zoomFit))
+})
+
 onMounted(() => {
+  if (isNarrow.value) return
   loadSchema().then(() => nextTick(zoomFit))
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
@@ -856,7 +866,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div :class="[
+  <div v-if="isNarrow" class="max-w-md mx-auto mt-8 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 text-center">
+    <h2 class="text-lg font-bold text-gray-900 dark:text-white">The database explorer needs a wider screen</h2>
+    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+      It shows your schema as a diagram, previews table rows and runs read-only SQL against your own data, which only works at desktop width.
+    </p>
+    <RouterLink to="/settings" class="inline-flex items-center justify-center mt-5 min-h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">
+      Go to Settings
+    </RouterLink>
+  </div>
+  <div v-else :class="[
     'flex flex-col min-h-0',
     isFullscreen ? 'fixed inset-0 z-50 bg-white dark:bg-gray-950 p-4' : 'h-[calc(100vh-120px)]'
   ]">

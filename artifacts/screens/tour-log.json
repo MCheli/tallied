@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-10-29T12:38:59.556Z",
+  "capturedAt": "2026-10-29T12:49:51.994Z",
   "base": "http://localhost:5173",
   "theme": "light",
   "routes": {
@@ -13,12 +13,34 @@
       ],
       "overflow": []
     },
-    "settings/mobile": {
+    "dashboard/mobile": {
       "consoleErrors": [],
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/settings",
+      "finalUrl": "http://localhost:5173/",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "guide/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/guide",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "database/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/database",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -36,12 +58,34 @@
       ],
       "overflow": []
     },
-    "settings/desktop": {
+    "dashboard/desktop": {
       "consoleErrors": [],
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/settings",
+      "finalUrl": "http://localhost:5173/",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "guide/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/guide",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "database/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/database",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440

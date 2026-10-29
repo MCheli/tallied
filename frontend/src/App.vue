@@ -128,13 +128,15 @@ const filteredNavGroups = computed(() => {
 })
 
 const currentRoute = computed(() => route.name)
+// Public routes (login, pending approval, ...) render without the sidebar shell.
+const isPublic = computed(() => !!route.meta.public)
 
 const showLabels = computed(() => isMobile.value || !collapsed.value)
 </script>
 
 <template>
-  <!-- Login page: no sidebar -->
-  <div v-if="currentRoute === 'login'" class="h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+  <!-- Public routes (login, pending approval): no sidebar -->
+  <div v-if="isPublic" class="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
     <RouterView />
   </div>
 
@@ -146,7 +148,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
       <button
         @click="mobileOpen = true"
         aria-label="Open navigation menu"
-        class="p-1.5 -ml-1.5 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        class="w-10 h-10 -ml-2.5 flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
         <Menu class="w-5 h-5" />
       </button>
@@ -167,7 +169,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
       :class="[
         'flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-all duration-200',
         // Mobile: fixed overlay drawer
-        'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-64 max-md:shadow-xl',
+        'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[80%] max-md:max-w-xs max-md:shadow-xl',
         mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full',
         // Desktop: inline, collapsible
         collapsed ? 'md:w-16' : 'md:w-56',
@@ -180,7 +182,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
           v-if="isMobile"
           @click="mobileOpen = false"
           aria-label="Close navigation menu"
-          class="p-1 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          class="w-10 h-10 -mr-2 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
           <X class="w-5 h-5" />
         </button>
@@ -210,8 +212,8 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
             :title="collapsed && !isMobile ? item.label : undefined"
             :aria-label="collapsed && !isMobile ? item.label : undefined"
             :class="[
-              'flex items-center rounded-lg text-sm font-medium transition-colors',
-              collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-1.5',
+              'flex items-center rounded-lg text-sm font-medium transition-colors min-h-10',
+              collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
               currentRoute === item.name
                 ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'
@@ -229,8 +231,8 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
           :title="collapsed && !isMobile ? (dark ? 'Light Mode' : 'Dark Mode') : undefined"
           :aria-label="dark ? 'Switch to light mode' : 'Switch to dark mode'"
           :class="[
-            'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors',
-            collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-1.5',
+            'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors min-h-10',
+            collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
           ]"
         >
           <component :is="dark ? Sun : Moon" class="w-4 h-4 flex-shrink-0" />
@@ -243,8 +245,8 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
             :title="collapsed && !isMobile ? 'Sign out' : undefined"
             aria-label="Sign out"
             :class="[
-              'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-colors',
-              collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-1.5',
+              'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-colors min-h-10',
+              collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
             ]"
           >
             <LogOut class="w-4 h-4 flex-shrink-0" />
@@ -258,8 +260,8 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
           aria-label="Sign in"
           :title="collapsed && !isMobile ? 'Sign in' : undefined"
           :class="[
-            'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors',
-            collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-1.5',
+            'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors min-h-10',
+            collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
           ]"
         >
           <LogIn class="w-4 h-4 flex-shrink-0" />
@@ -269,8 +271,8 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
     </aside>
 
     <!-- Main Content -->
-    <main class="flex-1 overflow-y-auto max-md:pt-14">
-      <div class="p-6 max-w-[1600px] mx-auto">
+    <main class="flex-1 min-w-0 overflow-y-auto overflow-x-hidden max-md:pt-14">
+      <div class="p-4 sm:p-6 max-w-[1600px] mx-auto min-w-0">
         <RouterView />
       </div>
     </main>
