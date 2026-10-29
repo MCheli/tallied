@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { api } from '../api/client'
 
 const API = import.meta.env.VITE_API_URL || ''
 const auth = useAuthStore()
@@ -27,11 +28,12 @@ onMounted(async () => {
 
   // Get available auth methods
   try {
-    const res = await fetch(`${API}/api/v1/auth/config`)
-    const config = await res.json()
+    const config = await api.auth.config()
     devMode.value = config.dev_mode
     googleSso.value = config.google_sso
-  } catch {} finally {
+  } catch {
+    // no config: the page shows "No authentication methods configured"
+  } finally {
     configLoaded.value = true
   }
 })

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { api } from '../api/client'
 
-const API = import.meta.env.VITE_API_URL || ''
 const router = useRouter()
 
 const userName = ref('')
@@ -16,8 +16,7 @@ onMounted(async () => {
 
 async function fetchUserInfo() {
   try {
-    const res = await fetch(`${API}/api/v1/auth/me`, { credentials: 'include' })
-    const data = await res.json()
+    const data = await api.auth.me()
     if (data.authenticated && data.user) {
       userName.value = data.user.display_name || ''
       userEmail.value = data.user.email || ''
@@ -39,8 +38,7 @@ async function checkStatus() {
   checking.value = true
   statusMessage.value = ''
   try {
-    const res = await fetch(`${API}/api/v1/auth/me`, { credentials: 'include' })
-    const data = await res.json()
+    const data = await api.auth.me()
     if (data.authenticated && data.user?.current_tenant) {
       statusMessage.value = 'Your account has been approved! Redirecting...'
       setTimeout(() => router.push('/'), 1000)
@@ -55,7 +53,7 @@ async function checkStatus() {
 }
 
 async function handleLogout() {
-  await fetch(`${API}/api/v1/auth/logout`, { method: 'POST', credentials: 'include' })
+  try { await api.auth.logout() } catch { /* already signed out */ }
   router.push('/login')
 }
 </script>

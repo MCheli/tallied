@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { highlightSql } from '../../composables/useSqlHighlight'
+import { api } from '../../api/client'
 
 const props = defineProps<{
   open: boolean
@@ -14,8 +15,6 @@ const emit = defineEmits<{
 }>()
 
 const copied = ref(false)
-
-const API_BASE = import.meta.env.VITE_API_URL || ''
 
 // Table preview state
 const previewTable = ref<string | null>(null)
@@ -45,9 +44,7 @@ async function toggleTablePreview(tableName: string) {
   previewLoading.value = true
   previewData.value = null
   try {
-    const res = await fetch(`${API_BASE}/api/v1/admin/tables/${encodeURIComponent(tableName)}/preview?limit=5&offset=0`, { credentials: 'include' })
-    if (!res.ok) throw new Error(`${res.status}`)
-    previewData.value = await res.json()
+    previewData.value = await api.admin.preview(tableName, 5, 0)
   } catch {
     previewData.value = null
   } finally {

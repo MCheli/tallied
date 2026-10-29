@@ -612,3 +612,206 @@ export interface VehicleInput {
   purchase_date?: string
   notes?: string
 }
+
+// ── Platform: API keys, usage, webhooks ──────────────────────────────────────
+export interface ApiKey {
+  id: number
+  name: string
+  key_prefix: string
+  permissions: string
+  is_active: boolean
+  last_used: string | null
+  created_at: string | null
+}
+export interface ApiKeyCreated extends ApiKey { key: string }
+export interface EndpointUsage { path: string; method: string; count: number }
+export interface KeyUsageInfo {
+  key_id: number
+  key_name: string
+  total_requests: number
+  requests_last_24h: number
+  requests_last_hour: number
+  avg_latency_ms: number
+  top_endpoints: EndpointUsage[]
+}
+export interface UsageSummary {
+  total_requests_today: number
+  requests_last_hour: number
+  total_requests_all_time: number
+  avg_latency_ms: number
+  top_endpoints: EndpointUsage[]
+  per_key: KeyUsageInfo[]
+}
+export interface Webhook {
+  id: number
+  url: string
+  events: string[]
+  is_active: boolean
+  created_at: string | null
+  last_delivery: string | null
+  failure_count: number
+}
+export interface WebhookCreated extends Webhook { secret: string }
+export interface WebhookTestResult { success: boolean; status_code?: number; error?: string }
+
+// ── Platform: database explorer and credentials ──────────────────────────────
+export interface SchemaColumnInfo {
+  name: string
+  type: string
+  nullable: boolean
+  primary_key: boolean
+  default: string | null
+  description?: string
+}
+export interface SchemaForeignKey { column: string; references_table: string; references_column: string }
+export interface SchemaTable {
+  name: string
+  description?: string
+  columns: SchemaColumnInfo[]
+  foreign_keys: SchemaForeignKey[]
+  row_count: number
+}
+export interface SchemaEdge { from_table: string; from_column: string; to_table: string; to_column: string }
+export interface SchemaResponse { tables: SchemaTable[]; edges: SchemaEdge[] }
+export interface TablePreview {
+  table: string
+  columns: string[]
+  rows: Record<string, unknown>[]
+  total: number
+  limit: number
+  offset: number
+}
+export interface QueryResult { columns: string[]; rows: Record<string, unknown>[]; row_count: number; query: string }
+export interface DbCredential {
+  id: number
+  name: string
+  pg_username: string
+  access_level: string
+  is_active: boolean
+  created_at: string | null
+  expires_at: string | null
+}
+export interface DbCredentialCreated extends DbCredential {
+  password: string
+  host: string
+  port: number
+  database: string
+  schema_name: string
+  connection_string: string
+}
+
+// ── Platform: admin portal ───────────────────────────────────────────────────
+export interface PlatformUser {
+  id: number
+  email: string
+  display_name: string
+  auth_provider: string
+  is_admin: boolean
+  is_active: boolean
+  status: string
+  created_at: string | null
+  last_login: string | null
+  tenant_count: number
+  tenants: string[]
+}
+export interface PlatformTenant {
+  id: number
+  display_name: string
+  slug: string
+  schema_name: string
+  is_active: boolean
+  created_at: string | null
+  member_count: number
+  owner_email: string | null
+  owner_name: string | null
+}
+export interface PlatformStats { total_users: number; active_users: number; total_tenants: number; active_tenants: number }
+export interface PlatformUserMembership { tenant_id: number; display_name: string; slug: string; role: string; is_default: boolean }
+export interface PlatformUserDetail {
+  id: number
+  email: string
+  display_name: string
+  auth_provider: string
+  is_admin: boolean
+  is_active: boolean
+  status: string
+  created_at: string | null
+  last_login: string | null
+  tenants: PlatformUserMembership[]
+  api_key_count: number
+  db_credential_count: number
+}
+export interface PlatformTenantMember { user_id: number; email: string; display_name: string; role: string; is_default: boolean }
+export interface PlatformTenantDetail {
+  id: number
+  display_name: string
+  slug: string
+  schema_name: string
+  is_active: boolean
+  created_at: string | null
+  members: PlatformTenantMember[]
+  table_counts: Record<string, number>
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+export interface AuthTenant { id: number; display_name: string; slug: string }
+export interface AuthUser {
+  id: number
+  email: string
+  display_name: string
+  is_admin: boolean
+  status: string
+  current_tenant: AuthTenant | null
+  tenants: AuthTenant[]
+}
+export interface AuthMeResponse { user: AuthUser | null; authenticated: boolean }
+export interface AuthConfig { dev_mode: boolean; google_sso: boolean }
+
+// ── Document import ──────────────────────────────────────────────────────────
+export interface ImportConfig { context: string; guidance: string; examples: string[]; expected_fields: string[] }
+export interface ImportChangeField {
+  column: string
+  old_value: unknown
+  new_value: unknown
+  is_new?: boolean
+  source?: string
+  display_name?: string
+  format?: string
+  /** Value the backend will store when it differs from the displayed new_value (e.g. parsed dates). */
+  _store_value?: unknown
+}
+export interface ImportChange {
+  id: string
+  table: string
+  action: string
+  tax_year?: number | null
+  record_label?: string
+  record_key?: string | null
+  fields: ImportChangeField[]
+  data?: Record<string, unknown>
+}
+export interface ImportMissingField { field: string; message: string }
+export interface ImportChatMessage { role: string; content: string; timestamp?: string; action?: ImportChatAction | null }
+export interface ImportChatAction { action: string; table: string; column: string; value: unknown; tax_year?: number | null }
+export interface ImportUploadResult {
+  session_id: string
+  status: string
+  filename: string
+  context: string
+  ai_summary: string
+  missing_fields: ImportMissingField[]
+  proposed_changes: ImportChange[]
+  findings_count: number
+}
+export interface ImportSessionResponse {
+  session_id: string
+  status: string
+  context: string
+  filename: string
+  ai_summary: string
+  missing_fields: ImportMissingField[]
+  proposed_changes: ImportChange[]
+  chat_messages: ImportChatMessage[]
+  changes_applied: number | null
+}
+export interface ImportChatResponse { response: string; action: ImportChatAction | null; messages: ImportChatMessage[] }

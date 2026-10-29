@@ -37,12 +37,34 @@ import type {
   RSUSummary,
   PriceHistoryResponse,
   RetirementSummary,
+  ApiKey,
+  ApiKeyCreated,
+  UsageSummary,
+  Webhook,
+  WebhookCreated,
+  WebhookTestResult,
+  SchemaResponse,
+  TablePreview,
+  QueryResult,
+  DbCredential,
+  DbCredentialCreated,
+  PlatformUser,
+  PlatformTenant,
+  PlatformStats,
+  PlatformUserDetail,
+  PlatformTenantDetail,
+  AuthMeResponse,
+  AuthConfig,
+  ImportConfig,
+  ImportUploadResult,
+  ImportSessionResponse,
+  ImportChatResponse,
 } from '../types'
 
 const BASE = '/api/v1'
 const API_ROOT = import.meta.env.VITE_API_URL || ''
 
-function buildQuery(params?: Record<string, unknown>): string {
+export function buildQuery(params?: Record<string, unknown>): string {
   if (!params) return ''
   const entries = Object.entries(params).filter(([, v]) => v != null && v !== '')
   if (entries.length === 0) return ''
@@ -65,32 +87,50 @@ async function tryRefreshToken(): Promise<boolean> {
   }
 }
 
-export async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
+function errorFor(res: Response, text: string): Error {
+  return new Error(`${res.status}: ${text}`)
+}
+
+/**
+ * The one request path: credentials, the JSON content type (unless the body is FormData),
+ * and one retry after a 401 when the refresh token still works. Returns the Response of
+ * the last attempt; callers decide how to read it.
+ */
+export async function request(url: string, options: RequestInit = {}, opts: { retry?: boolean } = {}): Promise<Response> {
+  const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData
+  const init: RequestInit = {
     credentials: 'include',
     ...options,
-  })
-  if (res.status === 401) {
-    // Try to refresh the access token once
-    if (!refreshPromise) {
-      refreshPromise = tryRefreshToken().finally(() => { refreshPromise = null })
-    }
-    const refreshed = await refreshPromise
-    if (refreshed) {
-      // Retry the original request
-      const retry = await fetch(`${BASE}${url}`, {
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        ...options,
-      })
-      if (!retry.ok) throw new Error(`${retry.status}: ${await retry.text()}`)
-      return retry.json()
-    }
-    throw new Error(`${res.status}: ${await res.text()}`)
+    headers: isForm ? options.headers : { 'Content-Type': 'application/json', ...(options.headers || {}) },
   }
-  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
+  const res = await fetch(`${BASE}${url}`, init)
+  if (res.status !== 401 || opts.retry === false) return res
+  // Try to refresh the access token once, shared across concurrent 401s
+  if (!refreshPromise) {
+    refreshPromise = tryRefreshToken().finally(() => { refreshPromise = null })
+  }
+  const refreshed = await refreshPromise
+  if (!refreshed) return res
+  return fetch(`${BASE}${url}`, init)
+}
+
+export async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await request(url, options)
+  if (!res.ok) throw errorFor(res, await res.text())
   return res.json()
+}
+
+/** Like fetchJson but never tries a token refresh (for the auth endpoints themselves). */
+export async function fetchJsonNoRetry<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await request(url, options, { retry: false })
+  if (!res.ok) throw errorFor(res, await res.text())
+  return res.json()
+}
+
+/** For endpoints that answer 204 or an irrelevant body. */
+export async function fetchVoid(url: string, options?: RequestInit): Promise<void> {
+  const res = await request(url, options)
+  if (!res.ok) throw errorFor(res, await res.text())
 }
 
 export const api = {
@@ -157,10 +197,7 @@ export const api = {
     fetchJson<PlanResponse>('/plans/', { method: 'POST', body: JSON.stringify(data) }),
   updatePlan: (id: number, data: PlanUpdate) =>
     fetchJson<PlanResponse>(`/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deletePlan: async (id: number) => {
-    const res = await fetch(`${BASE}/plans/${id}`, { method: 'DELETE', credentials: 'include' })
-    if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
-  },
+  deletePlan: (id: number) => fetchVoid(`/plans/${id}`, { method: 'DELETE' }),
   comparePlans: (ids: number[]) =>
     fetchJson<PlanCompareResponse>(`/plans/compare?ids=${ids.join(',')}`),
   getSensitivity: (id: number) => fetchJson<SensitivityResponse>(`/plans/${id}/sensitivity`),
@@ -220,19 +257,12 @@ export const api = {
     fetchJson<AccountWithBalance>(`/accounts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   getAccountRelatedCounts: (id: string) =>
     fetchJson<Record<string, number>>(`/accounts/${id}/related-counts`),
-  deleteAccount: async (id: string, cascade: boolean = false) => {
-    const res = await fetch(`${BASE}/accounts/${id}${cascade ? '?cascade=true' : ''}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    })
-    if (res.status === 204) return
-    const text = await res.text()
-    throw new Error(`${res.status}: ${text}`)
-  },
+  deleteAccount: (id: string, cascade: boolean = false) =>
+    fetchVoid(`/accounts/${id}${cascade ? '?cascade=true' : ''}`, { method: 'DELETE' }),
 
   // W2 management
   createW2: (data: Record<string, unknown>) =>
-    fetchJson<any>('/income/w2', { method: 'POST', body: JSON.stringify(data) }),
+    fetchJson<Record<string, unknown>>('/income/w2', { method: 'POST', body: JSON.stringify(data) }),
 
 
   // Property
@@ -255,5 +285,92 @@ export const api = {
       fetchJson<Vehicle>(`/assets/vehicles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteVehicle: (id: number) => fetchJson<{ deleted: boolean }>(`/assets/vehicles/${id}`, { method: 'DELETE' }),
     refreshValue: (id: number) => fetchJson<VehicleRefreshResult>(`/assets/vehicles/${id}/refresh-value`, { method: 'POST' }),
+  },
+
+  // Auth (no refresh retry: these are the endpoints a refresh would call)
+  auth: {
+    config: () => fetchJsonNoRetry<AuthConfig>('/auth/config'),
+    me: () => fetchJsonNoRetry<AuthMeResponse>('/auth/me'),
+    login: (email: string, password: string) =>
+      fetchJsonNoRetry<AuthMeResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+    logout: () => fetchJsonNoRetry<{ message: string }>('/auth/logout', { method: 'POST' }),
+    refresh: () => fetchJsonNoRetry<AuthMeResponse>('/auth/refresh', { method: 'POST' }),
+    selectTenant: (tenant_id: number) =>
+      fetchJsonNoRetry<AuthMeResponse>('/auth/select-tenant', { method: 'POST', body: JSON.stringify({ tenant_id }) }),
+  },
+
+  // API keys and usage
+  keys: {
+    list: () => fetchJson<ApiKey[]>('/api-keys/'),
+    create: (name: string, permissions: string) =>
+      fetchJson<ApiKeyCreated>('/api-keys/', { method: 'POST', body: JSON.stringify({ name, permissions }) }),
+    revoke: (id: number) => fetchJson<{ message: string }>(`/api-keys/${id}`, { method: 'DELETE' }),
+    usage: () => fetchJson<UsageSummary>('/api-keys/usage/summary'),
+  },
+
+  // Outbound webhooks
+  webhooks: {
+    list: () => fetchJson<Webhook[]>('/webhooks/'),
+    create: (url: string, events: string[]) =>
+      fetchJson<WebhookCreated>('/webhooks/', { method: 'POST', body: JSON.stringify({ url, events }) }),
+    update: (id: number, data: { url?: string; events?: string[]; is_active?: boolean }) =>
+      fetchJson<Webhook>(`/webhooks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    remove: (id: number) => fetchJson<{ message: string }>(`/webhooks/${id}`, { method: 'DELETE' }),
+    test: (id: number) => fetchJson<WebhookTestResult>(`/webhooks/${id}/test`, { method: 'POST' }),
+  },
+
+  // Database explorer (tenant schema) and direct credentials
+  admin: {
+    schema: () => fetchJson<SchemaResponse>('/admin/schema'),
+    preview: (table: string, limit: number, offset: number) =>
+      fetchJson<TablePreview>(`/admin/tables/${encodeURIComponent(table)}/preview` + buildQuery({ limit, offset })),
+    query: (sql: string, limit = 100) =>
+      fetchJson<QueryResult>('/admin/query', { method: 'POST', body: JSON.stringify({ sql, limit }) }),
+    createRow: (table: string, data: Record<string, unknown>) =>
+      fetchJson<{ row: Record<string, unknown> }>(`/admin/tables/${encodeURIComponent(table)}/rows`, { method: 'POST', body: JSON.stringify({ data }) }),
+    updateRow: (table: string, id: string | number, data: Record<string, unknown>) =>
+      fetchJson<{ row: Record<string, unknown> }>(`/admin/tables/${encodeURIComponent(table)}/rows/${encodeURIComponent(String(id))}`, { method: 'PUT', body: JSON.stringify({ data }) }),
+    deleteRow: (table: string, id: string | number) =>
+      fetchJson<{ deleted: boolean }>(`/admin/tables/${encodeURIComponent(table)}/rows/${encodeURIComponent(String(id))}`, { method: 'DELETE' }),
+  },
+  dbCredentials: {
+    list: () => fetchJson<DbCredential[]>('/db-credentials/'),
+    create: (data: { name: string; access_level: string; expires_in_days: number | null }) =>
+      fetchJson<DbCredentialCreated>('/db-credentials/', { method: 'POST', body: JSON.stringify(data) }),
+    revoke: (id: number) => fetchVoid(`/db-credentials/${id}`, { method: 'DELETE' }),
+  },
+
+  // Platform admin (admin users only)
+  platform: {
+    users: () => fetchJson<PlatformUser[]>('/platform/users'),
+    user: (id: number | string) => fetchJson<PlatformUserDetail>(`/platform/users/${id}`),
+    updateUser: (id: number, data: { is_active?: boolean; is_admin?: boolean }) =>
+      fetchJson<PlatformUserDetail>(`/platform/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    approveUser: (id: number) => fetchJson<Record<string, unknown>>(`/platform/users/${id}/approve`, { method: 'POST' }),
+    tenants: () => fetchJson<PlatformTenant[]>('/platform/tenants'),
+    tenant: (id: number | string) => fetchJson<PlatformTenantDetail>(`/platform/tenants/${id}`),
+    updateTenant: (id: number, data: { is_active?: boolean }) =>
+      fetchJson<PlatformTenantDetail>(`/platform/tenants/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    stats: () => fetchJson<PlatformStats>('/platform/stats'),
+  },
+
+  // Document import (unified review flow)
+  import: {
+    config: (context: string) => fetchJson<ImportConfig>(`/import/config/${context}`),
+    upload: (file: File, context: string) => {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('context', context)
+      return fetchJson<ImportUploadResult>('/import/upload', { method: 'POST', body: form })
+    },
+    session: (id: string) => fetchJson<ImportSessionResponse>(`/import/${id}`),
+    accept: (id: string, accepted_change_ids: string[]) =>
+      fetchJson<{ accepted: number }>(`/import/${id}/accept`, { method: 'PUT', body: JSON.stringify({ accepted_change_ids }) }),
+    confirm: (id: string) =>
+      fetchJson<{ status: string; changes_applied: number; results: unknown[] }>(`/import/${id}/confirm`, { method: 'POST' }),
+    chat: (id: string, message: string) =>
+      fetchJson<ImportChatResponse>(`/import/${id}/chat`, { method: 'POST', body: JSON.stringify({ message }) }),
+    applyAction: (id: string) =>
+      fetchJson<{ applied: boolean; message: string }>(`/import/${id}/apply-action`, { method: 'POST' }),
   },
 }

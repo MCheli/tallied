@@ -4,6 +4,9 @@ import { useImportModal } from '../../composables/useImportModal'
 import { X, Upload, Check, AlertTriangle, Send, Loader2, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { api } from '../../api/client'
+import { apiErrorMessage } from '../../composables/useApiError'
+import type { ImportChange, ImportChangeField, ImportChatMessage, ImportChatAction, ImportConfig, ImportMissingField } from '../../types'
 
 // Configure marked for safe inline rendering
 marked.setOptions({ breaks: true, gfm: true })
@@ -13,17 +16,6 @@ function renderMd(text: string): string {
   return DOMPurify.sanitize(marked.parse(text) as string)
 }
 
-/** Turn a failed response body ({"detail": "..."} or text) into one readable sentence. */
-function readableError(text: string, status?: number): string {
-  try {
-    const parsed = JSON.parse(text)
-    const detail = parsed?.detail
-    if (typeof detail === 'string') return detail
-    if (Array.isArray(detail)) return detail.map((d: any) => d?.msg ?? JSON.stringify(d)).join('; ')
-  } catch {}
-  return text || (status ? `Request failed (${status})` : 'Request failed')
-}
-
 const uploadError = ref<string | null>(null)
 const uploadErrorHint = computed(() =>
   uploadError.value && uploadError.value.includes('FINANCE_ANTHROPIC_API_KEY')
@@ -31,7 +23,6 @@ const uploadErrorHint = computed(() =>
     : null,
 )
 
-const API = import.meta.env.VITE_API_URL || ''
 const { isOpen, context, closeImport } = useImportModal()
 
 type Step = 'upload' | 'processing' | 'review' | 'done'
@@ -44,8 +35,8 @@ const currentFileIdx = ref(0)
 // Session state
 const sessionId = ref('')
 const aiSummary = ref('')
-const missingFields = ref<any[]>([])
-const proposedChanges = ref<any[]>([])
+const missingFields = ref<ImportMissingField[]>([])
+const proposedChanges = ref<ImportChange[]>([])
 const acceptedIds = ref<Set<string>>(new Set())
 const showDetail = ref(true)
 type ReviewView = 'review' | 'sql'
@@ -53,14 +44,14 @@ const reviewView = ref<ReviewView>('review')
 const changesApplied = ref(0)
 
 // Chat state
-const chatMessages = ref<any[]>([])
+const chatMessages = ref<ImportChatMessage[]>([])
 const chatInput = ref('')
 const chatSending = ref(false)
 const chatRef = ref<HTMLElement | null>(null)
-const pendingAction = ref<any>(null)
+const pendingAction = ref<ImportChatAction | null>(null)
 
 // Config
-const importConfig = ref<any>(null)
+const importConfig = ref<ImportConfig | null>(null)
 
 // Guidance text by context
 const CONTEXT_LABELS: Record<string, string> = {
@@ -83,9 +74,10 @@ watch(isOpen, async (open) => {
     pendingAction.value = null
     // Fetch config for context
     try {
-      const res = await fetch(`${API}/api/v1/import/config/${context.value}`, { credentials: 'include' })
-      if (res.ok) importConfig.value = await res.json()
-    } catch {}
+      importConfig.value = await api.import.config(context.value)
+    } catch {
+      importConfig.value = null
+    }
   }
 })
 
@@ -116,42 +108,31 @@ async function processFile(idx: number) {
   step.value = 'processing'
   uploadError.value = null
 
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('context', context.value)
-
   try {
-    const res = await fetch(`${API}/api/v1/import/upload`, { method: 'POST', credentials: 'include', body: formData })
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(readableError(text, res.status))
-    }
-    const data = await res.json()
+    const data = await api.import.upload(file, context.value)
     sessionId.value = data.session_id
     aiSummary.value = data.ai_summary || ''
     missingFields.value = data.missing_fields || []
     proposedChanges.value = data.proposed_changes || []
     // Default: accept all
-    acceptedIds.value = new Set(proposedChanges.value.map((c: any) => c.id))
+    acceptedIds.value = new Set(proposedChanges.value.map(c => c.id))
 
     // Seed the chat with an AI summary message
     if (data.ai_summary) {
       // Ask the AI to explain what it found
       chatSending.value = true
       try {
-        const chatRes = await fetch(`${API}/api/v1/import/${data.session_id}/chat`, {
-          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: `Briefly summarize what you found in this document that's relevant to our app. Focus only on the specific database fields we track — mention the actual values found and whether they're new or updating existing data. If no changes are needed (data already matches), say so clearly. Keep it concise.` }),
-        })
-        const chatData = await chatRes.json()
+        const chatData = await api.import.chat(data.session_id, `Briefly summarize what you found in this document that's relevant to our app. Focus only on the specific database fields we track — mention the actual values found and whether they're new or updating existing data. If no changes are needed (data already matches), say so clearly. Keep it concise.`)
         chatMessages.value = chatData.messages || []
-      } catch {}
+      } catch {
+        // the summary chat is a nicety; the review step works without it
+      }
       chatSending.value = false
     }
 
     step.value = 'review'
-  } catch (e: any) {
-    uploadError.value = e?.message || 'Import failed'
+  } catch (e) {
+    uploadError.value = apiErrorMessage(e, 'Import failed')
     aiSummary.value = ''
     proposedChanges.value = []
     acceptedIds.value = new Set()
@@ -169,14 +150,14 @@ function toggleChange(id: string) {
 async function confirmChanges() {
   if (!sessionId.value) return
   // Send accepted IDs
-  await fetch(`${API}/api/v1/import/${sessionId.value}/accept`, {
-    method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ accepted_change_ids: [...acceptedIds.value] }),
-  })
-  // Confirm
-  const res = await fetch(`${API}/api/v1/import/${sessionId.value}/confirm`, { method: 'POST', credentials: 'include' })
-  const data = await res.json()
-  changesApplied.value = data.changes_applied || 0
+  try {
+    await api.import.accept(sessionId.value, [...acceptedIds.value])
+    const data = await api.import.confirm(sessionId.value)
+    changesApplied.value = data.changes_applied || 0
+  } catch (e) {
+    uploadError.value = apiErrorMessage(e, 'Could not apply the changes')
+    return
+  }
 
   // Check if more files in queue
   if (currentFileIdx.value < fileQueue.value.length - 1) {
@@ -208,15 +189,11 @@ async function sendChat() {
   chatSending.value = true
 
   try {
-    const res = await fetch(`${API}/api/v1/import/${sessionId.value}/chat`, {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg }),
-    })
-    const data = await res.json()
+    const data = await api.import.chat(sessionId.value, msg)
     chatMessages.value.push({ role: 'assistant', content: data.response, action: data.action })
     if (data.action) pendingAction.value = data.action
-  } catch (e: any) {
-    chatMessages.value.push({ role: 'assistant', content: `Error: ${readableError(e?.message || '')}` })
+  } catch (e) {
+    chatMessages.value.push({ role: 'assistant', content: `Error: ${apiErrorMessage(e)}` })
   }
   chatSending.value = false
   await nextTick()
@@ -225,15 +202,19 @@ async function sendChat() {
 
 async function acceptAction() {
   if (!pendingAction.value || !sessionId.value) return
-  const res = await fetch(`${API}/api/v1/import/${sessionId.value}/apply-action`, { method: 'POST', credentials: 'include' })
-  const data = await res.json()
-  if (data.applied) {
-    // Refresh proposed changes
-    const sessRes = await fetch(`${API}/api/v1/import/${sessionId.value}`, { credentials: 'include' })
-    const sessData = await sessRes.json()
-    proposedChanges.value = sessData.proposed_changes || []
-    acceptedIds.value = new Set(proposedChanges.value.map((c: any) => c.id))
-    chatMessages.value.push({ role: 'system', content: `Applied: ${data.message}` })
+  try {
+    const data = await api.import.applyAction(sessionId.value)
+    if (data.applied) {
+      // Refresh proposed changes
+      const sessData = await api.import.session(sessionId.value)
+      proposedChanges.value = sessData.proposed_changes || []
+      acceptedIds.value = new Set(proposedChanges.value.map(c => c.id))
+      chatMessages.value.push({ role: 'system', content: `Applied: ${data.message}` })
+    } else {
+      chatMessages.value.push({ role: 'system', content: data.message })
+    }
+  } catch (e) {
+    chatMessages.value.push({ role: 'system', content: `Error: ${apiErrorMessage(e)}` })
   }
   pendingAction.value = null
 }
@@ -246,8 +227,8 @@ const changeSummary = computed(() => {
   const results: { table: string; action: 'new' | 'update'; label: string; fieldCount: number; updatedCount: number; newCount: number }[] = []
   for (const change of proposedChanges.value) {
     const fields = change.fields || []
-    const newFields = fields.filter((f: any) => f.is_new || f.old_value == null)
-    const updatedFields = fields.filter((f: any) => !f.is_new && f.old_value != null)
+    const newFields = fields.filter((f: ImportChangeField) => f.is_new || f.old_value == null)
+    const updatedFields = fields.filter((f: ImportChangeField) => !f.is_new && f.old_value != null)
     const isNew = newFields.length === fields.length
     const label = change.record_label
       ? `${change.table} (${change.record_label})`
@@ -266,10 +247,10 @@ const changeSummary = computed(() => {
   return results
 })
 
-function fieldCountLabel(change: any): string {
+function fieldCountLabel(change: ImportChange): string {
   const fields = change.fields || []
-  const newFields = fields.filter((f: any) => f.is_new || f.old_value == null)
-  const updatedFields = fields.filter((f: any) => !f.is_new && f.old_value != null)
+  const newFields = fields.filter((f: ImportChangeField) => f.is_new || f.old_value == null)
+  const updatedFields = fields.filter((f: ImportChangeField) => !f.is_new && f.old_value != null)
   if (updatedFields.length > 0 && newFields.length > 0) {
     return `${updatedFields.length} updated, ${newFields.length} new`
   }
@@ -279,14 +260,14 @@ function fieldCountLabel(change: any): string {
 
 // Generate SQL preview from proposed changes
 const sqlPreview = computed(() => {
-  const statements: { table: string; action: string; sql: string; recordLabel?: string | null; recordKey?: string | null; fields: any[] }[] = []
+  const statements: { table: string; action: string; sql: string; recordLabel?: string | null; recordKey?: string | null; fields: { column: string; old: unknown; new: unknown; is_new?: boolean; format?: string }[] }[] = []
 
   for (const change of proposedChanges.value) {
     const table = change.table
     const fields = change.fields || []
     if (!fields.length) continue
 
-    const setClauses = fields.map((f: any) => {
+    const setClauses = fields.map((f: ImportChangeField) => {
       const val = f._store_value ?? f.new_value
       const formatted = typeof val === 'string' ? `'${val}'` : val
       return `  ${f.column} = ${formatted}`
@@ -301,12 +282,12 @@ const sqlPreview = computed(() => {
         : `WHERE id = (SELECT id FROM ${table} ORDER BY updated_at DESC LIMIT 1)`
 
     if (change.action === 'upsert' || change.action === 'update') {
-      action = fields.some((f: any) => f.is_new && !f.old_value) ? 'INSERT/UPDATE' : 'UPDATE'
+      action = fields.some((f: ImportChangeField) => f.is_new && !f.old_value) ? 'INSERT/UPDATE' : 'UPDATE'
       sql = `-- Updating: ${change.record_label || table}\nUPDATE ${table}\nSET\n${setClauses.join(',\n')}\n${whereClause};`
     } else {
       action = 'INSERT'
-      const cols = fields.map((f: any) => f.column).join(', ')
-      const vals = fields.map((f: any) => {
+      const cols = fields.map((f: ImportChangeField) => f.column).join(', ')
+      const vals = fields.map((f: ImportChangeField) => {
         const v = f._store_value ?? f.new_value
         return typeof v === 'string' ? `'${v}'` : v
       }).join(', ')
@@ -319,7 +300,7 @@ const sqlPreview = computed(() => {
       sql,
       recordLabel: change.record_label || null,
       recordKey: change.record_key || null,
-      fields: fields.map((f: any) => ({
+      fields: fields.map((f: ImportChangeField) => ({
         column: f.column,
         old: f.old_value,
         new: f._store_value ?? f.new_value,
@@ -552,10 +533,10 @@ function fmt(n: number | null | undefined, format?: string, column?: string): st
                           <span class="text-sm font-medium text-gray-900 dark:text-white font-mono">{{ change.table }}</span>
                           <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
                           <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
-                            :class="change.fields.every((f: any) => f.is_new || f.old_value == null)
+                            :class="change.fields.every((f: ImportChangeField) => f.is_new || f.old_value == null)
                               ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                               : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'">
-                            {{ change.fields.every((f: any) => f.is_new || f.old_value == null) ? 'New Record' : 'Update' }}{{ change.record_label ? ` (${change.record_label})` : change.tax_year ? ` (${change.tax_year})` : '' }}
+                            {{ change.fields.every((f: ImportChangeField) => f.is_new || f.old_value == null) ? 'New Record' : 'Update' }}{{ change.record_label ? ` (${change.record_label})` : change.tax_year ? ` (${change.tax_year})` : '' }}
                           </span>
                         </div>
                         <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{{ fieldCountLabel(change) }}</p>

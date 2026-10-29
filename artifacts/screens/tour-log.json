@@ -1,12 +1,11 @@
 {
-  "capturedAt": "2026-10-29T13:07:15.284Z",
+  "capturedAt": "2026-10-29T14:10:46.092Z",
   "base": "http://localhost:5173",
   "theme": "light",
   "routes": {
     "login/mobile": {
       "consoleErrors": [],
       "failedRequests": [
-        "GET http://localhost:5173/api/v1/auth/me :: net::ERR_ABORTED",
         "GET http://localhost:5173/api/v1/auth/me :: net::ERR_ABORTED"
       ],
       "badResponses": [],

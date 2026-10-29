@@ -1,23 +1,8 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-
-const API = import.meta.env.VITE_API_URL || ''
-
-interface Tenant {
-  id: number
-  display_name: string
-  slug: string
-}
-
-interface User {
-  id: number
-  email: string
-  display_name: string
-  is_admin: boolean
-  status: string
-  current_tenant: Tenant | null
-  tenants: Tenant[]
-}
+import { api } from '../api/client'
+import { apiErrorMessage, apiErrorStatus } from '../composables/useApiError'
+import type { AuthUser as User } from '../types'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
@@ -27,12 +12,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function tryRefresh(): Promise<boolean> {
     try {
-      const res = await fetch(`${API}/api/v1/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (!res.ok) return false
-      const data = await res.json()
+      const data = await api.auth.refresh()
       if (data.authenticated) {
         user.value = data.user
         authenticated.value = true
@@ -53,7 +33,10 @@ export const useAuthStore = defineStore('auth', () => {
     try { return localStorage.getItem(SESSION_FLAG) === '1' } catch { return true }
   }
   function rememberSession(on: boolean) {
-    try { on ? localStorage.setItem(SESSION_FLAG, '1') : localStorage.removeItem(SESSION_FLAG) } catch { /* ignore */ }
+    try {
+      if (on) localStorage.setItem(SESSION_FLAG, '1')
+      else localStorage.removeItem(SESSION_FLAG)
+    } catch { /* ignore */ }
   }
 
   async function refreshOnce(): Promise<boolean> {
@@ -67,16 +50,20 @@ export const useAuthStore = defineStore('auth', () => {
   async function checkAuth() {
     loading.value = true
     try {
-      const res = await fetch(`${API}/api/v1/auth/me`, { credentials: 'include' })
-      if (res.status === 401) {
-        const ok = await refreshOnce()
-        if (!ok) {
-          user.value = null
-          authenticated.value = false
+      let data
+      try {
+        data = await api.auth.me()
+      } catch (e) {
+        if (apiErrorStatus(e) === 401) {
+          const ok = await refreshOnce()
+          if (!ok) {
+            user.value = null
+            authenticated.value = false
+          }
+          return
         }
-        return
+        throw e
       }
-      const data = await res.json()
       if (data.authenticated) {
         user.value = data.user
         authenticated.value = true
@@ -98,28 +85,18 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(email: string, password: string): Promise<string | null> {
     try {
-      const res = await fetch(`${API}/api/v1/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-        credentials: 'include',
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        return data.detail || 'Login failed'
-      }
-      const data = await res.json()
+      const data = await api.auth.login(email, password)
       user.value = data.user
       authenticated.value = true
       rememberSession(true)
       return null
-    } catch (e: any) {
-      return e.message
+    } catch (e) {
+      return apiErrorMessage(e, 'Login failed')
     }
   }
 
   async function logout() {
-    await fetch(`${API}/api/v1/auth/logout`, { method: 'POST', credentials: 'include' })
+    try { await api.auth.logout() } catch { /* the cookie is cleared server-side even on a stale session */ }
     rememberSession(false)
     user.value = null
     authenticated.value = false
@@ -127,21 +104,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function selectTenant(tenantId: number): Promise<string | null> {
     try {
-      const res = await fetch(`${API}/api/v1/auth/select-tenant`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant_id: tenantId }),
-        credentials: 'include',
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        return data.detail || 'Failed to switch tenant'
-      }
+      await api.auth.selectTenant(tenantId)
       // Reload the page to refresh all data stores with new tenant context
       window.location.reload()
       return null
-    } catch (e: any) {
-      return e.message
+    } catch (e) {
+      return apiErrorMessage(e, 'Failed to switch tenant')
     }
   }
 

@@ -2,54 +2,8 @@
 import { ref, computed, watch } from 'vue'
 import { useDataExplorer, PAGE_TABLES, type DataContext } from '../../composables/useDataExplorer'
 import { getFormConfig, type TableFormConfig } from '../../config/tableFormConfigs'
-
-const API_BASE = import.meta.env.VITE_API_URL || ''
-
-// ── Types ────────────────────────────────────────────────────────────────────
-
-interface ColumnInfo {
-  name: string
-  type: string
-  nullable: boolean
-  primary_key: boolean
-  default: string | null
-  description?: string
-}
-
-interface ForeignKey {
-  column: string
-  references_table: string
-  references_column: string
-}
-
-interface TableSchema {
-  name: string
-  description?: string
-  columns: ColumnInfo[]
-  foreign_keys: ForeignKey[]
-  row_count: number
-}
-
-interface Edge {
-  from_table: string
-  from_column: string
-  to_table: string
-  to_column: string
-}
-
-interface SchemaResponse {
-  tables: TableSchema[]
-  edges: Edge[]
-}
-
-interface PreviewResponse {
-  table: string
-  columns: string[]
-  rows: Record<string, unknown>[]
-  total: number
-  limit: number
-  offset: number
-}
+import { api } from '../../api/client'
+import type { SchemaResponse, SchemaTable as TableSchema, TablePreview as PreviewResponse } from '../../types'
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -133,29 +87,12 @@ const headerTitle = computed(() => {
 
 // ── API ──────────────────────────────────────────────────────────────────────
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = {}
-  if (options?.method && options.method !== 'GET') {
-    headers['Content-Type'] = 'application/json'
-  }
-  const res = await fetch(`${API_BASE}${path}`, {
-    credentials: 'include',
-    headers,
-    ...options,
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`${res.status}: ${text}`)
-  }
-  return res.json()
-}
-
 async function loadSchema() {
   if (schema.value) return
   schemaLoading.value = true
   schemaError.value = null
   try {
-    schema.value = await apiFetch<SchemaResponse>('/api/v1/admin/schema')
+    schema.value = await api.admin.schema()
   } catch (e) {
     schemaError.value = e instanceof Error ? e.message : 'Failed to load schema'
   } finally {
@@ -167,9 +104,7 @@ async function loadPreview(tableName: string, offset = 0) {
   previewLoading.value = true
   previewError.value = null
   try {
-    previewData.value = await apiFetch<PreviewResponse>(
-      `/api/v1/admin/tables/${encodeURIComponent(tableName)}/preview?limit=${PAGE_SIZE}&offset=${offset}`
-    )
+    previewData.value = await api.admin.preview(tableName, PAGE_SIZE, offset)
     previewOffset.value = offset
   } catch (e) {
     previewError.value = e instanceof Error ? e.message : 'Failed to load preview'
@@ -185,15 +120,9 @@ async function saveRecord() {
   saveSuccess.value = false
   try {
     if (mode.value === 'edit' && editingId.value != null) {
-      await apiFetch(`/api/v1/admin/tables/${encodeURIComponent(activeTable.value)}/rows/${encodeURIComponent(editingId.value)}`, {
-        method: 'PUT',
-        body: JSON.stringify({ data: formData.value }),
-      })
+      await api.admin.updateRow(activeTable.value, editingId.value, formData.value)
     } else {
-      await apiFetch(`/api/v1/admin/tables/${encodeURIComponent(activeTable.value)}/rows`, {
-        method: 'POST',
-        body: JSON.stringify({ data: formData.value }),
-      })
+      await api.admin.createRow(activeTable.value, formData.value)
     }
     saveSuccess.value = true
     setTimeout(() => {
@@ -212,9 +141,7 @@ async function deleteRecord() {
   if (!activeTable.value || !editingId.value) return
   deleting.value = true
   try {
-    await apiFetch(`/api/v1/admin/tables/${encodeURIComponent(activeTable.value)}/rows/${encodeURIComponent(editingId.value)}`, {
-      method: 'DELETE',
-    })
+    await api.admin.deleteRow(activeTable.value, editingId.value)
     mode.value = 'browse'
     loadPreview(activeTable.value, previewOffset.value)
   } catch (e) {

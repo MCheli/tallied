@@ -3,106 +3,24 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
 import { highlightSql } from '../composables/useSqlHighlight'
 import { useThemeStore } from '../stores/theme'
+import { api } from '../api/client'
 import { RouterLink } from 'vue-router'
 import { useMediaQuery } from '../composables/useMediaQuery'
 
 // The explorer (ERD canvas, split panes, SQL runner) needs a desktop-width screen (DEC-7).
 const isNarrow = useMediaQuery('(max-width: 767px)')
 
-const API_BASE = import.meta.env.VITE_API_URL || ''
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface ColumnInfo {
-  name: string
-  type: string
-  nullable: boolean
-  primary_key: boolean
-  default: string | null
-  description?: string
-}
-
-interface ForeignKey {
-  column: string
-  references_table: string
-  references_column: string
-}
-
-interface TableSchema {
-  name: string
-  description?: string
-  columns: ColumnInfo[]
-  foreign_keys: ForeignKey[]
-  row_count: number
-}
-
-interface Edge {
-  from_table: string
-  from_column: string
-  to_table: string
-  to_column: string
-}
-
-interface SchemaResponse {
-  tables: TableSchema[]
-  edges: Edge[]
-}
-
-interface PreviewResponse {
-  table: string
-  columns: string[]
-  rows: Record<string, unknown>[]
-  total: number
-  limit: number
-  offset: number
-}
-
-interface QueryResponse {
-  columns: string[]
-  rows: Record<string, unknown>[]
-  row_count: number
-  query: string
-}
+import type {
+  SchemaTable as TableSchema,
+  SchemaEdge as Edge,
+  SchemaResponse,
+  TablePreview as PreviewResponse,
+  QueryResult as QueryResponse,
+  DbCredential as DbCredentialResponse,
+  DbCredentialCreated as DbCredentialCreatedResponse,
+} from '../types'
 
 type TableCategory = 'financial' | 'investments' | 'property' | 'planning' | 'system'
-
-interface DbCredentialResponse {
-  id: number
-  name: string
-  pg_username: string
-  access_level: string
-  is_active: boolean
-  created_at: string | null
-  expires_at: string | null
-}
-
-interface DbCredentialCreatedResponse extends DbCredentialResponse {
-  password: string
-  host: string
-  port: number
-  database: string
-  schema_name: string
-  connection_string: string
-}
-
-// ── API helpers ───────────────────────────────────────────────────────────────
-
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = {}
-  if (options?.method && options.method !== 'GET') {
-    headers['Content-Type'] = 'application/json'
-  }
-  const res = await fetch(`${API_BASE}${path}`, {
-    credentials: 'include',
-    headers,
-    ...options,
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`${res.status}: ${text}`)
-  }
-  return res.json()
-}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -538,9 +456,7 @@ async function loadSchema() {
   schemaLoading.value = true
   schemaError.value = null
   try {
-    const res = await fetch(`${API_BASE}/api/v1/admin/schema`, { credentials: 'include' })
-    if (!res.ok) throw new Error(`${res.status}`)
-    schema.value = await res.json()
+    schema.value = await api.admin.schema()
   } catch (e) {
     schemaError.value = e instanceof Error ? e.message : 'Failed to load schema'
   } finally {
@@ -552,9 +468,7 @@ async function loadPreview(tableName: string, offset = 0) {
   previewLoading.value = true
   previewError.value = null
   try {
-    previewData.value = await apiFetch<PreviewResponse>(
-      `/api/v1/admin/tables/${encodeURIComponent(tableName)}/preview?limit=${PAGE_SIZE}&offset=${offset}`
-    )
+    previewData.value = await api.admin.preview(tableName, PAGE_SIZE, offset)
     previewOffset.value = offset
   } catch (e) {
     previewError.value = e instanceof Error ? e.message : 'Failed to load preview'
@@ -569,10 +483,7 @@ async function runSql() {
   sqlError.value = null
   sqlResult.value = null
   try {
-    sqlResult.value = await apiFetch<QueryResponse>('/api/v1/admin/query', {
-      method: 'POST',
-      body: JSON.stringify({ sql: sqlText.value.trim(), limit: 100 }),
-    })
+    sqlResult.value = await api.admin.query(sqlText.value.trim(), 100)
   } catch (e) {
     sqlError.value = e instanceof Error ? e.message : 'Query failed'
   } finally {
@@ -632,8 +543,7 @@ function nextPage() {
 }
 
 const highlightedSqlText = computed(() => highlightSql(sqlText.value) + '\n')
-// Used as template ref (ref="sqlEditorRef") — vue-tsc -b may not detect usage
-// @ts-ignore TS6133
+// Template ref (ref="sqlEditorRef")
 const sqlEditorRef = ref<HTMLTextAreaElement | null>(null)
 
 function syncScroll(e: Event) {
@@ -657,9 +567,9 @@ function handleSqlKeydown(e: KeyboardEvent) {
 async function loadCredentials() {
   credLoading.value = true
   try {
-    credentials.value = await apiFetch<DbCredentialResponse[]>('/api/v1/db-credentials/')
-  } catch {
-    // Silently fail — credentials tab may not be active
+    credentials.value = await api.dbCredentials.list()
+  } catch (e) {
+    credError.value = e instanceof Error ? e.message : 'Failed to load credentials'
   } finally {
     credLoading.value = false
   }
@@ -670,10 +580,7 @@ async function createCredential() {
   credCreating.value = true
   credError.value = null
   try {
-    const result = await apiFetch<DbCredentialCreatedResponse>('/api/v1/db-credentials/', {
-      method: 'POST',
-      body: JSON.stringify({ name: credName.value.trim(), access_level: credAccessLevel.value, expires_in_days: credExpiresInDays.value }),
-    })
+    const result = await api.dbCredentials.create({ name: credName.value.trim(), access_level: credAccessLevel.value, expires_in_days: credExpiresInDays.value })
     newCredential.value = result
     credName.value = ''
     credAccessLevel.value = 'read'
@@ -689,7 +596,7 @@ async function createCredential() {
 async function revokeCredential(id: number) {
   credRevoking.value = id
   try {
-    await apiFetch(`/api/v1/db-credentials/${id}`, { method: 'DELETE' })
+    await api.dbCredentials.revoke(id)
     await loadCredentials()
   } catch {
     // Reload to get current state

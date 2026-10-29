@@ -40,7 +40,8 @@ test-all: test typecheck test-frontend
 
 # Linting & type checking
 lint:
-	cd backend && source .venv/bin/activate && ruff check app/ 2>/dev/null || echo "Install ruff: pip install ruff"
+	cd backend && source .venv/bin/activate && ruff check app ../scripts
+	cd frontend && npm run lint
 
 typecheck:
 	cd frontend && npx vue-tsc --noEmit
@@ -54,7 +55,7 @@ tour:
 	node scripts/screenshot_tour.mjs
 
 # Run before committing — catches what CI would catch
-pre-commit: test typecheck test-frontend ledger-check
+pre-commit: lint test typecheck test-frontend ledger-check
 
 # Build
 build:
@@ -86,7 +87,7 @@ help:
 	@echo "  make ledger-check Validate docs/requirements/ledger.yaml"
 	@echo "  make tour         Screenshot every route into artifacts/screens/"
 	@echo "  make pre-commit   Run tests + typecheck + ledger check (always run before pushing)"
-	@echo "  make lint         Run linters"
+	@echo "  make lint         ruff (backend) + eslint (frontend); fails on findings"
 	@echo "  make build        Build Docker image"
 	@echo "  make clean        Remove build artifacts"
 	@echo "  make install      Install all dependencies"

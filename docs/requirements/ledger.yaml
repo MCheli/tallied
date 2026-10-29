@@ -659,11 +659,13 @@ requirements:
     priority: p1
     done_means:
       - "No fetch() call outside frontend/src/api/client.ts (a frontend test greps the views); the client handles credentials, 401 refresh and non-OK responses once."
-    status: in_progress
+    status: done
     evidence:
       - frontend/tests/no-raw-fetch.spec.ts#finds fetch( only in the allowed files
+      - 'frontend/tests/api-client.spec.ts#fetchJson: retries once after a 401 when the refresh succeeds'
     notes:
       - "2026-10-29: the nine data pages use the client; ten files remain (admin views, ApiView, DatabaseView, Login, PendingApproval, DataExplorer, SqlViewerModal, ImportModal), listed as a ratchet in the test."
+      - "2026-10-29: every view and component calls the typed client; the ratchet set is empty."
   - id: NFR-CODE-002
     title: One tenant session helper
     job: platform
