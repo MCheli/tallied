@@ -30,12 +30,16 @@ requirements:
       - "With the seed, the Net Worth tile equals the sum of the latest balance_snapshots row per active account with include_in_nw, and the Liquid Net Worth tile equals the cash plus investments plus company-stock layers; the InfoTooltip states exactly those definitions."
       - "The Liquidity Layers waterfall's final bar equals the Net Worth tile even when an account has include_in_nw=false (unit test with one excluded account)."
       - "Each balance-bearing tile shows the as-of date of the newest snapshot it used."
-    status: in_progress
+    status: done
     evidence:
+      - frontend/tests/dashboard-tiles.spec.ts#sums the layer totals to the net worth bar
       - backend/tests/test_data_rules.py::test_snapshot_dedupes_same_day_rows_and_reports_as_of
+      - artifacts/screens/dashboard/desktop.png
+      - artifacts/screens/dashboard/mobile.png
     notes:
       - "2026-10-29: today the tooltip claims credit cards are included in liquid net worth and the waterfall ignores include_in_nw (money brief 1.5)."
       - "2026-10-29: /snapshot returns as_of per layer/account, honours include_in_nw in layer totals, dedupes same-day rows, and the 12-month change uses each account's newest snapshot on or before a year ago. Dashboard tooltip/waterfall wiring pending."
+      - "2026-10-29: page pass landed (commit Page pass)."
   - id: LOOK-002
     title: Recent spending tile obeys its window
     job: look
@@ -45,10 +49,14 @@ requirements:
     done_means:
       - "The Last 30 Days Spending tile sums only transactions dated within the last 30 days, using the API client's typed call; with the seed it shows the last month's categories, not the all-time totals."
       - "When there are no transactions in the window the tile shows an empty state saying so."
-    status: todo
+    status: done
+    evidence:
+      - frontend/tests/dashboard-tiles.spec.ts#queries a real 30-day window
+      - artifacts/screens/dashboard/desktop.png
+      - artifacts/screens/dashboard/mobile.png
     notes:
       - "2026-10-29: BUG-2 — the view sends start_date/end_date, the endpoint reads from_date/to_date, so the tile is all-time."
-
+      - "2026-10-29: page pass landed (commit Page pass)."
   - id: LOOK-003
     title: One home-equity number
     job: look
@@ -73,8 +81,12 @@ requirements:
       - "The trend chart groups accounts by the same normalised display_group names as the snapshot layers, so an account in layer Cash is in the Cash series."
       - "Liabilities render as a separate negative series, not stacked into the positive area."
       - "On a 390px screen the x-axis dates do not overlap the legend (tour screenshot)."
-    status: todo
-
+    status: done
+    evidence:
+      - frontend/tests/tour-log.spec.ts#has a clean capture of every tour route at phone and desktop width
+      - artifacts/screens/dashboard/mobile.png
+    notes:
+      - "2026-10-29: page pass landed (commit Page pass). Liabilities drawn as lines; bottom legend and thinned axis on phones."
   - id: LOOK-005
     title: Dashboard degrades per tile, not as a whole
     job: look
@@ -82,8 +94,9 @@ requirements:
     priority: p2
     done_means:
       - "If one of the dashboard's requests fails, the other tiles still render and the failed one shows an error state (unit test with one failing endpoint)."
-    status: todo
-
+    status: in_progress
+    notes:
+      - "2026-10-29: tiles load independently with per-tile errors (useDashboardTiles); a unit test with one failing endpoint is still to be written."
   # ---------------------------------------------------------------------------
   # FEED — getting data in
   # ---------------------------------------------------------------------------
@@ -191,12 +204,17 @@ requirements:
       - "Recurring 'per month' is the sum per month divided by the number of months in the period, not a per-transaction average."
       - "Spending excludes the Transfer category and loan payments (PRODUCT.md D1) in every aggregate, including Dashboard and Cash."
       - "An empty period shows an empty state in each section; the default preset has data with the seed."
-    status: in_progress
+    status: done
     evidence:
+      - frontend/tests/spending-presets.spec.ts#falls back to a wider preset until there is nowhere wider
+      - frontend/tests/spending-presets.spec.ts#builds ranges from local calendar fields
       - backend/tests/test_data_rules.py::test_spending_excludes_transfers_and_loan_payments
       - backend/tests/test_data_rules.py::test_recurring_uses_the_period_and_per_month_average
+      - artifacts/screens/spending/desktop.png
+      - artifacts/screens/spending/mobile.png
     notes:
       - "2026-10-29: backend: one spending definition (services/spending_rules), recurring takes the date range and reports per-month averages. Frontend wiring of the presets to all four sections pending."
+      - "2026-10-29: page pass landed (commit Page pass)."
   - id: UND-SPEND-002
     title: Transactions table is usable on a phone
     job: understand
@@ -206,8 +224,12 @@ requirements:
     done_means:
       - "At 390px the table sits in its own horizontal scroll container; the page itself has no horizontal overflow in the tour log."
       - "Search is debounced; paging keeps the other sections unchanged."
-    status: todo
-
+    status: done
+    evidence:
+      - frontend/tests/tour-log.spec.ts#has a clean capture of every tour route at phone and desktop width
+      - artifacts/screens/spending/mobile.png
+    notes:
+      - "2026-10-29: page pass landed (commit Page pass)."
   - id: UND-INC-001
     title: One take-home definition on the Income page
     job: understand
@@ -217,10 +239,15 @@ requirements:
     done_means:
       - "The five tiles, the gross-to-take-home waterfall, the all-years stacked bar and the year-over-year table use one definition of take-home and of benefits; the stacked bar sums to gross pay and the waterfall lands on the Take-Home tile's value (unit test on the seed's 2025 W-2)."
       - "Employer-paid health (Box 12 DD) is shown as information, not as a deduction."
-    status: todo
+    status: done
+    evidence:
+      - frontend/tests/income-math.spec.ts#the stacked bar sums to gross exactly
+      - frontend/tests/income-math.spec.ts#the waterfall lands on the take-home tile
+      - artifacts/screens/income/desktop.png
+      - artifacts/screens/income/mobile.png
     notes:
       - "2026-10-29: stack sums to 218,600 vs gross 210,000; waterfall misses its own final bar by 8,600 (money brief 3.5)."
-
+      - "2026-10-29: page pass landed (commit Page pass)."
   - id: UND-CASH-001
     title: Cash page time range scopes every section
     job: understand
@@ -231,8 +258,14 @@ requirements:
       - "1M/3M/6M/1Y/All scope the balance chart, the change badge, average monthly spend, runway and notable transactions; when no snapshot falls in the range the chart says so rather than showing all history."
       - "Average monthly spend uses the spending definition (negative amounts, transfers excluded) over the selected range."
       - "Each balance shows its as-of date."
-    status: todo
-
+    status: done
+    evidence:
+      - frontend/tests/cash-range.spec.ts#returns an empty series (not all history) when nothing falls in the range
+      - frontend/tests/cash-range.spec.ts#averages monthly spend and derives runway
+      - artifacts/screens/cash/desktop.png
+      - artifacts/screens/cash/mobile.png
+    notes:
+      - "2026-10-29: page pass landed (commit Page pass)."
   - id: UND-RSU-001
     title: RSU page values the grants' own symbol
     job: understand
@@ -243,10 +276,15 @@ requirements:
       - "The price chart, the current price and every tooltip use the symbol carried by the grants (MSFT with the seed); no view or tooltip contains a hard-coded ticker."
       - "The price history endpoint validates the symbol and caches by symbol and day; Yahoo is called at most once per symbol per day."
       - "After an import the page refreshes its symbol."
-    status: todo
+    status: done
+    evidence:
+      - frontend/tests/rsu-vests.spec.ts#derives the symbol from the grants, falling back to the response, never a hard-coded ticker
+      - backend/tests/test_data_rules.py::test_price_history_validates_symbol
+      - artifacts/screens/rsu/desktop.png
+      - artifacts/screens/rsu/mobile.png
     notes:
       - "2026-10-29: BUG-4 — PTC hard-coded in RSUView and Dashboard tooltips."
-
+      - "2026-10-29: page pass landed (commit Page pass)."
   - id: UND-RSU-002
     title: Sell-today estimate accounts for every sellable share
     job: understand
@@ -256,8 +294,13 @@ requirements:
     done_means:
       - "The 'If You Sold Today' header covers the same share count as the Sellable tile, or states how many sellable shares could not be assigned to a vest lot and why."
       - "Tax rates used in the estimate are settings with defaults, shown in the Assumptions block."
-    status: todo
-
+    status: done
+    evidence:
+      - backend/tests/test_api/test_rsu_lots.py::test_summary_reports_unallocated_sellable_shares_and_settings_rates
+      - artifacts/screens/rsu/desktop.png
+      - artifacts/screens/rsu/mobile.png
+    notes:
+      - "2026-10-29: page pass landed (commit Page pass)."
   - id: UND-401K-001
     title: 401(k) page reflects the newest statement
     job: understand
@@ -268,10 +311,14 @@ requirements:
       - "Labels and tooltips name the plan's provider from the data, never a hard-coded provider or another household's figures."
       - "An older statement import adds a history point but does not overwrite balances or rates (unit test)."
       - "The 401(k) balance shown here is the figure the Dashboard Retirement layer and Planning use (PRODUCT.md D2)."
-    status: todo
+    status: in_progress
+    evidence:
+      - backend/tests/test_ai.py::test_import_logs_endpoint_lists_confirmed_imports
+      - artifacts/screens/retirement/desktop.png
+      - artifacts/screens/retirement/mobile.png
     notes:
       - "2026-10-29: 'T. Rowe Price' and '$253K/$137K' hard-coded in RetirementView."
-
+      - "2026-10-29: labels come from the data; the statement balance feeds net worth (D2). The older-statement regression test is still to be written."
   - id: UND-PROP-001
     title: Property page respects what the owner typed
     job: understand
@@ -283,8 +330,15 @@ requirements:
       - "Equity Position shows the down payment as down payment when purchase price is unknown, or asks for the purchase price; it never labels loan-minus-value as appreciation."
       - "Projected values are drawn dashed, labelled as AI projections with their date, and never feed equity, net worth or Planning."
       - "The amortization schedule starts from the mortgage's own origination date and the view has no hard-coded escrow fallback."
-    status: todo
-
+    status: done
+    evidence:
+      - frontend/tests/property-equity.spec.ts#never labels the loan-minus-value gap as appreciation without a purchase price
+      - backend/tests/test_ai.py::test_property_refresh_keeps_manual_entries_and_labels_projections
+      - backend/tests/test_api/test_property_assets_planning.py::test_amortization_without_origination_date_is_422
+      - artifacts/screens/property/desktop.png
+      - artifacts/screens/property/mobile.png
+    notes:
+      - "2026-10-29: page pass landed (commit Page pass)."
   - id: UND-ASSET-001
     title: Vehicle values are labelled estimates and failures are visible
     job: understand
@@ -296,12 +350,16 @@ requirements:
       - "Adding a vehicle never blocks on the AI; a vehicle without an estimate shows 'no estimate yet'."
       - "Total depreciation only subtracts vehicles that have a purchase price (unit test)."
       - "The Add form includes purchase date so the purchase point can appear on the history chart."
-    status: in_progress
+    status: done
     evidence:
+      - frontend/tests/assets-label.spec.ts#labels an AI estimate with confidence, model and date
       - backend/tests/test_ai.py::test_refresh_value_failure_is_an_error_not_a_silent_200
-      - backend/tests/test_ai.py::test_create_vehicle_never_calls_ai
+      - backend/tests/test_api/test_property_assets_planning.py::test_depreciation_only_counts_vehicles_with_a_purchase_price
+      - artifacts/screens/assets/desktop.png
+      - artifacts/screens/assets/mobile.png
     notes:
       - "2026-10-29: backend returns an error on failed valuation and never blocks create; the Assets view must still show the error, add purchase_date to the form, and fix the depreciation total."
+      - "2026-10-29: page pass landed (commit Page pass)."
   # ---------------------------------------------------------------------------
   # PLAN — Planning
   # ---------------------------------------------------------------------------
@@ -331,8 +389,11 @@ requirements:
     done_means:
       - "The current-year forecast values only vests that have occurred at their FMV plus remaining scheduled vests, and plan-year overrides from the vest schedule do not exceed the grants' unvested shares (unit test on the seed)."
       - "expenses_annual and savings_rate are either populated or not shown."
-    status: todo
-
+    status: in_progress
+    evidence:
+      - backend/tests/test_api/test_property_assets_planning.py::test_plan_table_reports_retirement_year_and_no_savings_columns
+    notes:
+      - "2026-10-29: the null columns are gone; the forecast-year RSU valuation rule is still open."
   - id: PLAN-003
     title: Planning calls the versioned API
     job: plan
@@ -340,8 +401,12 @@ requirements:
     priority: p1
     done_means:
       - "planning.ts targets /api/v1 through the shared client with credentials and 401 refresh; the legacy /api mount is gone (SEC-8)."
-    status: todo
-
+    status: done
+    evidence:
+      - frontend/tests/no-raw-fetch.spec.ts#finds fetch( only in the allowed files
+      - backend/tests/test_api/test_security.py::test_legacy_api_mount_is_gone
+    notes:
+      - "2026-10-29: page pass landed (commit Page pass)."
   # ---------------------------------------------------------------------------
   # PLATFORM — Database, API, Settings, Admin, auth, Guide
   # ---------------------------------------------------------------------------
@@ -373,10 +438,14 @@ requirements:
     done_means:
       - "Below the md breakpoint the Database page shows a message that the explorer needs a wider screen, with a link to the Settings page; it does not render the canvas (tour mobile screenshot)."
       - "At 1440px the page does not overflow horizontally."
-    status: todo
+    status: done
+    evidence:
+      - frontend/tests/tour-log.spec.ts#has a clean capture of every tour route at phone and desktop width
+      - artifacts/screens/database/desktop.png
+      - artifacts/screens/database/mobile.png
     notes:
       - "2026-10-29: DEC-7 'Desktop-only gate'."
-
+      - "2026-10-29: page pass landed (commit Page pass)."
   - id: PLAT-API-001
     title: API key permissions are enforced
     job: platform
@@ -468,8 +537,13 @@ requirements:
     visible: true
     done_means:
       - "Every page paragraph in the Guide matches PRODUCT.md; data sources listed are SimpleFIN, document import, email receipts, Yahoo prices and manual entry; no mention of Plaid or Monarch."
-    status: todo
-
+    status: done
+    evidence:
+      - frontend/tests/tour-log.spec.ts#has a clean capture of every tour route at phone and desktop width
+      - artifacts/screens/guide/desktop.png
+      - artifacts/screens/guide/mobile.png
+    notes:
+      - "2026-10-29: page pass landed (commit Page pass)."
   # ---------------------------------------------------------------------------
   # NFR — security, mobile, code health, process
   # ---------------------------------------------------------------------------
@@ -540,10 +614,15 @@ requirements:
     done_means:
       - "artifacts/screens/tour-log.json shows an empty overflow list for every route at 390px except Database, which is gated (PLAT-DB-002)."
       - "Page header toolbars wrap; tables use the shared DataTable scroll container; hover-only controls are reachable by tap."
-    status: todo
+    status: done
+    evidence:
+      - frontend/tests/tour-log.spec.ts#has a clean capture of every tour route at phone and desktop width
+      - artifacts/screens/tour-log.json
+      - artifacts/screens/dashboard/mobile.png
+      - artifacts/screens/settings/mobile.png
     notes:
       - "2026-10-29: baseline tour shows overflow on spending, income, cash, retirement, planning, database, settings."
-
+      - "2026-10-29: tour-log.json is empty of overflow on all 13 routes; the Vitest gate fails if that changes."
   - id: NFR-MOB-002
     title: Charts re-theme and read on a phone
     job: look
@@ -553,10 +632,15 @@ requirements:
     done_means:
       - "Toggling dark mode re-themes every chart without reload (theme store drives useChartDefaults)."
       - "At 390px chart legends sit below the plot and axis labels are thinned or rotated so none overlap (tour screenshots of dashboard, income, property)."
-    status: in_progress
+    status: done
+    evidence:
+      - frontend/tests/tour-log.spec.ts#has a clean capture of every tour route at phone and desktop width
+      - artifacts/screens/dashboard/mobile.png
+      - artifacts/screens/income/mobile.png
+      - artifacts/screens/property/mobile.png
     notes:
       - "2026-10-29: theme store landed (commit 'Make dark mode reactive'); mobile chart options pending."
-
+      - "2026-10-29: page pass landed (commit Page pass)."
   - id: NFR-CODE-001
     title: Views call one typed API client
     job: platform
@@ -564,8 +648,11 @@ requirements:
     priority: p1
     done_means:
       - "No fetch() call outside frontend/src/api/client.ts (a frontend test greps the views); the client handles credentials, 401 refresh and non-OK responses once."
-    status: todo
-
+    status: in_progress
+    evidence:
+      - frontend/tests/no-raw-fetch.spec.ts#finds fetch( only in the allowed files
+    notes:
+      - "2026-10-29: the nine data pages use the client; ten files remain (admin views, ApiView, DatabaseView, Login, PendingApproval, DataExplorer, SqlViewerModal, ImportModal), listed as a ratchet in the test."
   - id: NFR-CODE-002
     title: One tenant session helper
     job: platform
@@ -637,10 +724,13 @@ requirements:
     done_means:
       - "`make tour` logs in as Claudius and captures every route at 390 and 1440 into artifacts/screens/<route>/, with a JSON log of console errors, failed requests and horizontal overflow; it exits non-zero when login or a route fails."
       - "A test asserts the route list in the tour matches the router."
-    status: in_progress
+    status: done
     evidence:
-      - artifacts/screens/dashboard/mobile.png
-      - artifacts/screens/dashboard/desktop.png
+      - frontend/tests/tour-log.spec.ts#covers every non-admin, non-callback router path
+      - frontend/tests/tour-log.spec.ts#has a clean capture of every tour route at phone and desktop width
       - artifacts/screens/tour-log.json
+      - artifacts/screens/dashboard/mobile.png
+      - artifacts/screens/settings/mobile.png
     notes:
       - "2026-10-29: tour runs; the route-list test is pending."
+      - "2026-10-29: route-list test added."
