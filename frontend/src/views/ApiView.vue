@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
+import { useThemeStore } from '../stores/theme'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -253,7 +254,7 @@ function toggleEvent(event: string) {
 }
 
 // ── Scalar API Docs ──────────────────────────────────────────────────────────
-const isDark = computed(() => document.documentElement.classList.contains('dark'))
+const isDark = computed(() => useThemeStore().dark)
 const scalarUrl = computed(() => `${API}/api/v1/scalar?dark=${isDark.value ? '1' : '0'}`)
 
 onMounted(() => {

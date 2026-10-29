@@ -4,6 +4,7 @@ import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router'
 import ImportModal from './components/import/ImportModal.vue'
 import TenantSwitcher from './components/common/TenantSwitcher.vue'
 import { useAuthStore } from './stores/auth'
+import { useThemeStore } from './stores/theme'
 import {
   LayoutDashboard,
   LogOut,
@@ -32,7 +33,9 @@ import {
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const dark = ref(localStorage.getItem('theme') === 'dark')
+const theme = useThemeStore()
+theme.init()
+const dark = computed(() => theme.dark)
 
 // Sidebar state
 const mobileOpen = ref(false)
@@ -60,18 +63,13 @@ watch(() => route.path, () => {
 })
 
 function toggleDark() {
-  dark.value = !dark.value
-  document.documentElement.classList.toggle('dark', dark.value)
-  localStorage.setItem('theme', dark.value ? 'dark' : 'light')
+  theme.toggle()
 }
 
 function toggleCollapsed() {
   collapsed.value = !collapsed.value
   localStorage.setItem('sidebar-collapsed', collapsed.value ? 'true' : 'false')
 }
-
-// Apply on load
-if (dark.value) document.documentElement.classList.add('dark')
 
 type NavItem = { to: string; name: string; label: string; icon: Component; adminOnly?: boolean }
 const navGroups: { group: string; items: NavItem[] }[] = [

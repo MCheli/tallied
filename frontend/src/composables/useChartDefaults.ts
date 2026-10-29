@@ -1,4 +1,5 @@
 import { computed } from 'vue'
+import { useThemeStore } from '../stores/theme'
 
 const COLORS = [
   '#6366f1', // indigo
@@ -12,7 +13,8 @@ const COLORS = [
 ]
 
 export function useChartDefaults() {
-  const isDark = computed(() => document.documentElement.classList.contains('dark'))
+  const theme = useThemeStore()
+  const isDark = computed(() => theme.dark)
 
   const baseOption = computed(() => ({
     color: COLORS,

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
 import { highlightSql } from '../composables/useSqlHighlight'
+import { useThemeStore } from '../stores/theme'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -233,7 +234,7 @@ const previewError = ref<string | null>(null)
 const previewOffset = ref(0)
 const PAGE_SIZE = 20
 
-const isDark = computed(() => typeof document !== 'undefined' && document.documentElement.classList.contains('dark'))
+const isDark = computed(() => useThemeStore().dark)
 
 // ── Credential management state ──────────────────────────────────────────────
 
