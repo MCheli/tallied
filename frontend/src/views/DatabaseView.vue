@@ -259,7 +259,7 @@ const categoryPatterns: { category: TableCategory; patterns: string[] }[] = [
   { category: 'investments', patterns: ['rsu_grants', 'vest_events', 'stock_prices', 'retirement'] },
   { category: 'property', patterns: ['mortgages', 'property_valuations', 'property'] },
   { category: 'planning', patterns: ['plan_', 'actual_snapshots', 'forecasts', 'contribution_configs'] },
-  { category: 'system', patterns: ['users', 'import_logs', 'import_sessions', 'plaid_links', 'alembic'] },
+  { category: 'system', patterns: ['users', 'import_logs', 'import_sessions', 'sync_jobs', 'simplefin_links', 'simplefin_account_configs', 'alembic'] },
 ]
 
 function classifyTable(name: string): TableCategory {

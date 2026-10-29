@@ -11,7 +11,6 @@ from app.models.balance import BalanceSnapshot
 from app.models.transaction import Transaction
 from app.models.property import Mortgage, PropertyValuation
 from app.models.property_value_history import PropertyValueHistory
-from app.models.monarch_link import MonarchAccountConfig
 from app.models.simplefin_link import SimpleFinAccountConfig
 from app.schemas.account import (
     AccountCreate,
@@ -26,16 +25,12 @@ router = APIRouter(prefix="/accounts", tags=["accounts"])
 def _account_source(account_id: str) -> str:
     """Derive the data-source label from the synthetic id prefix.
 
-    Sync providers create accounts with a known prefix (monarch-*, simplefin-*,
-    plaid-*); manually created accounts use whatever id the user/system chose.
-    Surface this so the Settings page can show where each row's data came from.
+    Sync providers create accounts with a known prefix (simplefin-*); manually
+    created accounts use whatever id the user/system chose. Surface this so the
+    Settings page can show where each row's data came from.
     """
-    if account_id.startswith("monarch-"):
-        return "monarch"
     if account_id.startswith("simplefin-"):
         return "simplefin"
-    if account_id.startswith("plaid-"):
-        return "plaid"
     return "manual"
 
 
@@ -193,7 +188,7 @@ def delete_account(
     409 with counts so the UI can prompt. With cascade=true, deletes related
     transactions, balance snapshots, mortgages, and property history first.
 
-    Sync-provider per-account configs (Monarch/SimpleFIN) are not deleted;
+    Sync-provider per-account configs (SimpleFIN) are not deleted;
     their `local_account_id` is cleared so they no longer reference the
     removed row but the user's sync mapping survives.
     """
@@ -220,11 +215,6 @@ def delete_account(
         db.execute(PropertyValuation.__table__.delete().where(PropertyValuation.account_id == account_id))
         db.execute(PropertyValueHistory.__table__.delete().where(PropertyValueHistory.account_id == account_id))
 
-    db.execute(
-        update(MonarchAccountConfig)
-        .where(MonarchAccountConfig.local_account_id == account_id)
-        .values(local_account_id=None)
-    )
     db.execute(
         update(SimpleFinAccountConfig)
         .where(SimpleFinAccountConfig.local_account_id == account_id)

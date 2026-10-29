@@ -504,7 +504,7 @@ const transactionsConfig: TableFormConfig = {
     { name: 'notes', label: 'Notes', type: 'textarea',
       description: 'Any additional notes about this transaction.' },
     { name: 'source', label: 'Source', type: 'text',
-      description: 'Where this transaction was imported from (e.g. monarch, plaid, manual).',
+      description: 'Where this transaction came from (simplefin, email_receipt, seed, manual).',
       placeholder: 'manual' },
   ],
 }
@@ -526,7 +526,7 @@ const balanceSnapshotsConfig: TableFormConfig = {
     { name: 'balance', label: 'Balance', type: 'number', step: '0.01',
       description: 'The account balance on this date.' },
     { name: 'source', label: 'Source', type: 'text',
-      description: 'Where this balance came from (e.g. plaid, manual, monarch).',
+      description: 'Where this balance came from (simplefin, seed, manual).',
       placeholder: 'manual' },
   ],
 }

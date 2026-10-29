@@ -122,19 +122,20 @@ const filteredHistory = computed(() => {
 async function syncBalances() {
   syncing.value = true; syncResult.value = null
   try {
-    // Sync from both Plaid and Monarch in parallel
-    const [plaidRes, monarchRes] = await Promise.allSettled([
-      fetch(`${API}/api/v1/plaid/sync-balances`, { method: 'POST', credentials: 'include' }),
-      fetch(`${API}/api/v1/monarch/sync-balances`, { method: 'POST', credentials: 'include' }),
-    ])
-    let totalSynced = 0
-    if (plaidRes.status === 'fulfilled' && plaidRes.value.ok) {
-      const data = await plaidRes.value.json()
-      totalSynced += (data.accounts?.length ?? data.synced ?? 0)
+    // Enqueue a SimpleFIN sync (the only live provider) and wait for the job to finish.
+    const start = await fetch(`${API}/api/v1/simplefin/sync`, { method: 'POST', credentials: 'include' })
+    const started = await start.json()
+    if (!start.ok) throw new Error(started.detail || 'Sync failed to start')
+    if (started.status === 'skipped') {
+      syncResult.value = { synced: 0, detail: 'No bank connection. Connect SimpleFIN in Settings.' }
+      return
     }
-    if (monarchRes.status === 'fulfilled' && monarchRes.value.ok) {
-      const data = await monarchRes.value.json()
-      totalSynced += (data.synced ?? 0)
+    let totalSynced = 0
+    for (let i = 0; i < 150; i++) {
+      await new Promise(r => setTimeout(r, 2000))
+      const st = await fetch(`${API}/api/v1/simplefin/sync/status`, { credentials: 'include' }).then(r => r.json())
+      if (st.status === 'succeeded') { totalSynced = st.balances_synced ?? 0; break }
+      if (st.status === 'failed') throw new Error(st.error || 'Sync failed')
     }
     syncResult.value = { synced: totalSynced }
     snapshot.value = await fetch(`${API}/api/v1/snapshot`, { credentials: 'include' }).then(r => r.json())
@@ -259,7 +260,6 @@ ORDER BY bs.balance DESC
   COUNT(*) AS count
 FROM transactions
 WHERE amount < 0
-  AND source != 'plaid'
 GROUP BY month
 ORDER BY month
 
@@ -294,14 +294,12 @@ FROM transactions t
 LEFT JOIN accounts a ON t.account_id = a.id
 WHERE t.date >= date('now', '-N days')
   AND ABS(t.amount) >= 500
-  AND t.source != 'plaid'
 ORDER BY t.date DESC
 LIMIT 100`,
 
   accountTransactions: `SELECT t.date, t.merchant, t.category, t.amount
 FROM transactions t
 WHERE t.account_id = :account_id
-  AND t.source != 'plaid'
 ORDER BY t.date DESC
 LIMIT 25 OFFSET :offset`,
 }

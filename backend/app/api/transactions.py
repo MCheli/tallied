@@ -27,7 +27,7 @@ def list_transactions(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_tenant_db),
 ):
-    base = select(Transaction).where(Transaction.source != "plaid")
+    base = select(Transaction)
 
     if from_date:
         base = base.where(Transaction.date >= from_date)
@@ -130,7 +130,6 @@ def large_transactions(
         select(Transaction)
         .where(Transaction.date >= cutoff)
         .where(or_(Transaction.amount >= threshold, Transaction.amount <= -threshold))
-        .where(Transaction.source != "plaid")
         .order_by(Transaction.date.desc())
         .limit(limit)
     )

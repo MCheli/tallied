@@ -8,7 +8,7 @@ from app.database import Base
 
 
 class SyncJob(Base):
-    """Tracks the lifecycle of a provider sync run (Monarch, SimpleFIN, ...).
+    """Tracks the lifecycle of a provider sync run (SimpleFIN, ...).
 
     Inserted with status='running' before kicking off the async task; updated
     to 'succeeded' or 'failed' when the task finishes. The startup watchdog
@@ -16,8 +16,8 @@ class SyncJob(Base):
     SIGTERM mid-sync doesn't leave a permanently-stuck row.
 
     The unique partial index on (provider) WHERE status='running' enforces at
-    most one in-flight job *per provider* per tenant schema — so a Monarch
-    sync and a SimpleFIN sync can run concurrently, but two Monarch syncs
+    most one in-flight job *per provider* per tenant schema — so two providers
+    can run concurrently, but two syncs of the same provider
     cannot.
     """
 
@@ -33,7 +33,7 @@ class SyncJob(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    provider: Mapped[str] = mapped_column(String, nullable=False)  # monarch|simplefin
+    provider: Mapped[str] = mapped_column(String, nullable=False)  # simplefin
     status: Mapped[str] = mapped_column(String, nullable=False)  # running|succeeded|failed
     trigger: Mapped[str] = mapped_column(String, nullable=False, default="manual")  # manual|scheduled
     started_at: Mapped[datetime] = mapped_column(
@@ -45,6 +45,3 @@ class SyncJob(Base):
     txn_updated: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[Optional[str]] = mapped_column(Text)
 
-
-# Back-compat alias — older code may still import MonarchSyncJob by name.
-MonarchSyncJob = SyncJob

@@ -15,8 +15,6 @@ import type {
   SnapshotResponse,
   Transaction,
   VarianceResponse,
-  ImportPayload,
-  ImportResponse,
 } from '../types'
 
 const BASE = '/api/v1'
@@ -125,7 +123,7 @@ export const api = {
   updatePlan: (id: number, data: PlanUpdate) =>
     fetchJson<PlanResponse>(`/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePlan: async (id: number) => {
-    const res = await fetch(`${BASE}/plans/${id}`, { method: 'DELETE' })
+    const res = await fetch(`${BASE}/plans/${id}`, { method: 'DELETE', credentials: 'include' })
     if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
   },
   comparePlans: (ids: number[]) =>
@@ -134,9 +132,7 @@ export const api = {
   getVariance: (id: number) => fetchJson<VarianceResponse[]>(`/plans/${id}/variance`),
 
   // Import
-  importData: (data: ImportPayload) =>
-    fetchJson<ImportResponse>('/import/', { method: 'POST', body: JSON.stringify(data) }),
-  getImportLog: () => fetchJson<any[]>('/import/log'),
+  getImportLog: () => fetchJson<any[]>('/import/logs'),
 
   // Account management
   createAccount: (data: Record<string, unknown>) =>
@@ -159,7 +155,4 @@ export const api = {
   createW2: (data: Record<string, unknown>) =>
     fetchJson<any>('/income/w2', { method: 'POST', body: JSON.stringify(data) }),
 
-  // Forecast
-  generateForecast: (years?: number) =>
-    fetchJson<any>('/plans/forecasts/generate' + buildQuery({ years_forward: years }), { method: 'POST' }),
 }

@@ -27,7 +27,6 @@ _DATE_COLS = {
     "plan_assumptions": "created_at",
     "plan_projections": "year",
     "import_logs": "imported_at",
-    "plaid_links": "created_at",
 }
 
 

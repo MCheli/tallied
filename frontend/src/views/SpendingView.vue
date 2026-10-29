@@ -56,7 +56,6 @@ const categorySql = `SELECT
   COUNT(*) AS count
 FROM transactions
 WHERE amount < 0
-  AND source != 'plaid'
   AND date >= :from_date
   AND date <= :to_date
 GROUP BY category, category_group
@@ -70,7 +69,6 @@ const recurringSql = `SELECT
   MAX(date) AS last_date
 FROM transactions
 WHERE amount < 0
-  AND source != 'plaid'
   AND date >= date('now', '-6 months')
   AND merchant IS NOT NULL
 GROUP BY merchant, category
@@ -79,7 +77,6 @@ ORDER BY AVG(amount) ASC`
 
 const transactionsSql = `SELECT id, date, merchant, category, amount, account_id, notes
 FROM transactions
-WHERE source != 'plaid'
   AND date >= :from_date
   AND date <= :to_date
   AND (merchant LIKE '%' || :search || '%'
@@ -94,7 +91,6 @@ const monthlyTrendSql = `SELECT
   COUNT(*) AS count
 FROM transactions
 WHERE amount < 0
-  AND source != 'plaid'
 GROUP BY strftime('%Y-%m', date)
 ORDER BY month ASC`
 

@@ -6,9 +6,7 @@ for the dedicated RSU page and integration with other views.
 """
 from datetime import date, timedelta
 from decimal import Decimal
-from pathlib import Path
-
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
 
@@ -414,31 +412,3 @@ def price_history(symbol: str = "MSFT", range: str = "5y", _ctx: "TenantContext"
             })
 
     return {"symbol": symbol, "points": points}
-
-
-@router.post("/reload")
-def reload_from_etrade(
-    by_type: UploadFile = File(..., description="E-Trade 'Download by Type (expanded)' .xlsx file"),
-    by_status: UploadFile = File(None, description="E-Trade 'Download by Status (expanded)' .xlsx file (optional, provides cost basis)"),
-    db: Session = Depends(get_tenant_db),
-):
-    """Re-import RSU data from uploaded E-Trade spreadsheet exports."""
-    import tempfile
-    from app.loaders.etrade_rsu import load_etrade_rsu
-
-    # Save uploaded files to a temp directory
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-
-        by_type_path = tmp_path / "etrade_holdingsbytype_expanded.xlsx"
-        by_type_path.write_bytes(by_type.file.read())
-
-        if by_status and by_status.filename:
-            by_status_path = tmp_path / "etrade_holdingsbystatus_expanded.xlsx"
-            by_status_path.write_bytes(by_status.file.read())
-
-        result = load_etrade_rsu(db, tmp_path)
-
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result

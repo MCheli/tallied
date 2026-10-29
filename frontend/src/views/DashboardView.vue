@@ -16,7 +16,6 @@ const { compact } = useFormatters()
 
 const API = import.meta.env.VITE_API_URL || ''
 const rsuSummary = ref<any>(null)
-const plaidLinks = ref<any[]>([])
 const recentSpending = ref<any>(null)
 const propertySummary = ref<any>(null)
 const assetsSummary = ref<any>(null)
@@ -26,18 +25,16 @@ onMounted(async () => {
   store.fetchSnapshot()
   store.fetchIncome()
 
-  // Fetch RSU summary, Plaid links, and recent spending in parallel
+  // Fetch RSU summary and recent spending in parallel
   try {
-    const [rsuRes, plaidRes, spendRes, propRes, assetsRes, nwTrendRes] = await Promise.all([
+    const [rsuRes, spendRes, propRes, assetsRes, nwTrendRes] = await Promise.all([
       fetch(`${API}/api/v1/rsu/summary`, { credentials: 'include' }).then(r => r.json()),
-      fetch(`${API}/api/v1/plaid/links`, { credentials: 'include' }).then(r => r.json()),
       fetch(`${API}/api/v1/spending/by-category?start_date=${thirtyDaysAgo()}&end_date=${today()}`, { credentials: 'include' }).then(r => r.json()),
       fetch(`${API}/api/v1/property/summary`, { credentials: 'include' }).then(r => r.json()),
       fetch(`${API}/api/v1/assets/summary`, { credentials: 'include' }).then(r => r.json()),
       fetch(`${API}/api/v1/trends/net-worth`, { credentials: 'include' }).then(r => r.json()),
     ])
     rsuSummary.value = rsuRes
-    plaidLinks.value = plaidRes
     propertySummary.value = propRes
     assetsSummary.value = assetsRes
     netWorthTrend.value = nwTrendRes
@@ -372,7 +369,7 @@ ORDER BY SUM(amount)`,
 
         <!-- Top Spending (30 days) -->
         <div v-if="recentSpending?.categories?.length" class="group/spend relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Last 30 Days Spending <InfoTooltip text="Top 5 spending categories by total amount in the last 30 days. Only includes expenses (negative transactions), not income or transfers.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; Transactions table filtered to last 30 days, grouped by category. Includes both Plaid and Monarch transaction sources." /></h3>
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Last 30 Days Spending <InfoTooltip text="Top 5 spending categories by total amount in the last 30 days. Only includes expenses (negative transactions), not income or transfers.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; Transactions table filtered to last 30 days, grouped by category. Includes every transaction source (SimpleFIN, email receipts, manual)." /></h3>
           <button
             @click="showSpendingSql = true"
             class="absolute top-3.5 right-3.5 p-1 rounded-md text-gray-300 dark:text-gray-600 opacity-0 group-hover/spend:opacity-100 hover:!text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all"
@@ -397,11 +394,6 @@ ORDER BY SUM(amount)`,
         </div>
       </div>
 
-      <!-- Plaid Status -->
-      <div v-if="plaidLinks.length > 0" class="mb-6 text-xs text-gray-400 dark:text-gray-500">
-        {{ plaidLinks.length }} Plaid account{{ plaidLinks.length > 1 ? 's' : '' }} connected
-        ({{ plaidLinks.map((l: any) => l.institution_name).join(', ') }})
-      </div>
 
       <!-- Layer Cards -->
       <div class="space-y-3">

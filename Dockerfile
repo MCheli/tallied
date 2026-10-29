@@ -13,8 +13,6 @@
 #
 # ── Optional Environment Variables ──────────────────────────────────────────
 #   FINANCE_ANTHROPIC_API_KEY  Anthropic API key (for AI document parsing)
-#   FINANCE_PLAID_CLIENT_ID    Plaid client ID (for bank sync)
-#   FINANCE_PLAID_SECRET       Plaid secret (for bank sync)
 #   FINANCE_BASE_URL           Public URL (e.g. https://money.markcheli.com)
 #   FINANCE_DEV_MODE           Set to "true" for local dev only — NEVER in prod
 

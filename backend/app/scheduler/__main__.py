@@ -5,11 +5,11 @@ Run with: python -m app.scheduler
 This process holds:
 - The 12h scheduled-sync loop (gated by a Postgres advisory lock so only
   one scheduler runs across the cluster).
-- A LISTEN connection on the 'monarch_sync' channel — wakes when the web
+- A LISTEN connection on the 'tallied_sync' channel — wakes when the web
   tier inserts a manual sync job and NOTIFY's the schema.
 
 It does NOT serve HTTP. The web tier (gunicorn) only inserts job rows and
-fires NOTIFY; the actual long-running Monarch API + DB work happens here,
+fires NOTIFY; the actual long-running provider API + DB work happens here,
 so worker timeouts don't kill in-flight syncs and request latency stays
 predictable during sync.
 """
@@ -33,8 +33,7 @@ def _configure_logging() -> None:
     for name in ("tallied", "tallied.sync", "app"):
         logging.getLogger(name).setLevel(level)
     # Same noise-damping policy as the web tier.
-    for noisy in ("gql", "gql.transport.aiohttp", "aiohttp", "aiohttp.access",
-                  "urllib3", "asyncio"):
+    for noisy in ("aiohttp", "aiohttp.access", "urllib3", "asyncio"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

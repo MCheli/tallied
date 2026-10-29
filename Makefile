@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-.PHONY: dev dev-backend dev-frontend test test-e2e test-all seed-test lint build clean db-start db-migrate pre-commit typecheck setup-db-roles ledger-check tour
+.PHONY: dev dev-backend dev-frontend test test-e2e test-all seed-test lint build clean db-start pre-commit typecheck setup-db-roles ledger-check tour
 
 # Development
 dev: dev-backend dev-frontend
@@ -16,9 +16,6 @@ db-start:
 	@echo "Waiting for Postgres to be ready..."
 	@until docker compose exec postgres pg_isready -U tallied 2>/dev/null; do sleep 1; done
 	@echo "Postgres is ready on localhost:5432"
-
-db-migrate:
-	cd backend && source .venv/bin/activate && PYTHONPATH=. python ../scripts/migrate_sqlite_to_postgres.py
 
 setup-db-roles:
 	cd backend && source .venv/bin/activate && PYTHONPATH=. python ../scripts/setup_postgres_roles.py
@@ -78,7 +75,6 @@ help:
 	@echo ""
 	@echo "  make dev          Start backend + frontend dev servers"
 	@echo "  make db-start     Start PostgreSQL container"
-	@echo "  make db-migrate   Migrate data from legacy SQLite to Postgres"
 	@echo "  make setup-db-roles  Create restricted tallied_app Postgres role"
 	@echo "  make seed-test    Reset DB with Claudius Banks test data"
 	@echo "  make test         Run backend tests (fast, SQLite)"

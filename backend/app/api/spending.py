@@ -50,7 +50,6 @@ def spending_by_category(
             func.count().label("count"),
         )
         .where(Transaction.amount < 0)
-        .where(Transaction.source != "plaid")
         .group_by(Transaction.category, Transaction.category_group)
         .order_by(func.sum(Transaction.amount))
     )
@@ -99,7 +98,6 @@ def recurring_expenses(
             func.max(Transaction.date).label("last_date"),
         )
         .where(Transaction.amount < 0)
-        .where(Transaction.source != "plaid")
         .where(Transaction.date >= cutoff)
         .where(Transaction.merchant.isnot(None))
         .group_by(Transaction.merchant, Transaction.category)
@@ -141,7 +139,6 @@ def monthly_spending_trend(
             func.count().label("count"),
         )
         .where(Transaction.amount < 0)
-        .where(Transaction.source != "plaid")
         .group_by("month")
         .order_by("month")
     )

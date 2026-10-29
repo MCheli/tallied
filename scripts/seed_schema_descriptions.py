@@ -19,7 +19,7 @@ DESCRIPTIONS = {
     # ── Financial ──
     "accounts": {
         "_table": "Financial accounts you own — every balance snapshot and transaction links to an account. Accounts are grouped into liquidity layers (Cash, Investments, Home Equity, Retirement).",
-        "id": "Unique account identifier (string, often from Monarch or Plaid import)",
+        "id": "Unique account identifier (string; simplefin-* for synced accounts)",
         "name": "Display name shown in the UI (e.g., 'Checking Account (...4521)')",
         "institution": "Bank or brokerage name (e.g., 'Chase', 'Fidelity')",
         "account_type": "Type classification: cash, investment_stock, investment_401k, real_estate, loan_mortgage, credit_card",
@@ -32,7 +32,7 @@ DESCRIPTIONS = {
         "account_id": "FK to accounts — which account this balance belongs to",
         "snapshot_date": "Date of the balance reading",
         "balance": "Dollar amount of the account balance on this date. Positive for assets, negative for liabilities.",
-        "source": "Where this reading came from: 'seed', 'plaid', 'monarch', 'manual'",
+        "source": "Where this reading came from: 'seed', 'simplefin', 'manual'",
     },
     "transactions": {
         "_table": "Individual debits and credits — every purchase, paycheck, and transfer. The raw material for spending analysis. Negative amounts are expenses, positive are income.",
@@ -43,7 +43,7 @@ DESCRIPTIONS = {
         "category": "Spending category (e.g., 'Groceries', 'Paychecks', 'Transfer')",
         "category_group": "Higher-level category grouping",
         "is_recurring": "Whether this is detected as a recurring expense",
-        "source": "Data source: 'seed', 'plaid', 'monarch'",
+        "source": "Data source: 'seed', 'simplefin', 'email_receipt', 'manual'",
     },
     "w2_records": {
         "_table": "Annual compensation summary — one row per tax year. The authoritative source for income data in the planning model. Populated from W2 PDF uploads or pay stubs.",
@@ -173,13 +173,6 @@ DESCRIPTIONS = {
         "status": "Workflow state: uploading, processing, review, confirmed, rejected, expired",
         "context": "Import context: income, retirement, property, rsu, general",
         "ai_summary": "Natural language summary of what the AI found in the document",
-    },
-    "plaid_links": {
-        "_table": "Connected Plaid institutions for automatic bank transaction sync. Each link represents one connected bank/brokerage.",
-        "item_id": "Plaid item identifier (unique per institution connection)",
-        "access_token": "Encrypted Plaid access token for API calls",
-        "institution_name": "Display name of the connected bank",
-        "cursor": "Plaid sync cursor for incremental transaction updates",
     },
 }
 

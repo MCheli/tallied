@@ -128,12 +128,6 @@ def test_plans_empty(client):
     assert res.json() == []
 
 
-def test_plaid_links_empty(client):
-    res = client.get("/api/v1/plaid/links")
-    assert res.status_code == 200
-    assert res.json() == []
-
-
 def test_transactions_large_empty(client):
     res = client.get("/api/v1/transactions/large?threshold=500&days=30")
     assert res.status_code == 200

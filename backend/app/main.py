@@ -17,7 +17,7 @@ from app.config import settings
 # ── Logging config ────────────────────────────────────────────────────────────
 # Under gunicorn, app loggers don't propagate to the gunicorn error logger
 # unless we explicitly attach a stdout handler. Without this, info-level
-# messages from the scheduler and Monarch sync routes never reach container
+# messages from the scheduler and sync routes never reach container
 # logs. Configure once at module load — before any logger.getLogger() call
 # that needs to emit during startup.
 _log_level = os.environ.get("FINANCE_LOG_LEVEL", "INFO").upper()
@@ -32,12 +32,8 @@ _root.setLevel(_log_level)
 for _name in ("tallied", "tallied.sync", "app"):
     logging.getLogger(_name).setLevel(_log_level)
 
-# Damp third-party loggers that flood stdout at INFO. gql.transport.aiohttp
-# logs every GraphQL request body (full schema fragments) — 2.6MB in 22s on
-# the first sync. aiohttp/urllib3 chatter is similarly noisy. Pin these to
-# WARNING so only real issues land in container logs.
-for _noisy in ("gql", "gql.transport.aiohttp", "aiohttp", "aiohttp.access",
-               "urllib3", "asyncio"):
+# Damp third-party loggers that flood stdout at INFO.
+for _noisy in ("aiohttp", "aiohttp.access", "urllib3", "asyncio"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 # Import all models to register them
@@ -56,6 +52,9 @@ async def lifespan(app: FastAPI):
     if not settings.dev_mode and "change-in-production" in settings.api_key_pepper:
         raise RuntimeError("FATAL: FINANCE_API_KEY_PEPPER must be changed from the default before running in production. "
                            "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\"")
+    if not settings.dev_mode and not settings.credential_key.strip():
+        raise RuntimeError("FATAL: FINANCE_CREDENTIAL_KEY is required in production (encrypts provider credentials). "
+                           "Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"")
 
     # SEC-1.3: Guard against dev_mode with a non-local database
     if settings.dev_mode:
@@ -78,7 +77,7 @@ async def lifespan(app: FastAPI):
     # `alembic upgrade head` before the server starts; locally `make seed-test`
     # builds and stamps the database). Nothing is created here.
 
-    # APP_ROLE controls whether this process runs the Monarch scheduler:
+    # APP_ROLE controls whether this process runs the sync scheduler:
     #   - "scheduler" → handled by app/scheduler/__main__.py, NOT here
     #   - "web"       → HTTP only; no scheduler in this process
     #   - unset       → legacy single-container mode (web also runs scheduler)
@@ -109,7 +108,7 @@ async def lifespan(app: FastAPI):
         try:
             n = mark_running_jobs_failed("worker shutdown")
             if n:
-                logger.info("Shutdown: marked %d running Monarch sync job(s) as failed", n)
+                logger.info("Shutdown: marked %d running sync job(s) as failed", n)
         except Exception:
             logger.exception("Shutdown mark_running_jobs_failed errored")
         stop_scheduler()
@@ -150,13 +149,8 @@ from app.api import (  # noqa: E402
     spending,
     income,
     planning,
-    import_data,
-    mock,
     admin,
-    plaid_routes,
-    monarch_routes,
     simplefin_routes,
-    ingest,
     rsu,
     property,
     assets,
@@ -246,12 +240,8 @@ v1.include_router(trends.router)
 v1.include_router(spending.router)
 v1.include_router(income.router)
 v1.include_router(planning.router)
-v1.include_router(import_data.router)
 v1.include_router(import_unified.router)
-v1.include_router(plaid_routes.router)
-v1.include_router(monarch_routes.router)
 v1.include_router(simplefin_routes.router)
-v1.include_router(ingest.router)
 v1.include_router(rsu.router)
 v1.include_router(property.router)
 v1.include_router(assets.router)
@@ -267,7 +257,6 @@ v1.include_router(tenants.router)
 v1.include_router(api_keys.router)
 v1.include_router(db_credentials.router)
 v1.include_router(webhooks.router)
-v1.include_router(mock.router)
 v1.include_router(platform_admin.router)
 v1.include_router(email_import.router)
 v1.include_router(email_forwarding.router)

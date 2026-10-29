@@ -8,11 +8,10 @@ class Settings(BaseSettings):
     # AI & External Services
     anthropic_api_key: str = ""
     rapidapi_key: str = ""  # RapidAPI key for Realtor.com property data
-    plaid_client_id: str = ""
-    plaid_secret_sandbox: str = ""
-    plaid_secret_production: str = ""
-    plaid_env: str = "sandbox"  # "sandbox" or "production"
     email_webhook_secret: str = ""  # Shared secret for Cloudflare Email Worker
+    credential_key: str = ""  # Fernet key for provider credentials at rest (required outside dev mode)
+    ai_model_import: str = "claude-opus-5-5"  # document import extraction
+    ai_model_fast: str = "claude-sonnet-5-5"  # receipts, review chat, valuations
 
     # Auth
     secret_key: str = "tallied-dev-secret-change-in-production"

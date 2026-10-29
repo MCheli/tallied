@@ -301,6 +301,30 @@ def upload_and_process(
     }
 
 
+@router.get("/logs")
+def list_import_logs(
+    limit: int = 50,
+    db: Session = Depends(get_tenant_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Import history: one row per confirmed import (shown on Settings → Import History)."""
+    rows = db.execute(
+        select(ImportLog).order_by(ImportLog.created_at.desc()).limit(limit)
+    ).scalars().all()
+    return [
+        {
+            "id": r.id,
+            "source": r.source,
+            "capture_mode": r.capture_mode,
+            "status": r.status,
+            "records_created": r.records_created,
+            "error_message": r.error_message,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
 @router.get("/{session_id}")
 def get_session(session_id: str, db: Session = Depends(get_tenant_db)):
     """Get import session status and data."""

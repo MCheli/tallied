@@ -9,14 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@primevue/icons": "^4.5.4",
-    "@primevue/themes": "^4.5.4",
     "@tailwindcss/vite": "^4.2.1",
     "echarts": "^6.0.0",
     "lucide-vue-next": "^0.577.0",
     "marked": "^17.0.5",
     "pinia": "^3.0.4",
-    "primevue": "^4.5.4",
     "tailwindcss": "^4.2.1",
     "vue": "^3.5.30",
     "vue-echarts": "^8.0.1",
