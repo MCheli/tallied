@@ -32,7 +32,7 @@ class AssumptionResponse(BaseModel):
     display_name: str
     category: str
     value: float
-    description: str
+    description: str | None = None
     sensitivity: str
 
 

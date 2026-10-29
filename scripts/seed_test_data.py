@@ -384,10 +384,6 @@ def seed(reset=False):
         print("  ✓ Vehicles (2)")
 
         # ── Planning Scenario ──
-        plan = PlanVersion(name="Retire at 60", scenario_type="base", is_active=True, description="Base retirement scenario")
-        db.add(plan)
-        db.flush()
-
         # Add key assumptions
         assumptions = [
             ("current_age", "Current Age", 33, "personal", "high"),
@@ -406,25 +402,31 @@ def seed(reset=False):
             ("retirement_tax_rate", "Retirement Tax Rate", 0.20, "retirement", "medium"),
             ("social_security_monthly", "Social Security", 2500, "retirement", "low"),
         ]
-        for key, display, value, category, sensitivity in assumptions:
-            db.add(PlanAssumption(
-                plan_id=plan.id, key=key, display_name=display,
-                value=value, category=category, sensitivity=sensitivity,
-            ))
-        db.flush()
+        # Go through the service so projections are computed the same way the
+        # API does (it owns the engine call signature and row mapping).
+        from app.schemas.planning import AssumptionInput
+        from app.services.planning_service import create_plan
 
-        try:
-            from app.services.planning_service import build_projection_input, run_projection
-            proj_input = build_projection_input(db)
-            projections = run_projection(plan, proj_input)
-            for p in projections:
-                db.add(p)
-            db.flush()
-            print("  ✓ Plan + projections")
-        except Exception as e:
-            print(f"  ✓ Plan (projections skipped: {e})")
-
-        db.commit()
+        plan = create_plan(
+            db,
+            name="Retire at 60",
+            description="Base retirement scenario",
+            scenario_type="base",
+            assumptions_input=[
+                AssumptionInput(key=key, value=value, display_name=display,
+                                category=category, sensitivity=sensitivity)
+                for key, display, value, category, sensitivity in assumptions
+            ],
+        )
+        # create_plan commits, and the pool checkout hook resets search_path
+        # to public on the next connection, so re-point at the tenant schema
+        # before touching tenant tables again.
+        db.execute(text(f'SET search_path TO "{TENANT_SCHEMA}", public'))
+        n_proj = db.query(PlanProjection).filter_by(plan_id=plan.id).count()
+        if n_proj:
+            print(f"  ✓ Plan + {n_proj} projection rows")
+        else:
+            print("  ⚠ Plan saved but projections are empty (engine raised; see planning_service.create_plan)")
 
         # Seed schema descriptions (COMMENT ON) for the tenant schema
         import importlib.util
