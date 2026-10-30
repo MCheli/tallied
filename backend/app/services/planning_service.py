@@ -17,6 +17,7 @@ from app.models.planning import (
 )
 from app.models.property import Mortgage
 from app.schemas.planning import AssumptionInput
+from app.services.compensation import comp_split
 
 logger = logging.getLogger("tallied.planning")
 
@@ -71,8 +72,8 @@ def build_projection_input(db: Session, assumptions: dict[str, float] | None = N
         select(W2Record).order_by(W2Record.tax_year.desc()).limit(1)
     ).scalar_one_or_none()
 
-    salary = float(w2.base_salary) if w2 and w2.base_salary else 0.0
-    rsu_income = float(w2.rsu_income) if w2 and w2.rsu_income else 0.0
+    split = comp_split(db, w2)
+    salary, rsu_income = split.salary, split.rsu_income
 
     # --- Mortgage ---
     mortgage = db.execute(

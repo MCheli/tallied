@@ -94,6 +94,8 @@ export interface IncomeBreakdown {
   rsu_income: number
   total_comp: number
   rsu_pct: number
+  /** "w2" when the W-2 records the split, "vests" when RSU income comes from vest records */
+  source?: 'w2' | 'vests' | 'none'
 }
 
 export interface BalanceHistory {

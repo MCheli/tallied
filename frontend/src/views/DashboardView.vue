@@ -193,7 +193,7 @@ ORDER BY SUM(amount)`,
           label="Total Comp"
           :value="store.data.total_comp_annual ? compact(store.data.total_comp_annual) : dash"
           subtitle="base + RSU, latest W-2"
-          info="Base salary plus RSU income from the most recent W-2 record. Other compensation on the W-2 is not included here.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; w2_records, newest tax year."
+          info="Base salary plus RSU income from the most recent W-2 record. When the W-2 has only gross pay, this is the gross pay, split using that year's vests.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; w2_records, newest tax year, and vest_events."
           :sql="SQL.totalComp"
           :sqlTables="['w2_records']"
         />
@@ -210,7 +210,7 @@ ORDER BY SUM(amount)`,
           label="Property Equity"
           :value="property.data.value?.equity != null ? compact(property.data.value.equity) : dash"
           :subtitle="property.error.value ? 'unavailable' : 'value minus mortgage'"
-          info="Latest property valuation minus the mortgage balance. The valuation also writes the real-estate balance snapshot, so this matches the Home Equity layer.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; property_valuations and mortgages."
+          info="Latest property valuation minus the mortgage's newest balance (synced daily), so this matches the Home Equity layer.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; property_valuations and balance_snapshots."
           :sql="SQL.propertyEquity"
           :sqlTables="['property_valuations', 'mortgages', 'accounts']"
         />
@@ -233,11 +233,11 @@ ORDER BY SUM(amount)`,
         <div class="min-w-0">
           <ChartContainer
             title="Compensation Split"
-            subtitle="Salary vs. RSU, latest W-2"
+            :subtitle="store.income?.source === 'vests' ? 'Salary vs. RSU, latest W-2; RSU from vest records' : 'Salary vs. RSU, latest W-2'"
             :loading="!store.income && !store.error"
             :empty="!!store.income && store.income.total_comp === 0"
             empty-text="No W-2 record yet"
-            info="Share of annual compensation from base salary vs RSU income; the centre is the total.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; w2_records (base_salary, rsu_income), newest tax year."
+            info="Share of annual compensation from base salary vs RSU income; the centre is the total. When the W-2 has only gross pay, RSU income is that year's actual vests (shares &times; price at vest) and salary is the rest of gross pay.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; w2_records, newest tax year, and vest_events."
             :sql="SQL.compSplit"
             :sqlTables="['w2_records']"
           >
@@ -254,7 +254,7 @@ ORDER BY SUM(amount)`,
           :loading="trend.loading.value"
           :empty="!trend.loading.value && (!trend.data.value || trend.data.value.dates.length === 0)"
           :empty-text="trend.error.value ? `Could not load history: ${trend.error.value}` : 'No balance history yet'"
-          info="Monthly balance snapshots summed by layer. Asset layers stack to the total; liability layers (credit cards, loans) are drawn as their own dashed lines below zero so the stacked area is not distorted.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; balance_snapshots grouped by display_group."
+          info="Daily balances summed by layer; each account keeps its last known balance until a newer one arrives (the house between valuations, the 401(k) between statements). The chart starts on the first day every established account has a balance. Asset layers stack to the total; liability layers (credit cards, loans) are drawn as their own dashed lines below zero so the stacked area is not distorted.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; balance_snapshots grouped by display_group."
           :sql="SQL.netWorthTrend"
           :sqlTables="['balance_snapshots', 'accounts']"
         >

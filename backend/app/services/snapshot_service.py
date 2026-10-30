@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.income import W2Record
 from app.schemas.snapshot import LayerAccount, LiquidityLayer, SnapshotResponse
 from app.services.balances import latest_balances, normalize_group
+from app.services.compensation import comp_split
 
 # Map display_group -> liquidity layer ordering
 LAYER_ORDER = {
@@ -67,11 +68,7 @@ def build_current_snapshot(db: Session) -> SnapshotResponse:
 
     # Total comp from latest W2
     w2 = db.execute(select(W2Record).order_by(W2Record.tax_year.desc()).limit(1)).scalar_one_or_none()
-    total_comp = None
-    if w2:
-        salary = float(w2.base_salary) if w2.base_salary else 0.0
-        rsu = float(w2.rsu_income) if w2.rsu_income else 0.0
-        total_comp = salary + rsu
+    total_comp = comp_split(db, w2).total if w2 else None
 
     change = _compute_12mo_change(db, rows, date.today() - timedelta(days=365))
 

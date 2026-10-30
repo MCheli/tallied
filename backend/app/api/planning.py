@@ -35,6 +35,7 @@ from app.schemas.planning import (
     VarianceMetric,
     VarianceResponse,
 )
+from app.services.compensation import comp_split
 from app.services.planning_service import (
     build_projection_input,
     create_plan,
@@ -602,8 +603,8 @@ def plan_table(plan_id: int, db: Session = Depends(get_tenant_db)):
 
             if w2:
                 gross_income = float(w2.gross_pay or 0)
-                base_salary = float(w2.base_salary or 0)
-                rsu_income = float(w2.rsu_income or 0)
+                split = comp_split(db, w2)
+                base_salary, rsu_income = split.salary, split.rsu_income
                 tax_paid = (float(w2.federal_tax or 0) + float(w2.state_tax or 0)
                             + float(w2.social_security or 0) + float(w2.medicare or 0))
                 pretax_401k = float(w2.pretax_401k or 0)

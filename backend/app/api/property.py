@@ -28,6 +28,24 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/property", tags=["property"])
 
 
+def _current_mortgage_balance(db: Session, mortgage: Mortgage | None) -> float | None:
+    """The mortgage balance net worth uses: the newest balance snapshot for the loan account
+    (synced daily), falling back to the last statement on the mortgage record."""
+    if mortgage is None:
+        return None
+    from app.models.balance import BalanceSnapshot
+
+    snap = db.execute(
+        select(BalanceSnapshot)
+        .where(BalanceSnapshot.account_id == mortgage.account_id)
+        .order_by(BalanceSnapshot.snapshot_date.desc(), BalanceSnapshot.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if snap is not None and snap.balance is not None:
+        return abs(float(snap.balance))
+    return float(mortgage.current_balance) if mortgage.current_balance else None
+
+
 @router.get("/summary")
 def property_summary(db: Session = Depends(get_tenant_db)):
     """Full property summary: mortgage, valuation, equity, payment breakdown."""
@@ -65,7 +83,7 @@ def property_summary(db: Session = Depends(get_tenant_db)):
 
     # Compute equity
     property_value = float(latest_valuation.value) if latest_valuation else None
-    mortgage_balance = float(mortgage.current_balance) if mortgage and mortgage.current_balance else None
+    mortgage_balance = _current_mortgage_balance(db, mortgage)
     equity = None
     if property_value is not None and mortgage_balance is not None:
         equity = property_value - mortgage_balance
@@ -74,7 +92,7 @@ def property_summary(db: Session = Depends(get_tenant_db)):
     payment_breakdown = None
     if mortgage and mortgage.monthly_payment and mortgage.rate and mortgage.current_balance:
         monthly_rate = float(mortgage.rate) / 12
-        bal = float(mortgage.current_balance)
+        bal = mortgage_balance if mortgage_balance is not None else float(mortgage.current_balance)
         interest_portion = bal * monthly_rate
         total_payment = float(mortgage.monthly_payment)
         # Escrow is estimated from config or statement; default to what's left after P&I
@@ -118,6 +136,7 @@ def property_summary(db: Session = Depends(get_tenant_db)):
             "balance": mortgage_balance,
             "rate": float(mortgage.rate) if mortgage and mortgage.rate else None,
             "monthly_payment": float(mortgage.monthly_payment) if mortgage and mortgage.monthly_payment else None,
+            "escrow": float(mortgage.escrow) if mortgage and mortgage.escrow is not None else None,
             "original_amount": float(mortgage.original_amount) if mortgage and mortgage.original_amount else None,
             "origination_date": mortgage.origination_date.isoformat() if mortgage and mortgage.origination_date else None,
             "maturity_date": mortgage.original_payoff_date.isoformat() if mortgage and mortgage.original_payoff_date else None,
@@ -165,6 +184,11 @@ def amortization_schedule(db: Session = Depends(get_tenant_db)):
         if principal > balance:
             principal = balance
         balance -= principal
+        if 0 < balance < 1:
+            # Cent rounding in the stated payment leaves a few cents; the lender folds them
+            # into the final payment rather than billing a 361st month.
+            principal += balance
+            balance = 0.0
 
         # Advance month
         if month_date.month == 12:

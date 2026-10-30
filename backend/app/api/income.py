@@ -8,6 +8,7 @@ from app.dependencies import get_tenant_db
 from app.models.income import W2Record
 from app.models.investment import RSUGrant
 from app.schemas.snapshot import IncomeBreakdown
+from app.services.compensation import comp_split
 
 router = APIRouter(prefix="/income", tags=["income"])
 
@@ -83,19 +84,15 @@ def current_income(db: Session = Depends(get_tenant_db)):
         select(W2Record).order_by(W2Record.tax_year.desc()).limit(1)
     ).scalar_one_or_none()
 
-    if not w2:
-        return IncomeBreakdown(salary=0, rsu_income=0, total_comp=0, rsu_pct=0)
-
-    salary = float(w2.base_salary) if w2.base_salary else 0.0
-    rsu_income = float(w2.rsu_income) if w2.rsu_income else 0.0
-    total_comp = salary + rsu_income
-    rsu_pct = (rsu_income / total_comp * 100) if total_comp > 0 else 0.0
-
+    split = comp_split(db, w2)
+    total_comp = split.total
+    rsu_pct = (split.rsu_income / total_comp * 100) if total_comp > 0 else 0.0
     return IncomeBreakdown(
-        salary=salary,
-        rsu_income=rsu_income,
+        salary=split.salary,
+        rsu_income=split.rsu_income,
         total_comp=total_comp,
         rsu_pct=round(rsu_pct, 1),
+        source=split.source,
     )
 
 

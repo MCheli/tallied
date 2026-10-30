@@ -32,6 +32,7 @@ class IncomeBreakdown(BaseModel):
     rsu_income: float
     total_comp: float
     rsu_pct: float
+    source: str = "w2"  # "w2", "vests" (RSU income from vest records), or "none"
 
 
 class BalanceHistory(BaseModel):

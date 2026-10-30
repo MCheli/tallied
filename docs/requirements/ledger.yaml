@@ -789,3 +789,25 @@ requirements:
       - backend/tests/test_net_worth_backfill.py::test_rsu_import_keeps_the_scheduled_quantity_on_future_vests
     notes:
       - "Found 2026-10-30: production net worth showed about -$411K because the mortgage synced daily while the house valuation and the 401(k) never wrote a balance."
+
+  - id: LOOK-NW-003
+    title: Dashboard and Property agree with each other and with the lender
+    job: look
+    area: dashboard
+    priority: p0
+    visible: true
+    done_means:
+      - "Net worth over time carries each account's last known balance forward (no single-day spikes for the house or 401(k)) and starts on the first day every established account has a balance."
+      - "Property equity, the payment breakdown and the Dashboard's Property Equity tile use the mortgage's newest synced balance, so they match the Home Equity layer; the summary reports escrow."
+      - "The amortization schedule reproduces the lender's statement for the same month and ends at the stated maturity."
+      - "When a W-2 has only gross pay, the salary vs RSU split uses that year's actual vests and says so (Dashboard, Income, Planning share one helper)."
+    status: done
+    evidence:
+      - backend/tests/test_dashboard_consistency.py::test_trend_carries_each_balance_forward_and_starts_when_the_picture_is_complete
+      - backend/tests/test_dashboard_consistency.py::test_property_equity_uses_the_synced_mortgage_balance_and_reports_escrow
+      - backend/tests/test_dashboard_consistency.py::test_amortization_reproduces_the_lender_statement_and_ends_at_maturity
+      - backend/tests/test_dashboard_consistency.py::test_comp_split_derives_rsu_income_from_that_years_vests
+      - artifacts/screens/dashboard/desktop.png
+      - artifacts/screens/property/desktop.png
+    notes:
+      - "Found 2026-10-30 reviewing the owner's real data on a local copy of production after the net worth backfill."

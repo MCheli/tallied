@@ -50,25 +50,47 @@ def net_worth_trend(
         per_day[(snap_date.isoformat(), acct_id)] = (LAYER_NAMES.get(key, key.replace("_", " ").title()),
                                                      float(balance) if balance else 0.0)
 
-    # Build series: {date_str: {group: total}} with the same layer names as /snapshot
-    date_groups: dict[str, dict[str, float]] = {}
-    all_groups: set[str] = set()
-    for (d, _acct), (group, val) in per_day.items():
-        date_groups.setdefault(d, {})
-        date_groups[d][group] = date_groups[d].get(group, 0.0) + val
-        all_groups.add(group)
+    # Each account counts at its last known balance on every later day (carry-forward):
+    # a house valued in April or a 401(k) statement from September is still worth that
+    # until the next figure, not zero on the days nothing new was written.
+    by_account: dict[str, dict[str, tuple[str, float]]] = {}
+    for (d, acct), (group, val) in per_day.items():
+        by_account.setdefault(acct, {})[d] = (group, val)
+    all_dates = sorted({d for (d, _acct) in per_day})
+    if not all_dates:
+        return {"dates": [], "groups": {}, "totals": []}
 
-    dates = sorted(date_groups.keys())
-    groups: dict[str, list[float]] = {g: [] for g in sorted(all_groups)}
+    # Start where the picture is complete: the latest first-balance date among accounts
+    # that already existed 90 days before the last date. Earlier days would show, say,
+    # the mortgage without the house. Accounts opened in the last 90 days count from
+    # their first balance and do not cut the history short.
+    last = date.fromisoformat(all_dates[-1])
+    firsts = {acct: min(days) for acct, days in by_account.items()}
+    established = [f for f in firsts.values() if (last - date.fromisoformat(f)).days >= 90]
+    start = max(established) if established else all_dates[0]
+    if from_date is None:
+        dates = [d for d in all_dates if d >= start]
+    else:
+        dates = all_dates
+
+    all_groups = sorted({g for days in by_account.values() for (g, _v) in days.values()})
+    groups: dict[str, list[float]] = {g: [] for g in all_groups}
     totals: list[float] = []
-
+    current: dict[str, tuple[str, float]] = {}
+    pending = iter(all_dates)
+    nxt = next(pending, None)
     for d in dates:
-        day_total = 0.0
-        for g in sorted(all_groups):
-            val = date_groups[d].get(g, 0.0)
-            groups[g].append(val)
-            day_total += val
-        totals.append(day_total)
+        while nxt is not None and nxt <= d:
+            for acct, days in by_account.items():
+                if nxt in days:
+                    current[acct] = days[nxt]
+            nxt = next(pending, None)
+        day = dict.fromkeys(all_groups, 0.0)
+        for group, val in current.values():
+            day[group] += val
+        for g in all_groups:
+            groups[g].append(round(day[g], 2))
+        totals.append(round(sum(day.values()), 2))
 
     return {"dates": dates, "groups": groups, "totals": totals}
 
