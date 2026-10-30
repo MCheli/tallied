@@ -152,8 +152,12 @@ def test_recap_email_carries_the_month_pace_chart_as_an_inline_png(client, db_se
     _tx(db_session, date(2026, 10, 2), -80)
     _tx(db_session, date(2026, 10, 30), -999)  # after the week's Saturday: not in the chart
     db_session.commit()
-    pace = month_pace(db_session, date(2026, 10, 24), date(2026, 10, 24))
+    from app.services.weekly_recap import email_pace
+
+    pace = email_pace(db_session, date(2026, 10, 24))  # sent Oct 24: the line runs to that day
     assert len(pace["this_month"]) == 24 and pace["this_total"] == 80
+    early = email_pace(db_session, date(2026, 11, 2))  # first days of November: October, complete
+    assert early["month"] == "2026-10" and len(early["this_month"]) == 31 and early["this_total"] == 1079
 
     r = weekly_recap(db_session, date(2026, 10, 30))
     mail = render(r, "https://money.example.com", pace)
@@ -161,6 +165,7 @@ def test_recap_email_carries_the_month_pace_chart_as_an_inline_png(client, db_se
     assert png[:8] == b"\x89PNG\r\n\x1a\n" and mail["chart_cid"] == "pace-chart"
     assert 'src="cid:pace-chart"' in mail["html"]
     assert "$80 through Oct 24, $120 less than by the same day last month ($200 in all)" in mail["text"]
+    assert "October: $1,079, $879 more than the month before ($200)" in render(r, "https://x", early)["text"]
 
     res = client.get("/api/v1/recap/weekly/email").json()
     assert res["chart_png"] and "cid:pace-chart" in res["html"]

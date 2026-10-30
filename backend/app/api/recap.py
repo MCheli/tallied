@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.dependencies import get_tenant_db
 from app.services import recap_email
-from app.services.weekly_recap import month_pace, weekly_recap
+from app.services.weekly_recap import email_pace, month_pace, weekly_recap
 
 router = APIRouter(prefix="/recap", tags=["recap"])
 
@@ -28,11 +28,8 @@ def get_weekly_recap_email(
 ):
     """The recap as an email (subject, html, text). The weekly-recap Cloudflare worker fetches this on
     Monday mornings with a read-only API key and sends it; this route sends nothing."""
-    recap = weekly_recap(db, date.today(), week_start)
-    # The chart shows the month the week ends in, up to that Saturday, against the month before.
-    week_end = date.fromisoformat(recap["week_end"])
-    pace = month_pace(db, week_end, week_end)
-    return recap_email.render(recap, settings.base_url, pace)
+    today = date.today()
+    return recap_email.render(weekly_recap(db, today, week_start), settings.base_url, email_pace(db, today))
 
 
 @router.get("/month-pace")

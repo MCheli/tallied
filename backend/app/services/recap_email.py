@@ -6,6 +6,7 @@ The HTML is a single table with inline styles: mail clients ignore stylesheets a
 from __future__ import annotations
 
 import base64
+import calendar
 from datetime import date
 from html import escape
 
@@ -43,7 +44,7 @@ def _section(title: str, rows: list[str]) -> str:
 
 
 def render(r: dict, base_url: str, pace: dict | None = None) -> dict:
-    """pace (month_pace for the week's month, cut at its Saturday) adds the spending chart as an inline image."""
+    """pace (weekly_recap.email_pace) adds the spending chart as an inline image."""
     label = week_label(r["week_start"], r["week_end"])
     link = f"{base_url.rstrip('/')}/recap?week={r['week_start']}"
     nw = r["net_worth_change"]
@@ -117,4 +118,6 @@ def pace_caption(pace: dict) -> str:
     diff = pace["this_total"] - pace["same_day_last_month"]
     vs = "the same as" if abs(diff) < 1 else f"{usd(diff)} {'more than' if diff > 0 else 'less than'}"
     day = len(pace["this_month"])
+    if day == calendar.monthrange(month.year, month.month)[1]:
+        return f"{month:%B}: {usd(pace['this_total'])}, {vs} the month before ({usd(pace['last_month_total'])})"
     return f"{usd(pace['this_total'])} through {month:%b} {day}, {vs} by the same day last month ({usd(pace['last_month_total'])} in all)"

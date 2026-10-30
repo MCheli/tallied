@@ -76,6 +76,14 @@ def month_pace(db: Session, today: date, month: date | None = None) -> dict:
     }
 
 
+def email_pace(db: Session, today: date) -> dict:
+    """The email's chart: this month up to the day it is sent; in a month's first six days, when that
+    would be a stub, the month just ended (complete) instead."""
+    if today.day < 7:
+        return month_pace(db, today, _month_start(today, -1))
+    return month_pace(db, today)
+
+
 def last_completed_week(today: date) -> date:
     """Sunday that starts the most recent Sunday–Saturday week ending before today."""
     days_since_saturday = (today.weekday() - 5) % 7 or 7
