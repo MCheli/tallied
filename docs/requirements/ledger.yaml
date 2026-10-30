@@ -811,3 +811,24 @@ requirements:
       - artifacts/screens/property/desktop.png
     notes:
       - "Found 2026-10-30 reviewing the owner's real data on a local copy of production after the net worth backfill."
+
+  - id: SPEND-CAT-001
+    title: Transactions are categorized by merchant rules, on every sync, without overwriting the owner
+    job: understand
+    area: spending
+    priority: p0
+    visible: true
+    done_means:
+      - "Each tenant has category_rules (exact, prefix or contains match on the merchant; optional account type and direction). New synced transactions are categorized on arrival; nothing is guessed when no rule matches."
+      - "transactions.category_source records who set a category (rule:<source>, email, manual, provider). Categories set by the owner or confirmed from a receipt are never overwritten by rules."
+      - "The Spending transaction table lets the owner change a category inline and tick 'Always use this for <merchant>', which creates a rule and re-applies the rules; hovering a category says who set it."
+      - "An empty provider category counts as uncategorized (SimpleFIN sends no categories)."
+    status: done
+    evidence:
+      - backend/tests/test_categorize.py::test_rules_apply_by_specificity_account_type_and_direction
+      - backend/tests/test_categorize.py::test_the_owners_category_survives_rules
+      - backend/tests/test_categorize.py::test_email_categories_are_protected_and_bad_rules_rejected
+      - backend/tests/test_sync_scheduler.py::test_generic_sync_upserts_accounts_balances_and_transactions
+      - artifacts/screens/spending/desktop.png
+    notes:
+      - "2026-10-30: production had 1,090 transactions and none categorized. Merchant rules researched from names, the owner's email and receipts live in the tenant database, not in the repository."

@@ -14,6 +14,8 @@ import type {
   SensitivityResponse,
   SnapshotResponse,
   Transaction,
+  CategoryOption,
+  CategoryRule,
   VarianceResponse,
   ImportLogEntry,
   PropertySummary,
@@ -151,6 +153,12 @@ export const api = {
   // Transactions
   getTransactions: (params: Record<string, unknown>) =>
     fetchJson<{ items: Transaction[]; total: number }>('/transactions/' + buildQuery(params)),
+  updateTransaction: (id: string, data: Partial<Pick<Transaction, 'category' | 'category_group' | 'notes'>>) =>
+    fetchJson<Transaction>(`/transactions/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getCategories: () => fetchJson<CategoryOption[]>('/transactions/categories'),
+  getCategoryRules: () => fetchJson<CategoryRule[]>('/transactions/category-rules'),
+  createCategoryRule: (data: { pattern: string; match: 'exact' | 'prefix' | 'contains'; category: string; category_group: string }) =>
+    fetchJson<{ rule: CategoryRule; recategorized: number }>('/transactions/category-rules', { method: 'POST', body: JSON.stringify(data) }),
 
   // Spending
   getSpendingByCategory: (from?: string, to?: string, accountTypes?: string[]) =>

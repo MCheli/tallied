@@ -122,6 +122,11 @@ def test_generic_sync_upserts_accounts_balances_and_transactions(db_session):
     def fake_tenant_session(schema):
         yield db_session
 
+    from app.models.category_rule import CategoryRule
+    db_session.add(CategoryRule(pattern="whole foods", match="contains", category="Groceries",
+                                category_group="Food & Dining", source="research"))
+    db_session.commit()
+
     with patch.object(sync_scheduler, "get_provider", lambda name: FakeProvider()), \
          patch.object(sync_scheduler, "tenant_session", fake_tenant_session):
         result = asyncio.run(sync_scheduler.sync_tenant("tenant_test0001", "fake"))
@@ -138,6 +143,9 @@ def test_generic_sync_upserts_accounts_balances_and_transactions(db_session):
     assert db_session.query(BalanceSnapshot).filter_by(account_id="fake-ACT-1").count() == 1
     txns = {t.id: t for t in db_session.query(Transaction).filter(Transaction.account_id == "fake-ACT-1").all()}
     assert txns["fake-T1"].amount == Decimal("-50") and txns["fake-T1"].source == "fake"
+    # New synced transactions are categorized by rule on arrival; unmatched ones stay uncategorized.
+    assert (txns["fake-T1"].category, txns["fake-T1"].category_source) == ("Groceries", "rule:research")
+    assert txns["fake-T2"].category is None
     assert link_row.last_synced_at is not None
 
 

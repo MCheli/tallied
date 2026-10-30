@@ -5,6 +5,7 @@ from app.models.asset import Vehicle
 from app.models.asset_value_history import AssetValueHistory
 from app.models.audit_log import AuditLog
 from app.models.balance import BalanceSnapshot
+from app.models.category_rule import CategoryRule
 from app.models.db_credential import DbCredential
 from app.models.email_forwarding_address import EmailForwardingAddress
 from app.models.email_receipt import EmailReceipt

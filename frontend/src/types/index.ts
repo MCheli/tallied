@@ -30,7 +30,27 @@ export interface Transaction {
   is_recurring: boolean
   notes: string | null
   source: string | null
+  /** Who set the category: "rule:research", "rule:manual", "email", "manual", or null. */
+  category_source?: string | null
   created_at: string | null
+}
+
+export interface CategoryOption {
+  category: string
+  category_group: string | null
+}
+
+export interface CategoryRule {
+  id: number
+  pattern: string
+  match: 'exact' | 'prefix' | 'contains'
+  account_type: string | null
+  direction: 'in' | 'out' | null
+  category: string
+  category_group: string
+  source: string
+  note: string | null
+  priority: number
 }
 
 export interface TransactionFilter {

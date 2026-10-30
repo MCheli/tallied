@@ -21,6 +21,8 @@ class Transaction(Base):
     merchant: Mapped[str | None] = mapped_column(String)
     category: Mapped[str | None] = mapped_column(String)
     category_group: Mapped[str | None] = mapped_column(String)
+    # Who set the category: "rule:<source>", "email", "manual", or the provider's name.
+    category_source: Mapped[str | None] = mapped_column(String)
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str | None] = mapped_column(String)

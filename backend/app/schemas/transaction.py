@@ -40,6 +40,7 @@ class TransactionResponse(BaseModel):
     is_recurring: bool
     notes: str | None = None
     source: str | None = None
+    category_source: str | None = None
     created_at: datetime | None = None
 
 
@@ -72,3 +73,37 @@ class MonthlySpending(BaseModel):
     month: str  # e.g. "2026-01"
     total: float
     count: int
+
+
+class CategoryOption(BaseModel):
+    category: str
+    category_group: str | None = None
+
+
+class CategoryRuleCreate(BaseModel):
+    pattern: str
+    match: str = "exact"
+    category: str
+    category_group: str
+    account_type: str | None = None
+    direction: str | None = None
+
+
+class CategoryRuleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    pattern: str
+    match: str
+    account_type: str | None = None
+    direction: str | None = None
+    category: str
+    category_group: str
+    source: str
+    note: str | None = None
+    priority: int
+
+
+class CategoryRuleApplied(BaseModel):
+    rule: CategoryRuleResponse
+    recategorized: int

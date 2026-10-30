@@ -22,6 +22,7 @@ from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 from app.models.sync_job import SyncJob
 from app.models.transaction import Transaction
+from app.services.categorize import apply_rules
 from app.services.providers import ALL_PROVIDERS, get_provider
 from app.services.providers.base import ProviderError, type_and_group_for
 from app.services.tenant_service import tenant_session
@@ -81,6 +82,7 @@ async def sync_tenant(schema: str, provider_name: str) -> dict:
 
         today = date.today()
         balances_synced = txn_added = txn_updated = 0
+        new_txn_ids: list[str] = []
         try:
             for acct in snapshot.accounts:
                 cfg = connection.configs.get(acct.id)
@@ -134,11 +136,17 @@ async def sync_tenant(schema: str, provider_name: str) -> dict:
                             db.add(Transaction(
                                 id=local_txn_id, account_id=local_id,
                                 date=t.date, amount=t.amount,
-                                merchant=t.merchant, category=t.category, category_group=t.category_group,
+                                merchant=t.merchant, category=t.category or None, category_group=t.category_group or None,
+                                category_source=provider.name if t.category else None,
                                 is_recurring=False, source=provider.name,
                             ))
                             txn_added += 1
+                            new_txn_ids.append(local_txn_id)
 
+            db.flush()
+            categorized = apply_rules(db, new_txn_ids)
+            if categorized:
+                logger.info("Categorized %d new transactions by rule for %s", categorized, schema)
             connection.row.last_synced_at = _utcnow()
             db.commit()
         except Exception as e:

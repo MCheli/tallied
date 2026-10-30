@@ -7,8 +7,18 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_tenant_db
 from app.models.account import Account
+from app.models.category_rule import CategoryRule
 from app.models.transaction import Transaction
-from app.schemas.transaction import TransactionCreate, TransactionResponse, TransactionUpdate
+from app.schemas.transaction import (
+    CategoryOption,
+    CategoryRuleApplied,
+    CategoryRuleCreate,
+    CategoryRuleResponse,
+    TransactionCreate,
+    TransactionResponse,
+    TransactionUpdate,
+)
+from app.services import categorize
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -160,6 +170,30 @@ def large_transactions(
     ]
 
 
+@router.get("/categories", response_model=list[CategoryOption])
+def list_categories(db: Session = Depends(get_tenant_db)):
+    """Categories in use (by transactions or rules), for the category picker."""
+    return [CategoryOption(category=c, category_group=g) for c, g in categorize.category_options(db)]
+
+
+@router.get("/category-rules", response_model=list[CategoryRuleResponse])
+def list_category_rules(db: Session = Depends(get_tenant_db)):
+    """Merchant rules that categorize synced transactions, newest first."""
+    return db.execute(select(CategoryRule).order_by(CategoryRule.id.desc())).scalars().all()
+
+
+@router.post("/category-rules", response_model=CategoryRuleApplied, status_code=201)
+def create_category_rule(payload: CategoryRuleCreate, db: Session = Depends(get_tenant_db)):
+    """'Always categorize this merchant as X': adds a manual rule and re-applies the rules."""
+    try:
+        rule, n = categorize.add_rule(db, **payload.model_dump(), source="manual")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    db.commit()
+    db.refresh(rule)
+    return CategoryRuleApplied(rule=CategoryRuleResponse.model_validate(rule), recategorized=n)
+
+
 @router.get("/{transaction_id}", response_model=TransactionResponse)
 def get_transaction(transaction_id: str, db: Session = Depends(get_tenant_db)):
     """Get a single transaction by ID."""
@@ -180,10 +214,7 @@ def update_transaction(
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    update_data = payload.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(txn, key, value)
-
+    categorize.update_transaction(db, txn, payload.model_dump(exclude_unset=True))
     db.commit()
     db.refresh(txn)
     return txn
