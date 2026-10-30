@@ -150,8 +150,17 @@ def large_transactions(
     if exclude_income:
         stmt = stmt.where(Transaction.amount < 0)
     if account_type:
-        stmt = stmt.where(Transaction.account_id.in_(select(Account.id).where(Account.account_type == account_type)))
+        same_type = select(Account.id).where(Account.account_type == account_type)
+        stmt = stmt.where(Transaction.account_id.in_(same_type))
     rows = db.execute(stmt).scalars().all()
+    if account_type and rows:
+        # Money moved between two of these accounts (savings to checking) is not a withdrawal:
+        # drop rows with an equal and opposite entry in another such account within three days.
+        others = db.execute(select(Transaction.account_id, Transaction.date, Transaction.amount).where(
+            Transaction.account_id.in_(same_type), Transaction.date >= cutoff - timedelta(days=3),
+            Transaction.amount.in_([-t.amount for t in rows]))).all()
+        rows = [t for t in rows if not any(
+            o.account_id != t.account_id and o.amount == -t.amount and abs((o.date - t.date).days) <= 3 for o in others)]
 
     # Look up account names
     account_map = {}

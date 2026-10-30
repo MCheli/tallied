@@ -213,7 +213,7 @@ ORDER BY SUM(amount)`,
           label="12mo Change"
           :value="store.data.net_worth_12mo_change != null ? compact(store.data.net_worth_12mo_change) : dash"
           :changeValue="nwChange"
-          :subtitle="store.data.net_worth_12mo_change != null ? 'year over year' : 'needs a year of history'"
+          :subtitle="store.data.net_worth_12mo_change != null ? 'year over year' : 'less than a year'"
           info="Net worth now minus net worth as of a year ago, using each account's newest snapshot on or before that date. Accounts that did not exist a year ago count as new money.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; balance_snapshots history."
           :sql="SQL.nwChange"
           :sqlTables="['accounts', 'balance_snapshots']"
@@ -328,7 +328,7 @@ ORDER BY SUM(amount)`,
         <MetricCard
           label="Vehicles"
           :value="compact(assets.data.value.total_value)"
-          :subtitle="`${assets.data.value.vehicle_count} vehicles, estimated`"
+          :subtitle="`${assets.data.value.vehicle_count} vehicles`"
           info="Sum of the vehicles' estimated values. Each value is a labelled estimate (researched sale prices or AI) with its date and reasoning on the Assets page; vehicles are not part of net worth.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; vehicles.estimated_value."
           :sql="SQL.vehicles"
           :sqlTables="['vehicles']"

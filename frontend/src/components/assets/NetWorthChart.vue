@@ -13,11 +13,12 @@ use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer
 
 const props = defineProps<{ data: NetWorthSeries }>()
 const { baseOption, isMobile, axisLineColor, splitLineColor, mobileAxis, mobileLegend } = useChartDefaults()
-const { currency, compact } = useFormatters()
+const { currency, compact, date: fmtDate } = useFormatters()
 
 const groupColors: Record<string, string> = {
   'Cash': '#3b82f6',
   'Investments': '#22c55e',
+  'Company Stock': '#06b6d4',
   'Home Equity': '#f59e0b',
   'Retirement': '#8b5cf6',
   'Credit Cards': '#ef4444',
@@ -33,7 +34,7 @@ const option = computed(() => {
   const groups = Object.keys(props.data.groups)
   const assets = groups.filter(g => !isLiability(props.data.groups[g]))
   const liabilities = groups.filter(g => isLiability(props.data.groups[g]))
-  const dates = props.data.dates.map(d => d.slice(0, 7))
+  const pairs = (values: number[]) => values.map((v, i) => [props.data.dates[i], v] as [string, number])
 
   return {
     ...baseOption.value,
@@ -41,13 +42,13 @@ const option = computed(() => {
       ...baseOption.value.tooltip,
       trigger: 'axis' as const,
       formatter: (params: unknown) => {
-        const list = (Array.isArray(params) ? params : [params]) as { name: string; seriesName: string; value: number; marker: string }[]
+        const list = (Array.isArray(params) ? params : [params]) as { seriesName: string; value: [string, number]; marker: string }[]
         if (!list.length) return ''
-        let html = `<strong>${list[0].name}</strong>`
+        let html = `<strong>${fmtDate(list[0].value[0])}</strong>`
         let total = 0
         for (const p of list) {
-          html += `<br/>${p.marker} ${p.seriesName}: ${currency(p.value)}`
-          total += p.value
+          html += `<br/>${p.marker} ${p.seriesName}: ${currency(p.value[1])}`
+          total += p.value[1]
         }
         html += `<br/><strong>Net worth: ${currency(total)}</strong>`
         return html
@@ -56,10 +57,10 @@ const option = computed(() => {
     legend: { ...mobileLegend(), data: [...assets, ...liabilities] },
     grid: { ...baseOption.value.grid, bottom: isMobile.value ? 28 : 36 },
     xAxis: {
-      type: 'category' as const,
-      data: dates,
-      axisLabel: { ...mobileAxis(), interval: isMobile.value ? Math.max(1, Math.floor(dates.length / 4)) : Math.max(0, Math.floor(dates.length / 8)) },
+      type: 'time' as const,
+      axisLabel: { ...mobileAxis(), formatter: { month: '{MMM}', year: '{yyyy}', day: '{MMM} {d}' }, hideOverlap: true },
       axisLine: { lineStyle: { color: axisLineColor.value } },
+      splitLine: { show: false },
     },
     yAxis: {
       type: 'value' as const,
@@ -71,8 +72,8 @@ const option = computed(() => {
         name,
         type: 'line' as const,
         stack: 'assets',
-        data: props.data.groups[name],
-        smooth: true,
+        data: pairs(props.data.groups[name]),
+        smooth: false,
         symbol: 'none',
         lineStyle: { width: 1, color: groupColors[name] || '#6366f1' },
         itemStyle: { color: groupColors[name] || '#6366f1' },
@@ -81,8 +82,8 @@ const option = computed(() => {
       ...liabilities.map(name => ({
         name,
         type: 'line' as const,
-        data: props.data.groups[name],
-        smooth: true,
+        data: pairs(props.data.groups[name]),
+        smooth: false,
         symbol: 'none',
         lineStyle: { width: 2, type: 'dashed' as const, color: groupColors[name] || '#ef4444' },
         itemStyle: { color: groupColors[name] || '#ef4444' },

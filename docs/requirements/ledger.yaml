@@ -1133,11 +1133,27 @@ requirements:
     priority: p2
     visible: true
     done_means:
-      - "Notable transactions on Cash come from cash accounts only; a credit card purchase does not move cash."
+      - "Notable transactions on Cash come from cash accounts only; a credit card purchase does not move cash, and a transfer with an equal and opposite entry in another cash account within three days is not a withdrawal."
     status: done
     evidence:
       - backend/tests/test_data_rules.py::test_cash_notable_transactions_are_cash_accounts_only
       - artifacts/screens/cash/desktop.png
+
+  - id: NAV-STALE-001
+    title: A sidebar tap always navigates, even in a tab opened before a deploy
+    job: look
+    area: frontend
+    priority: p0
+    visible: true
+    done_means:
+      - "When a page's code chunk fails to load (it was replaced by a deploy), the app reloads at the tapped page, once."
+      - "On phones the drawer closes on tap and a thin bar shows while the page's code loads; the layout uses the dynamic viewport height so nothing sits under Safari's toolbar."
+    status: done
+    evidence:
+      - frontend/tests/router-chunk-reload.spec.ts#recognises the stale-chunk errors of Chrome, Safari and Firefox
+      - artifacts/screens/dashboard/mobile.png
+    notes:
+      - "2026-10-30: the owner tapped 401(k) on a phone and nothing happened, after six deploys that day."
 
   - id: SPEND-CAT-001
     title: Transactions are categorized by merchant rules, on every sync, without overwriting the owner

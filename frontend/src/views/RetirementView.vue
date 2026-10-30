@@ -196,7 +196,7 @@ const allocationPieOption = computed(() => {
           info="<strong>Pre-tax 401(k)</strong><br>Contributions that reduced taxable income when made; withdrawals are taxed as ordinary income."
           :sql="SQL.pretaxBalance" :sql-tables="['retirement_accounts']" />
         <div class="col-span-2 lg:col-span-1 min-w-0">
-          <MetricCard label="Est. Monthly Income" :value="compact(account.estimated_monthly_income)" subtitle="At retirement"
+          <MetricCard label="Est. Monthly Income" :value="compact(account.estimated_monthly_income)" :subtitle="`${providerName}'s projection`"
             :info="`<strong>Estimated monthly income</strong><br>The retirement income projection printed on the ${providerName} statement. It is their estimate, not Tallied's; the Planning page has Tallied's projection.`"
             :sql="SQL.estMonthlyIncome" :sql-tables="['retirement_accounts']" />
         </div>
@@ -275,7 +275,7 @@ const allocationPieOption = computed(() => {
       </div>
 
       <!-- Holdings table -->
-      <ChartContainer v-if="holdings.length > 0" title="Holdings Detail" subtitle="Balances, allocation and gain/loss per fund"
+      <ChartContainer v-if="holdings.length > 1" title="Holdings Detail" subtitle="Balances, allocation and gain/loss per fund"
         info="<strong>Holdings detail</strong><br>Every fund on the statement with its balance, allocation and reported gain/loss. Live price is Yahoo Finance's latest quote for the ticker."
         :sql="SQL.holdings" :sql-tables="['retirement_holdings', 'retirement_accounts']">
         <DataTable dense :columns="6">

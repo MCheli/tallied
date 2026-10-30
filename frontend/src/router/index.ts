@@ -149,4 +149,21 @@ router.afterEach((to) => {
   document.title = to.meta.title ? `${to.meta.title} — Tallied` : 'Tallied'
 })
 
+// After a deploy, a tab opened earlier still asks for the old page chunks, which no longer exist, and the
+// navigation fails silently (the tap "does nothing"). Load the app fresh at the page that was asked for.
+export function isChunkLoadError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS/i.test(msg)
+}
+
+router.onError((err, to) => {
+  if (!isChunkLoadError(err)) return
+  const key = 'tallied-chunk-reload'
+  try {
+    if (sessionStorage.getItem(key) === to.fullPath) return   // already reloaded once for this page; don't loop
+    sessionStorage.setItem(key, to.fullPath)
+  } catch { /* storage blocked: reload anyway */ }
+  window.location.assign(to.fullPath)
+})
+
 export default router

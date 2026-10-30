@@ -62,6 +62,13 @@ watch(() => route.path, () => {
   mobileOpen.value = false
 })
 
+// A page's code loads on first visit; on a slow phone connection that takes a moment, so show it.
+const navigating = ref(false)
+const stopBefore = router.beforeEach(() => { navigating.value = true })
+const stopAfter = router.afterEach(() => { navigating.value = false })
+const stopError = router.onError(() => { navigating.value = false })
+onUnmounted(() => { stopBefore(); stopAfter(); stopError() })
+
 function toggleDark() {
   theme.toggle()
 }
@@ -141,7 +148,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
   </div>
 
   <!-- App layout: sidebar + content -->
-  <div v-else class="flex h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+  <div v-else class="flex h-dvh bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
 
     <!-- Mobile top bar -->
     <div class="md:hidden fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 h-14">
@@ -153,6 +160,11 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
         <Menu class="w-5 h-5" />
       </button>
       <h1 class="ml-3 text-lg font-bold tracking-tight text-gray-900 dark:text-white">Tallied</h1>
+    </div>
+
+    <!-- Navigation in progress -->
+    <div v-if="navigating" class="fixed top-0 left-0 right-0 z-[60] h-0.5 overflow-hidden" role="progressbar" aria-label="Loading page">
+      <div class="h-full w-1/3 bg-indigo-500 nav-progress" />
     </div>
 
     <!-- Mobile backdrop -->
@@ -209,6 +221,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
             v-for="item in group.items"
             :key="item.name"
             :to="item.to"
+            @click="mobileOpen = false"
             :title="collapsed && !isMobile ? item.label : undefined"
             :aria-label="collapsed && !isMobile ? item.label : undefined"
             :class="[
@@ -281,6 +294,9 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
 </template>
 
 <style scoped>
+.nav-progress { animation: nav-progress 1s ease-in-out infinite; }
+@keyframes nav-progress { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+
 .sidebar-nav::-webkit-scrollbar { display: none; }
 .sidebar-nav { -ms-overflow-style: none; scrollbar-width: none; }
 

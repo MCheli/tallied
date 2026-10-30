@@ -568,8 +568,6 @@ def _warnings(values: dict[str, float], start: dict) -> list[dict]:
     warnings = []
     if values["ss_monthly_at_fra"] <= 0:
         warnings.append({"key": "social_security", "text": "Social Security is not counted. Enter the full-age monthly estimate from ssa.gov/myaccount."})
-    if start["comp_source"] == "vests":
-        warnings.append({"key": "comp", "text": f"The {start['w2_year']} W-2 has gross pay only; salary is gross minus that year's RSU vests."})
     if start["comp_source"] == "none":
         warnings.append({"key": "comp", "text": "No W-2 on file, so there is no salary in the plan. Add one in Settings, Income."})
     if start["company_symbol"] and not start["company_price"]:

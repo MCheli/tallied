@@ -4,7 +4,13 @@ import { api } from '../../api/client'
 import { useFormatters } from '../../composables/useFormatters'
 import type { AccountWithBalance } from '../../types'
 
-const { currency } = useFormatters()
+const { currency, date: fmtDate } = useFormatters()
+
+/** A synced balance more than a week old: the bank connection has stopped updating it. */
+function isStale(acct: AccountWithBalance): boolean {
+  if (acct.source !== 'simplefin' || !acct.balance_date) return false
+  return (Date.now() - new Date(acct.balance_date).getTime()) / 86_400_000 > 7
+}
 
 const accounts = ref<AccountWithBalance[]>([])
 const loading = ref(false)
@@ -248,46 +254,50 @@ const cellInputClass = 'w-full min-w-[8rem] px-2 py-1 text-sm rounded border bor
       <table class="w-full min-w-[56rem] text-sm">
         <thead>
           <tr class="border-b border-gray-100 dark:border-gray-800">
-            <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Name</th>
-            <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Institution</th>
-            <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Type</th>
-            <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Group</th>
-            <th class="text-left px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Source</th>
-            <th class="text-center px-5 py-3 font-medium text-gray-500 dark:text-gray-400">In NW</th>
-            <th class="text-center px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Active</th>
-            <th class="text-right px-5 py-3 font-medium text-gray-500 dark:text-gray-400">Balance</th>
-            <th class="text-right px-5 py-3 font-medium text-gray-500 dark:text-gray-400"></th>
+            <th class="text-left px-3 py-3 font-medium text-gray-500 dark:text-gray-400">Name</th>
+            <th class="text-left px-3 py-3 font-medium text-gray-500 dark:text-gray-400">Institution</th>
+            <th class="text-left px-3 py-3 font-medium text-gray-500 dark:text-gray-400">Type</th>
+            <th class="text-left px-3 py-3 font-medium text-gray-500 dark:text-gray-400">Group</th>
+            <th class="text-left px-3 py-3 font-medium text-gray-500 dark:text-gray-400">Source</th>
+            <th class="text-center px-3 py-3 font-medium text-gray-500 dark:text-gray-400">In NW</th>
+            <th class="text-center px-3 py-3 font-medium text-gray-500 dark:text-gray-400">Active</th>
+            <th class="text-right px-3 py-3 font-medium text-gray-500 dark:text-gray-400">Balance</th>
+            <th class="text-right px-3 py-3 font-medium text-gray-500 dark:text-gray-400"></th>
           </tr>
         </thead>
         <tbody>
           <template v-for="acct in accounts" :key="acct.id">
             <!-- Display Row -->
             <tr v-if="editingAccountId !== acct.id" class="border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800">
-              <td class="px-5 py-3 text-gray-900 dark:text-white max-w-[16rem]">
+              <td class="px-3 py-3 text-gray-900 dark:text-white max-w-[16rem]">
                 <div class="min-w-0 truncate" :title="acct.name">{{ acct.name }}</div>
               </td>
-              <td class="px-5 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ acct.institution || '—' }}</td>
-              <td class="px-5 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ acct.account_type }}</td>
-              <td class="px-5 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ acct.display_group }}</td>
-              <td class="px-5 py-3">
+              <td class="px-3 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ acct.institution || '—' }}</td>
+              <td class="px-3 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ acct.account_type }}</td>
+              <td class="px-3 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ acct.display_group }}</td>
+              <td class="px-3 py-3">
                 <span class="inline-block px-2 py-0.5 text-xs rounded font-medium" :class="sourceBadgeClass(acct.source)">
                   {{ sourceLabel(acct.source) }}
                 </span>
               </td>
-              <td class="px-5 py-3 text-center">
+              <td class="px-3 py-3 text-center">
                 <span :class="acct.include_in_nw ? 'text-green-600 dark:text-green-400' : 'text-gray-400'">
                   {{ acct.include_in_nw ? 'Yes' : 'No' }}
                 </span>
               </td>
-              <td class="px-5 py-3 text-center">
+              <td class="px-3 py-3 text-center">
                 <span :class="acct.is_active ? 'text-green-600 dark:text-green-400' : 'text-gray-400'">
                   {{ acct.is_active ? 'Yes' : 'No' }}
                 </span>
               </td>
-              <td class="px-5 py-3 text-right font-medium text-gray-900 dark:text-white whitespace-nowrap">
+              <td class="px-3 py-3 text-right font-medium text-gray-900 dark:text-white whitespace-nowrap">
                 {{ acct.current_balance != null ? currency(acct.current_balance) : '—' }}
+                <div v-if="acct.balance_date" class="text-xs font-normal" :class="isStale(acct) ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400'"
+                  :title="isStale(acct) ? 'The bank connection has not updated this balance for over a week' : undefined">
+                  {{ isStale(acct) ? 'stale · ' : '' }}{{ fmtDate(acct.balance_date) }}
+                </div>
               </td>
-              <td class="px-5 py-3 text-right">
+              <td class="px-3 py-3 text-right">
                 <div class="flex gap-3 justify-end">
                   <button @click="startEditAccount(acct)" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 text-sm font-medium">
                     Edit
