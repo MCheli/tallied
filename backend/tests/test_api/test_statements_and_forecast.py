@@ -118,3 +118,28 @@ def test_inbound_receipt_is_queued_then_processed(client, db_session, monkeypatc
     wrong = client.post("/api/v1/email-import/inbound", headers={"X-Email-Webhook-Secret": "nope"},
                         json={"from_email": "x@y", "forwarded_by": "me@home.test", "to": "r", "subject": "s"})
     assert wrong.status_code == 401
+
+
+def test_retirement_summary_shows_the_synced_balance_after_the_last_statement(client, db_session):
+    """RET-LIVE-001: a 401(k) linked through the bank connection shows today's balance, not only the statement's."""
+    from datetime import date as _date
+    from decimal import Decimal as _D
+
+    from app.models.account import Account
+    from app.models.balance import BalanceSnapshot
+    from app.models.retirement import RetirementAccount, RetirementSnapshot
+
+    db_session.add(Account(id="ret", name="401k", account_type="investment_401k", display_group="Retirement", include_in_nw=True))
+    acct = RetirementAccount(plan_name="Plan", provider="Fidelity", account_id="ret", total_balance=_D("100000"))
+    db_session.add(acct)
+    db_session.flush()
+    db_session.add(RetirementSnapshot(retirement_account_id=acct.id, snapshot_date=_date(2026, 9, 30), balance=_D("100000"), source="statement"))
+    db_session.add_all([
+        BalanceSnapshot(account_id="ret", snapshot_date=_date(2026, 9, 30), balance=_D("100000"), source="statement"),
+        BalanceSnapshot(account_id="ret", snapshot_date=_date(2026, 10, 30), balance=_D("103000"), source="simplefin"),
+    ])
+    db_session.commit()
+    body = client.get("/api/v1/retirement/summary").json()
+    assert body["account"]["live_balance"] == 103000 and body["account"]["live_balance_date"] == "2026-10-30"
+    assert [p["date"] for p in body["snapshots"]] == ["2026-09-30", "2026-10-30"] and body["snapshots"][1]["synced"]
+

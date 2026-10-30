@@ -29,10 +29,16 @@ const accountNames = computed<Record<string, string>>(() => {
   return m
 })
 
+// Only account kinds that carry everyday spending; a mortgage, house or 401(k) chip filters to nothing useful.
+const SPENDING_ACCOUNT_LABELS: Record<string, string> = { cash: 'Checking & savings', credit_card: 'Credit cards' }
 const accountTypeOptions = computed(() => {
   const counts = new Map<string, number>()
-  for (const a of accounts.value) counts.set(a.account_type, (counts.get(a.account_type) ?? 0) + 1)
-  return Array.from(counts.entries()).map(([type, count]) => ({ type, count })).sort((a, b) => a.type.localeCompare(b.type))
+  for (const a of accounts.value) {
+    if (a.account_type in SPENDING_ACCOUNT_LABELS) counts.set(a.account_type, (counts.get(a.account_type) ?? 0) + 1)
+  }
+  return Array.from(counts.entries())
+    .map(([type, count]) => ({ type, count, label: SPENDING_ACCOUNT_LABELS[type] }))
+    .sort((a, b) => a.label.localeCompare(b.label))
 })
 
 function toggleAccountType(t: string) {
@@ -201,7 +207,7 @@ ORDER BY month`
                   : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
               ]"
             >
-              {{ opt.type }} <span class="opacity-60">({{ opt.count }})</span>
+              {{ opt.label }} <span class="opacity-60">({{ opt.count }})</span>
             </button>
           </div>
         </div>

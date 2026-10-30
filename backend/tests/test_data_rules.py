@@ -180,3 +180,18 @@ def test_refunds_net_spending_but_income_does_not(client, db_session):
     cats = {c["category"]: c["total"] for c in client.get("/api/v1/spending/by-category").json()}
     assert cats == {"Car Auctions": 0.0, "Shopping": -100.0}       # refunded deposit nets to zero; returns net
     assert client.get("/api/v1/spending/monthly-trend").json()[0]["total"] == -100.0
+
+
+def test_cash_notable_transactions_are_cash_accounts_only(client, db_session):
+    """CASH-NOTABLE-001: a card purchase does not move cash, so it is not a notable cash withdrawal."""
+    _account(db_session, "chk")
+    db_session.add(Account(id="card", name="Card", account_type="credit_card", display_group="Credit Cards", include_in_nw=True))
+    d = date.today()
+    db_session.add_all([
+        Transaction(id="w1", account_id="chk", date=d, amount=Decimal("-1500"), merchant="Rent", source="test"),
+        Transaction(id="c1", account_id="card", date=d, amount=Decimal("-900"), merchant="Online Store", source="test"),
+    ])
+    db_session.commit()
+    res = client.get("/api/v1/transactions/large", params={"threshold": 500, "days": 30, "account_type": "cash"}).json()
+    assert [t["id"] for t in res] == ["w1"]
+

@@ -6,9 +6,9 @@ const now = new Date(2026, 9, 29) // 2026-10-29 local
 describe('date presets', () => {
   it('builds ranges from local calendar fields', () => {
     expect(presetRange('month', now)).toEqual({ from: '2026-10-01', to: '2026-10-29' })
-    expect(presetRange('3mo', now)).toEqual({ from: '2026-07-29', to: '2026-10-29' })
+    expect(presetRange('3mo', now)).toEqual({ from: '2026-08-01', to: '2026-10-29' })
     expect(presetRange('ytd', now)).toEqual({ from: '2026-01-01', to: '2026-10-29' })
-    expect(presetRange('12mo', now)).toEqual({ from: '2025-10-29', to: '2026-10-29' })
+    expect(presetRange('12mo', now)).toEqual({ from: '2025-11-01', to: '2026-10-29' })
   })
 
   it('never shifts a day through UTC conversion', () => {

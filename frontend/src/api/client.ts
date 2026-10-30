@@ -184,10 +184,10 @@ export const api = {
       account_types: accountTypes && accountTypes.length ? accountTypes.join(',') : undefined,
     })),
   getExcludedCategories: () => fetchJson<string[]>('/spending/excluded-categories'),
-  getLargeTransactions: (opts: { threshold?: number; days?: number; limit?: number; excludeIncome?: boolean } = {}) =>
+  getLargeTransactions: (opts: { threshold?: number; days?: number; limit?: number; excludeIncome?: boolean; accountType?: string } = {}) =>
     fetchJson<LargeTransaction[]>('/transactions/large' + buildQuery({
       threshold: opts.threshold, days: opts.days, limit: opts.limit,
-      exclude_income: opts.excludeIncome ? 'true' : undefined,
+      exclude_income: opts.excludeIncome ? 'true' : undefined, account_type: opts.accountType,
     })),
 
   // Page summaries used by the Dashboard

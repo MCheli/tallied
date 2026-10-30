@@ -22,7 +22,7 @@ import type { RetirementSummary } from '../types'
 use([PieChart, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 const { baseOption, COLORS, isMobile, axisLineColor, splitLineColor, mutedTextColor, mobileAxis } = useChartDefaults()
-const { money, compact, percent, date: fmtDate, monthYear, dash } = useFormatters()
+const { money, compact, percent, date: fmtDate, dash } = useFormatters()
 const { openImport } = useImportModal()
 const { openData } = useDataExplorer()
 
@@ -127,19 +127,19 @@ const historyChartOption = computed(() => ({
     ...baseOption.value.tooltip,
     formatter: (params: any) => {
       const p = Array.isArray(params) ? params[0] : params
-      return `<strong>${monthYear(p.name)}</strong><br/>Balance: ${money(p.value)}`
+      return `<strong>${fmtDate(p.value[0])}</strong><br/>Balance: ${money(p.value[1])}`
     },
   },
   xAxis: {
-    type: 'category' as const,
-    data: snapshots.value.map(s => s.date),
-    axisLabel: { ...mobileAxis(), formatter: (v: string) => monthYear(v) },
+    type: 'time' as const,
+    axisLabel: { ...mobileAxis(), formatter: '{MMM} {yyyy}' },
     axisTick: { show: false },
+    splitLine: { show: false },
     axisLine: { lineStyle: { color: axisLineColor.value } },
   },
   yAxis: { type: 'value' as const, axisLabel: { ...mobileAxis(), formatter: (v: number) => compact(v) }, splitLine: { lineStyle: { color: splitLineColor.value, type: 'dashed' as const } } },
   series: [{
-    type: 'line', data: snapshots.value.map(s => s.balance), smooth: true, symbol: 'circle', symbolSize: 6,
+    type: 'line', data: snapshots.value.map(s => [s.date, s.balance]), smooth: false, symbol: 'circle', symbolSize: 6, showSymbol: snapshots.value.length < 40,
     lineStyle: { width: 2.5, color: COLORS[0] },
     areaStyle: { color: { type: 'linear' as const, x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(99,102,241,0.15)' }, { offset: 1, color: 'rgba(99,102,241,0.02)' }] } },
   }],
@@ -182,8 +182,9 @@ const allocationPieOption = computed(() => {
     <template v-else>
       <!-- Tiles -->
       <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <MetricCard label="Total Balance" :value="compact(account.total_balance)" :subtitle="`Vested ${compact(account.vested_balance)}`"
-          :info="`<strong>Total balance</strong><br>Roth + pre-tax + employer match + other, as of the newest statement.<br><br><strong>Source:</strong> ${providerName} statement (statement end ${fmtDate(account.statement_end)}).`"
+        <MetricCard label="Total Balance" :value="compact(account.live_balance ?? account.total_balance)"
+          :subtitle="account.live_balance != null ? `${fmtDate(account.live_balance_date)} · statement ${compact(account.total_balance)}` : `Vested ${compact(account.vested_balance)}`"
+          :info="`<strong>Total balance</strong><br>The balance ${providerName} reports today through the bank connection when the account is linked; otherwise Roth + pre-tax + employer match + other from the newest statement. The Roth/pre-tax split below is from the statement.<br><br><strong>Source:</strong> balance_snapshots (synced) and the ${providerName} statement (statement end ${fmtDate(account.statement_end)}).`"
           :sql="SQL.totalBalance" :sql-tables="['retirement_accounts']" />
         <MetricCard label="Account Return" :value="percent(account.account_return)" :subtitle="`Since ${fmtDate(account.return_period_start)}`"
           info="<strong>Account return</strong><br>Total return reported on the statement since the return period start: market gains, dividends and fund appreciation."
@@ -295,7 +296,7 @@ const allocationPieOption = computed(() => {
       </ChartContainer>
 
       <!-- Balance history -->
-      <ChartContainer title="Balance History" subtitle="One point per imported statement"
+      <ChartContainer title="Balance History" subtitle="Imported statements, then the daily balance from the bank connection"
         info="<strong>Balance history</strong><br>The balance at the end of each statement you imported. Import more statements (older ones are fine) to extend the line."
         :sql="SQL.balanceHistory" :sql-tables="['retirement_snapshots', 'retirement_accounts']" :empty="snapshots.length === 0" empty-text="No statements imported yet">
         <div v-if="snapshots.length > 1" style="height: 240px"><VChart :option="historyChartOption" autoresize /></div>

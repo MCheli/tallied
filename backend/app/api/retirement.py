@@ -41,6 +41,18 @@ def retirement_summary(db: Session = Depends(get_tenant_db)):
         .order_by(RetirementSnapshot.snapshot_date)
     ).scalars().all()
 
+    # The provider's daily balance (SimpleFIN), newer than the last statement, when the account is linked.
+    from app.models.balance import BalanceSnapshot
+    last_statement = snapshots[-1].snapshot_date if snapshots else None
+    synced = []
+    if account.account_id:
+        q = select(BalanceSnapshot).where(BalanceSnapshot.account_id == account.account_id,
+                                          BalanceSnapshot.source != "statement")
+        if last_statement:
+            q = q.where(BalanceSnapshot.snapshot_date > last_statement)
+        synced = db.execute(q.order_by(BalanceSnapshot.snapshot_date)).scalars().all()
+    live = synced[-1] if synced else None
+
     # Fetch live prices for holdings with tickers
     holdings_data = []
     for h in holdings:
@@ -87,6 +99,8 @@ def retirement_summary(db: Session = Depends(get_tenant_db)):
             "statement_end": account.statement_end.isoformat() if account.statement_end else None,
             "estimated_monthly_income": float(account.estimated_monthly_income or 0),
             "updated_at": account.updated_at.isoformat() if account.updated_at else None,
+            "live_balance": float(live.balance) if live else None,
+            "live_balance_date": live.snapshot_date.isoformat() if live else None,
         },
         "balance_breakdown": {
             "roth": roth,
@@ -107,6 +121,10 @@ def retirement_summary(db: Session = Depends(get_tenant_db)):
                 "employer": float(s.employer_balance) if s.employer_balance else None,
             }
             for s in snapshots
+        ] + [
+            {"date": b.snapshot_date.isoformat(), "balance": float(b.balance), "roth": None, "pretax": None,
+             "employer": None, "synced": True}
+            for b in synced
         ],
     }
 

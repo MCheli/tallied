@@ -294,14 +294,14 @@ const valueHistoryChartOption = computed(() => {
     },
     series: [
       {
-        name: 'Value history', type: 'line', data: actualPoints, smooth: true, symbol: 'circle', symbolSize: 6,
+        name: 'Value history', type: 'line', data: actualPoints, smooth: false, symbol: 'circle', symbolSize: 6,
         lineStyle: { width: 2.5, color: COLORS[0] }, itemStyle: { color: COLORS[0] }, areaStyle: { color: COLORS[0], opacity: 0.08 },
       },
       ...(saleData.length ? [{ name: 'Sale price', type: 'scatter', data: saleData, symbol: 'diamond', symbolSize: 12, itemStyle: { color: COLORS[1] }, z: 20 }] : []),
       ...(estimateData.length ? [{ name: 'Realtor.com estimate', type: 'scatter', data: estimateData, symbol: 'circle', symbolSize: 10, itemStyle: { color: COLORS[5] }, z: 20 }] : []),
       ...(manualData.length ? [{ name: 'Manual entry', type: 'scatter', data: manualData, symbol: 'pin', symbolSize: 14, itemStyle: { color: COLORS[6] }, z: 20 }] : []),
       ...(projectedLine.length ? [{
-        name: projectionLabel.value, type: 'line', data: projectedLine, smooth: true, symbol: 'circle', symbolSize: 5,
+        name: projectionLabel.value, type: 'line', data: projectedLine, smooth: false, symbol: 'circle', symbolSize: 5,
         lineStyle: { width: 2, color: COLORS[2], type: 'dashed' as const }, itemStyle: { color: COLORS[2] }, areaStyle: { color: COLORS[2], opacity: 0.06 },
       }] : []),
     ],
@@ -347,7 +347,7 @@ const amortChartOption = computed(() => {
     },
     yAxis: [
       { type: 'value' as const, position: 'left' as const, axisLabel: { ...mobileAxis(), formatter: yAxisMoney }, splitLine: { lineStyle: { color: splitLineColor.value, type: 'dashed' as const } } },
-      { type: 'value' as const, position: 'right' as const, axisLabel: { ...mobileAxis(), formatter: yAxisMoney }, splitLine: { show: false } },
+      { type: 'value' as const, position: 'right' as const, axisLabel: { ...mobileAxis(), formatter: (v: number) => money(v) }, splitLine: { show: false } },
     ],
     series: [
       {
@@ -385,7 +385,7 @@ const paymentPieOption = computed(() => {
     tooltip: { ...baseOption.value.tooltip, trigger: 'item' as const, formatter: (p: any) => `<strong>${p.name}</strong><br/>${money(p.value)} (${p.percent.toFixed(1)}%)` },
     series: [{
       type: 'pie', radius: ['45%', '75%'], center: ['50%', '50%'], avoidLabelOverlap: true,
-      label: { show: !isMobile.value, formatter: '{b}\n{d}%', fontSize: 11, color: mutedTextColor.value },
+      label: { show: false },  // the legend table below names each slice
       labelLine: { show: !isMobile.value },
       data: paymentRows.value.map((r) => ({ value: r.value, name: r.name, itemStyle: { color: r.color } })),
     }],
@@ -437,7 +437,7 @@ const sourceOptions: ValuationSourceLabel[] = ['Manual', 'Redfin', 'Zillow', 'Ap
           :subtitle="summary?.mortgage?.origination_date ? `since ${fmtDate(summary.mortgage.origination_date)}` : ''"
           info="<strong>Interest Rate</strong><br>Annual rate on the mortgage, from the statement."
           :sql="SQL.interestRate" :sql-tables="['mortgages']" />
-        <MetricCard label="Monthly Payment" :value="compact(summary?.mortgage?.monthly_payment)"
+        <MetricCard label="Monthly Payment" :value="money(summary?.mortgage?.monthly_payment)"
           :subtitle="summary?.mortgage?.escrow != null ? `incl. ${money(summary.mortgage.escrow)} escrow` : 'escrow unknown'"
           info="<strong>Monthly Payment</strong><br>Total payment from the statement. The principal/interest split shown below is computed from the rate and balance."
           :sql="SQL.monthlyPayment" :sql-tables="['mortgages']" />

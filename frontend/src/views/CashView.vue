@@ -76,7 +76,7 @@ async function loadData() {
 async function loadRangeData() {
   const days = rangeDays(timeRange.value) ?? 9999
   const [txnRes, spendRes] = await Promise.allSettled([
-    api.getLargeTransactions({ threshold: threshold.value, days, limit: 100, excludeIncome: true }),
+    api.getLargeTransactions({ threshold: threshold.value, days, limit: 100, excludeIncome: true, accountType: 'cash' }),
     api.getMonthlyTrend(fromDate.value ?? undefined, localISO(new Date())),
   ])
   largeTransactions.value = txnRes.status === 'fulfilled' ? txnRes.value : []

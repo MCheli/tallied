@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
@@ -307,8 +307,11 @@ if STATIC_DIR.exists():
 
     @app.get("/{full_path:path}")
     async def serve_spa(request: Request, full_path: str):
-        """Serve Vue SPA — all non-API routes return index.html."""
-        file_path = STATIC_DIR / full_path
-        if file_path.exists() and file_path.is_file():
+        """Serve Vue SPA — all non-API routes return index.html. An unknown /api path is a JSON 404, not the app."""
+        if full_path == "api" or full_path.startswith("api/"):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        root = STATIC_DIR.resolve()
+        file_path = (root / full_path).resolve()
+        if file_path.is_relative_to(root) and file_path.is_file():
             return FileResponse(file_path)
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(root / "index.html")

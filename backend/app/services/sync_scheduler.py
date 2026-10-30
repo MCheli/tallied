@@ -401,7 +401,21 @@ async def sync_all_tenants():
                 continue
             await run_sync_with_job(schema, job_id, provider)
             results.append({"schema": schema, "provider": provider, "job_id": job_id})
+        refresh_company_stock(schema)
     return results
+
+
+def refresh_company_stock(schema: str) -> None:
+    """Today's value of the vested company shares (services/company_stock.py)."""
+    from app.services import company_stock
+
+    try:
+        with tenant_session(schema) as db:
+            written = company_stock.refresh(db)
+        if written:
+            logger.info("Company stock: %d balance(s) written for %s", written, schema)
+    except Exception:
+        logger.exception("Company stock refresh failed for %s", schema)
 
 
 # ── Loops ─────────────────────────────────────────────────────────────────────

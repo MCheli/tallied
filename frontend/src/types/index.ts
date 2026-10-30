@@ -845,6 +845,8 @@ export interface RetirementAccountSummary {
   statement_end: string | null
   estimated_monthly_income: number
   updated_at: string | null
+  live_balance?: number | null
+  live_balance_date?: string | null
 }
 
 export interface RetirementHoldingSummary {
@@ -863,6 +865,7 @@ export interface RetirementSnapshotPoint {
   roth: number | null
   pretax: number | null
   employer: number | null
+  synced?: boolean
 }
 
 export interface RetirementSummary {

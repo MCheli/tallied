@@ -131,10 +131,13 @@ def large_transactions(
     days: int = Query(30),
     limit: int = Query(20),
     exclude_income: bool = Query(False, description="Drop positive amounts (paychecks, deposits)"),
+    account_type: str | None = Query(None, description="Only accounts of this type, e.g. cash"),
     db: Session = Depends(get_tenant_db),
 ):
     """Return recent transactions above a threshold amount (absolute value)."""
     from datetime import timedelta
+
+    from app.models.account import Account
     cutoff = date.today() - timedelta(days=days)
 
     stmt = (
@@ -146,10 +149,11 @@ def large_transactions(
     )
     if exclude_income:
         stmt = stmt.where(Transaction.amount < 0)
+    if account_type:
+        stmt = stmt.where(Transaction.account_id.in_(select(Account.id).where(Account.account_type == account_type)))
     rows = db.execute(stmt).scalars().all()
 
     # Look up account names
-    from app.models.account import Account
     account_map = {}
     acct_ids = {t.account_id for t in rows if t.account_id}
     if acct_ids:

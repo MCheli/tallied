@@ -1095,6 +1095,50 @@ requirements:
     notes:
       - "2026-10-30: 'Connection to Ally Bank may need attention' and 'Apple Card ... Auth required' sat in the scheduler log for weeks."
 
+  - id: LOOK-NW-004
+    title: Vested company shares count in net worth and liquid net worth
+    job: look
+    area: dashboard
+    priority: p0
+    visible: true
+    done_means:
+      - "A system account 'company-stock' (display group Company Stock) holds sellable shares x that day's close, written by the scheduler every cycle; unvested shares are not counted."
+      - "The first run backfills weekly closes to the start of the balance history, assuming no sales (shares held = today's sellable less later releases)."
+      - "Net worth, liquid net worth, the liquidity layers and the trend include it; Planning uses the same balance instead of its own estimate."
+    status: done
+    evidence:
+      - backend/tests/test_company_stock.py::test_company_stock_is_sellable_shares_at_the_days_close_and_past_days_exclude_later_vests
+      - backend/tests/test_company_stock.py::test_snapshot_counts_company_stock_in_net_worth_and_liquid_net_worth
+      - artifacts/screens/dashboard/desktop.png
+    notes:
+      - "Found 2026-10-30 in the production sweep: ~$196K of sellable shares were missing from net worth while Planning counted them."
+
+  - id: RET-LIVE-001
+    title: A 401(k) linked through the bank connection shows today's balance
+    job: look
+    area: retirement
+    priority: p1
+    visible: true
+    done_means:
+      - "The 401(k) page's Total Balance is the newest synced balance when one is newer than the statement, with the statement figure beside it; the history adds the synced days on a time axis."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_statements_and_forecast.py::test_retirement_summary_shows_the_synced_balance_after_the_last_statement
+      - artifacts/screens/retirement/desktop.png
+
+  - id: CASH-NOTABLE-001
+    title: Cash's notable transactions are checking and savings activity only
+    job: look
+    area: cash
+    priority: p2
+    visible: true
+    done_means:
+      - "Notable transactions on Cash come from cash accounts only; a credit card purchase does not move cash."
+    status: done
+    evidence:
+      - backend/tests/test_data_rules.py::test_cash_notable_transactions_are_cash_accounts_only
+      - artifacts/screens/cash/desktop.png
+
   - id: SPEND-CAT-001
     title: Transactions are categorized by merchant rules, on every sync, without overwriting the owner
     job: understand

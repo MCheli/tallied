@@ -45,7 +45,16 @@ const waterfallTotal = computed(() => (store.data ? waterfallNetWorth(store.data
 
 const spendingTotal = computed(() => (spending.data.value ?? []).reduce((s, c) => s + c.total, 0))
 const topSpending = computed(() => (spending.data.value ?? []).slice(0, 5))
-const upcomingVests = computed(() => rsu.data.value?.upcoming_vests?.slice(0, 4) ?? [])
+// One row per vest date: two grants vesting the same day are one deposit.
+const upcomingVests = computed(() => {
+  const byDate = new Map<string, { grant_id: string; vest_date: string; shares: number; est_value: number }>()
+  for (const v of rsu.data.value?.upcoming_vests ?? []) {
+    const row = byDate.get(v.vest_date)
+    if (row) { row.shares += v.shares; row.est_value += v.est_value ?? 0 }
+    else byDate.set(v.vest_date, { grant_id: String(v.grant_id), vest_date: v.vest_date, shares: v.shares, est_value: v.est_value ?? 0 })
+  }
+  return [...byDate.values()].slice(0, 4)
+})
 const symbol = computed(() => rsu.data.value?.symbol ?? 'the grants’ symbol')
 
 // ── SQL transparency (Postgres; describes what the API runs) ─────────────────
@@ -179,23 +188,23 @@ ORDER BY SUM(amount)`,
         <MetricCard
           label="Liquid Net Worth"
           :value="compact(store.data.liquid_net_worth)"
-          subtitle="cash + investments"
-          info="Money that can be spent within days: the Cash, Investments and Company Stock layers only. Home equity, retirement accounts and liabilities are left out.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; latest balance_snapshots row per account, filtered by display group."
+          subtitle="cash + vested stock"
+          info="Money that can be spent within days: the Cash, Investments and Company Stock layers only (vested shares at today's price, before tax). Home equity, retirement accounts and liabilities are left out.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; latest balance_snapshots row per account, filtered by display group."
           :sql="SQL.liquidNetWorth"
           :sqlTables="['accounts', 'balance_snapshots']"
         />
         <MetricCard
           label="RSU Holdings"
           :value="rsu.data.value ? compact(rsu.data.value.held_value) : dash"
-          :subtitle="rsu.error.value ? 'unavailable' : (rsu.data.value ? `${rsu.data.value.sellable_shares} sellable + ${rsu.data.value.unvested_shares} unvested` : '')"
-          :info="`Value of the ${symbol} RSU shares still held (sellable + unvested) at the current market price, fetched once a day from Yahoo Finance. Not part of net worth.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; rsu_grants share counts &times; stock_prices.`"
+          :subtitle="rsu.error.value ? 'unavailable' : (rsu.data.value ? `${rsu.data.value.unvested_shares.toLocaleString()} sh. unvested` : '')"
+          :info="`Value of the ${symbol} RSU shares still held (sellable + unvested) at the current market price, fetched once a day from Yahoo Finance. The sellable shares are in net worth as the Company Stock layer; unvested shares are not, because they are not owned yet.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; rsu_grants share counts &times; stock_prices.`"
           :sql="SQL.rsuHoldings"
           :sqlTables="['rsu_grants', 'stock_prices']"
         />
         <MetricCard
           label="Total Comp"
           :value="store.data.total_comp_annual ? compact(store.data.total_comp_annual) : dash"
-          subtitle="base + RSU, latest W-2"
+          subtitle="salary + RSU"
           info="Base salary plus RSU income from the most recent W-2 record. When the W-2 has only gross pay, this is the gross pay, split using that year's vests.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; w2_records, newest tax year, and vest_events."
           :sql="SQL.totalComp"
           :sqlTables="['w2_records']"
@@ -204,7 +213,7 @@ ORDER BY SUM(amount)`,
           label="12mo Change"
           :value="store.data.net_worth_12mo_change != null ? compact(store.data.net_worth_12mo_change) : dash"
           :changeValue="nwChange"
-          subtitle="year over year"
+          :subtitle="store.data.net_worth_12mo_change != null ? 'year over year' : 'needs a year of history'"
           info="Net worth now minus net worth as of a year ago, using each account's newest snapshot on or before that date. Accounts that did not exist a year ago count as new money.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; balance_snapshots history."
           :sql="SQL.nwChange"
           :sqlTables="['accounts', 'balance_snapshots']"
@@ -212,7 +221,7 @@ ORDER BY SUM(amount)`,
         <MetricCard
           label="Property Equity"
           :value="property.data.value?.equity != null ? compact(property.data.value.equity) : dash"
-          :subtitle="property.error.value ? 'unavailable' : 'value minus mortgage'"
+          :subtitle="property.error.value ? 'unavailable' : 'value − mortgage'"
           info="Latest property valuation minus the mortgage's newest balance (synced daily), so this matches the Home Equity layer.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; property_valuations and balance_snapshots."
           :sql="SQL.propertyEquity"
           :sqlTables="['property_valuations', 'mortgages', 'accounts']"
@@ -226,7 +235,7 @@ ORDER BY SUM(amount)`,
             title="Liquidity Layers"
             :subtitle="`Cash to retirement, in order of access; the last bar is net worth (${compact(waterfallTotal)})`"
             :empty="store.data.layers.length === 0"
-            info="Each bar is one layer's total over the accounts included in net worth: Cash, Investments, Home Equity, Retirement, then liabilities, which hang downward. The final bar equals the Net Worth tile.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; accounts grouped by display_group, latest balance per account."
+            info="Each bar is one layer's total over the accounts included in net worth: Cash, Investments, Company Stock (vested shares), Home Equity, Retirement, then liabilities, which hang downward. The final bar equals the Net Worth tile.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; accounts grouped by display_group, latest balance per account."
             :sql="SQL.liquidityLayers"
             :sqlTables="['accounts', 'balance_snapshots']"
           >
@@ -274,7 +283,7 @@ ORDER BY SUM(amount)`,
           :loading="rsu.loading.value"
           :empty="!rsu.loading.value && upcomingVests.length === 0"
           :empty-text="rsu.error.value ? `Could not load RSU data: ${rsu.error.value}` : 'No upcoming vests'"
-          :info="`The next four RSU vest events. The estimated value multiplies the shares by today's ${symbol} price; the real value depends on the price on the vest date.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; vest_events (future events) and stock_prices.`"
+          :info="`The next four RSU vest dates (grants vesting the same day are added together). The estimated value multiplies the shares by today's ${symbol} price; the real value depends on the price on the vest date.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; vest_events (future events) and stock_prices.`"
           :sql="SQL.upcomingVests"
           :sqlTables="['vest_events', 'rsu_grants', 'stock_prices']"
         >
@@ -319,8 +328,8 @@ ORDER BY SUM(amount)`,
         <MetricCard
           label="Vehicles"
           :value="compact(assets.data.value.total_value)"
-          :subtitle="`${assets.data.value.vehicle_count} tracked, AI estimate`"
-          info="Sum of the vehicles' estimated values. Each value is a labelled AI estimate with its date and reasoning on the Assets page; vehicles are not part of net worth.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; vehicles.estimated_value."
+          :subtitle="`${assets.data.value.vehicle_count} vehicles, estimated`"
+          info="Sum of the vehicles' estimated values. Each value is a labelled estimate (researched sale prices or AI) with its date and reasoning on the Assets page; vehicles are not part of net worth.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; vehicles.estimated_value."
           :sql="SQL.vehicles"
           :sqlTables="['vehicles']"
         />

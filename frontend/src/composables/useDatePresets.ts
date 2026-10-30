@@ -34,12 +34,13 @@ export function presetRange(preset: DatePreset, now: Date = new Date()): { from:
   switch (preset) {
     case 'month':
       return { from: localISO(new Date(now.getFullYear(), now.getMonth(), 1)), to }
+    // Whole calendar months (this one and the ones before), so a monthly chart never opens on a sliver.
     case '3mo':
-      return { from: localISO(new Date(now.getFullYear(), now.getMonth() - 3, now.getDate())), to }
+      return { from: localISO(new Date(now.getFullYear(), now.getMonth() - 2, 1)), to }
     case 'ytd':
       return { from: `${now.getFullYear()}-01-01`, to }
     case '12mo':
-      return { from: localISO(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())), to }
+      return { from: localISO(new Date(now.getFullYear(), now.getMonth() - 11, 1)), to }
   }
 }
 
