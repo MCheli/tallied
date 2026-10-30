@@ -10,6 +10,7 @@ How to add or change something without breaking the shape of the codebase. Read 
 4. Every schema change ships an Alembic migration that iterates all tenant schemas.
 5. Financial routes use `get_tenant_db`; platform routes use `get_db`. Nothing from a request is interpolated into SQL.
 6. `make pre-commit` passes before every commit.
+7. Writes live in services, not route handlers. Any route you touch for a feature moves its database writes into `app/services/` in that same change, with a test on the service function. No new inline writers; the existing ones retire as their routes are touched (decided 2026-10-29 instead of a big-bang refactor).
 
 ## Commands
 

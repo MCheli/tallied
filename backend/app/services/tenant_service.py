@@ -6,6 +6,7 @@ listener in app.database as soon as the connection is recycled (which happens
 after every commit), so every tenant-scoped code path (request dependency, email
 webhook, scheduler, seed) must go through this helper.
 """
+import logging
 from collections.abc import Generator
 from contextlib import contextmanager
 
@@ -13,6 +14,8 @@ from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
 from app.database import Base, SessionLocal, engine
+
+logger = logging.getLogger("tallied.tenant")
 
 # Tables that live in the public schema (not per-tenant)
 PLATFORM_TABLES = {
@@ -112,5 +115,5 @@ def tenant_session(schema: str, *, include_public: bool = True) -> Generator[Ses
         try:
             db.rollback()
         except Exception:  # pragma: no cover - connection already gone
-            pass
+            logger.debug("Rollback on tenant session close failed (connection already gone?)", exc_info=True)
         db.close()

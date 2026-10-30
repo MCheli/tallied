@@ -24,6 +24,7 @@ FastAPI + Vue 3 + PostgreSQL (schema per tenant). One household's accounts, tran
 - Every tile has an `InfoTooltip` that is true, and an empty state.
 - Views call `frontend/src/api/client.ts`; no `fetch` in a view. Page chrome comes from the shared components.
 - No `except Exception: pass`. Log what you swallow.
+- Writes live in services. Any route touched for a feature moves its writes into `app/services/` in the same change, with a test; no new inline writers.
 - `make pre-commit` must pass before every commit. It includes `build-smoke`: the minified production bundle served and loaded in a real browser. The dev server and the tour run unbundled modules and cannot see chunk-ordering failures (2026-10-29: a circular chunk blanked production).
 
 ## Quick start

@@ -443,7 +443,7 @@ async def notify_listener_loop():
         try:
             raw.close()
         except Exception:
-            pass
+            logger.debug("Closing the NOTIFY listener connection failed", exc_info=True)
 
 
 async def _process_notify(schema: str, provider: str) -> None:

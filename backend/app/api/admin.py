@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,6 +9,8 @@ from app.dependencies import TenantContext, get_tenant_context, get_tenant_db
 from app.models.account import Account
 from app.models.balance import BalanceSnapshot
 from app.models.transaction import Transaction
+
+logger = logging.getLogger("tallied.admin")
 
 router = APIRouter(prefix="/admin", tags=["admin"], include_in_schema=False)
 
@@ -38,8 +41,8 @@ def _coerce(value: Any) -> Any:
     if hasattr(value, "__float__"):
         try:
             return float(value)
-        except Exception:
-            pass
+        except (TypeError, ValueError, ArithmeticError):
+            logger.debug("Value %r is not float-coercible; returning its string form", value)
     return str(value)
 
 
@@ -57,6 +60,7 @@ def list_tables(
         try:
             row_count = db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar()
         except Exception:
+            logger.warning("Could not count rows in %s.%s", schema, table, exc_info=True)
             row_count = None
 
         most_recent = None
@@ -73,7 +77,8 @@ def list_tables(
                     elif most_recent:
                         most_recent = str(most_recent)
             except Exception:
-                pass
+                logger.warning("Could not read MAX(%s) from %s.%s", date_col, schema, table, exc_info=True)
+                most_recent = None
 
         results.append(
             {
