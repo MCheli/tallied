@@ -363,6 +363,8 @@ export interface StartingPoint {
   living_spending?: number
   other_debt_payments?: number
   savings_from?: 'cash_flow' | 'typed'
+  projects_observed?: number
+  projects_allowance?: number
   roth_share_of_401k?: number
   irs_401k_limit: number
   investable: number
@@ -381,6 +383,11 @@ export interface SpendingBuilder {
   /** A year's spending: the observed total scaled to 12 months when history is shorter */
   trailing_total: number
   observed_total?: number
+  /** Spending without projects/hobbies and one-off spikes, as a year */
+  typical_living?: number
+  /** Projects and hobbies (home, vehicles) at the last year's pace */
+  projects_observed?: number
+  spikes_outside_projects?: number
   covered_months?: number
   median_month: number
   monthly: { month: string; total: number }[]

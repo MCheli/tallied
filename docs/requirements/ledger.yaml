@@ -1094,3 +1094,17 @@ requirements:
       - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_a_pay_shortfall_is_drawn_from_savings
       - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_ss_estimate_is_reduced_for_years_not_worked
       - backend/tests/test_api/test_planning_v2.py::test_earnings_record_reduces_social_security_for_early_retirement
+
+  - id: PLAN-V2-015
+    title: Typical living spending plus a projects budget; W-2 salary rebuilt from box 1
+    job: plan
+    area: planning
+    priority: p0
+    done_means:
+      - "Working-years living spending is typical spending: projects and hobbies (home improvement and services, vehicle purchases, deposits, auctions, parts, repairs) and one-off spikes are left out, and the 'Projects & Hobby Budget' setting adds them back as a yearly budget. The page shows the recent project pace for reference. The retirement spending suggestion uses typical spending too."
+      - "When salary is derived from vests, box 1 wages get pre-tax 401(k), section 125 and transit deductions added back, so take-home pay is not understated."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_planning_v2.py::test_projects_are_budgeted_not_counted_as_typical_living
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_projects_budget_comes_out_of_working_years_savings
+      - backend/tests/test_dashboard_consistency.py::test_box1_w2_salary_adds_back_pretax_deductions

@@ -323,3 +323,28 @@ def test_earnings_record_reduces_social_security_for_early_retirement(client, db
     plan = _plan(client, ss_monthly_at_fra=3000)
     o = client.get(f"/api/v1/plans/{plan['id']}/outlook", params={"analysis": "false"}).json()
     assert o["starting_point"]["savings_from"] == "cash_flow" and o["starting_point"]["living_spending"] > 0
+
+
+
+def test_projects_are_budgeted_not_counted_as_typical_living(client, db_session, born_30):
+    from datetime import date, timedelta
+    from decimal import Decimal
+
+    from app.models.account import Account
+    from app.models.transaction import Transaction
+    _household(db_session)
+    db_session.add(Account(id="card9", name="card9", account_type="credit_card", display_group="Credit Cards", include_in_nw=True, is_active=True))
+    db_session.flush()
+    start = date.today() - timedelta(days=360)
+    for m in range(12):
+        d = start + timedelta(days=30 * m)
+        db_session.add(Transaction(id=f"g{m}", account_id="card9", date=d, amount=Decimal("-1000"), merchant="Market", category="Groceries", source="test"))
+    db_session.add(Transaction(id="car", account_id="card9", date=start + timedelta(days=40), amount=Decimal("-6000"), merchant="Wire", category="Vehicle Purchase", source="test"))
+    db_session.add(Transaction(id="fix", account_id="card9", date=start + timedelta(days=70), amount=Decimal("-1200"), merchant="Garage", category="Auto Maintenance", source="test"))
+    db_session.commit()
+    plan = _plan(client, projects_allowance=3000)
+    o = client.get(f"/api/v1/plans/{plan['id']}/outlook", params={"analysis": "false"}).json()
+    b, sp = o["spending_builder"], o["starting_point"]
+    assert b["typical_living"] == 12_000 and b["projects_observed"] == 7_200
+    assert sp["living_spending"] == 12_000 and sp["projects_allowance"] == 3000
+    assert b["suggested"] == 12_000           # projects are not assumed into retirement living spending

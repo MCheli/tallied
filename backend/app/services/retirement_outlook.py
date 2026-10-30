@@ -263,6 +263,9 @@ WORK_COST_CATEGORIES = ("gas", "fuel", "parking", "tolls", "transit", "public tr
 UNCATEGORISED = ("", "uncategorized", "uncategorised", "other", "misc", "miscellaneous")
 # Paid from the mortgage escrow: the plan adds escrow as housing, so these are not living spending.
 ESCROW_CATEGORIES = ("property tax", "mortgage insurance", "homeowners insurance", "home insurance")
+# Irregular projects and hobbies: kept out of typical living spending and planned as a yearly budget instead.
+PROJECT_CATEGORIES = ("home improvement", "home services", "vehicle purchase", "vehicle deposit", "car auctions",
+                      "vehicle parts", "auto maintenance")
 # Population references (labelled as such on the page).
 BLS_CE = {"year": 2024, "all": 78_535, "age_65_plus": 61_432, "age_65_74": 65_354, "age_75_plus_2023": 53_031}
 
@@ -290,6 +293,8 @@ def spending_builder(db: Session, household: rs.Household, values: dict[str, flo
     to_year = 12.0 / covered
     observed = sum(-float(a or 0) for _, a, _, _ in rows)
     total = observed * to_year
+    is_project = lambda c: (c or "").strip().lower() in PROJECT_CATEGORIES  # noqa: E731
+    projects = to_year * sum(-float(a or 0) for _, a, c, _ in rows if is_project(c))
     # Loans other than the mortgage (student loan, HEAT loan): paid from pay while working.
     debt = db.execute(
         select(func.coalesce(func.sum(Transaction.amount), 0))
@@ -321,9 +326,13 @@ def spending_builder(db: Session, household: rs.Household, values: dict[str, flo
         key=lambda r: -r["amount"],
     )
     spike_total = sum(s["amount"] for s in spikes)
+    regular_spikes = sum(s["amount"] for s in spikes if not is_project(s["category"]))
+    # Typical living spending: everything except projects/hobbies (planned as a budget) and one-off spikes.
+    typical = max(0.0, total - projects - regular_spikes)
     reduction = values.get("commute_reduction", 0.5)
-    base = total - spike_total   # one-offs are removed once, not scaled
-    suggested = max(0.0, base - work * reduction)
+    # Retirement living spending: typical spending less work costs that stop. Projects and hobbies are
+    # shown at their recent pace for the owner to add as they see fit, not assumed.
+    suggested = max(0.0, typical - work * reduction)
 
     w2 = db.execute(select(W2Record).order_by(W2Record.tax_year.desc()).limit(1)).scalar_one_or_none()
     payroll_tax = float((w2.social_security or 0) + (w2.medicare or 0)) if w2 else 0.0
@@ -337,6 +346,9 @@ def spending_builder(db: Session, household: rs.Household, values: dict[str, flo
         "window": {"from": since.isoformat(), "to": today.isoformat(), "months": len(months)},
         "trailing_total": round(total, 0),
         "observed_total": round(observed, 0),
+        "typical_living": round(typical, 0),
+        "spikes_outside_projects": round(regular_spikes, 0),
+        "projects_observed": round(projects, 0),
         "other_debt_payments": round(other_debt, 0),
         "covered_months": round(covered, 1),
         "median_month": round(median_month, 0),
@@ -406,6 +418,7 @@ def to_inputs(values: dict[str, float], spending_rule: str, events: list[rs.Life
         retirement_age=int(values["retirement_age"]),
         plan_to_age=int(values["plan_to_age"]),
         total_comp_growth=values["total_comp_growth"],
+        projects_allowance=values["projects_allowance"],
         inflation=values["inflation"],
         rsu_pct_of_comp=values["rsu_pct_of_comp"],
         rsu_pct_annual_increase=values["rsu_pct_annual_increase"],
@@ -456,11 +469,12 @@ def household_and_inputs(db: Session, plan: PlanVersion, overrides: dict[str, fl
     household, start = starting_point(db, profile.birth_date, today)
     # Working-years cash flow from actual spending (refunds netted, one-offs removed, scaled to a year).
     sb = spending_builder(db, household, values, today)
-    living = max(0.0, float(sb["trailing_total"]) - float(sb["spike_total"]))
+    living = float(sb["typical_living"])
     earnings = {int(y): float(v) for y, v in (profile.ss_earnings or {}).items()}
     household = replace(household, living_spending=living, other_debt_payments=float(sb["other_debt_payments"]),
                         ss_earnings=earnings)
     start = {**start, "living_spending": round(living, 0), "other_debt_payments": sb["other_debt_payments"],
+             "projects_observed": sb["projects_observed"], "projects_allowance": values["projects_allowance"],
              "savings_from": "cash_flow" if living > 0 else "typed"}
     rule = spending_rule or plan.spending_rule or "fixed"
     shape = spending_profile or plan.spending_profile or "flat"

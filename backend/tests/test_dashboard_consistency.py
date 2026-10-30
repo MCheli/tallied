@@ -108,3 +108,15 @@ def test_comp_split_derives_rsu_income_from_that_years_vests(client, db_session)
     assert income["salary"] == 250000 - (100 * 400 + 50 * 420)
     assert income["source"] == "vests"
     assert client.get("/api/v1/snapshot").json()["total_comp_annual"] == 250000
+
+
+
+def test_box1_w2_salary_adds_back_pretax_deductions(db_session):
+    db_session.add(RSUGrant(id="g2", company="MSFT", symbol="MSFT", total_shares=100))
+    db_session.flush()
+    db_session.add(VestEvent(grant_id="g2", vest_date=date(2025, 5, 15), vest_period=1, shares=100, fmv_at_vest=Decimal("400"), is_actual=True))
+    w2 = W2Record(tax_year=2025, gross_pay=Decimal("200000"), pretax_401k=Decimal("10000"), cafeteria_125=Decimal("2000"))
+    db_session.add(w2)
+    db_session.flush()
+    split = comp_split(db_session, w2)
+    assert (split.salary, split.rsu_income) == (200_000 + 12_000 - 40_000, 40_000)

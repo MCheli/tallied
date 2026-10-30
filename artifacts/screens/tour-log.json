@@ -1,11 +1,13 @@
 {
-  "capturedAt": "2026-10-30T02:59:58.392Z",
+  "capturedAt": "2026-10-30T03:10:46.368Z",
   "base": "http://localhost:5173",
   "theme": "light",
   "routes": {
     "login/mobile": {
       "consoleErrors": [],
-      "failedRequests": [],
+      "failedRequests": [
+        "GET http://localhost:5173/api/v1/auth/me :: net::ERR_ABORTED"
+      ],
       "badResponses": [],
       "overflow": []
     },

@@ -266,3 +266,11 @@ def test_ss_estimate_is_reduced_for_years_not_worked():
     later = rs.ss_stop_factor(MAX_EARNER, 2038, 2059)               # 33 max years
     assert rs.ss_stop_factor(MAX_EARNER, 2045, 2059) == pytest.approx(1.0)   # 35+ max years: no reduction
     assert 0.8 < early < later < 1.0
+
+
+
+def test_projects_budget_comes_out_of_working_years_savings():
+    p = _p(retirement_age=45, plan_to_age=46, employee_401k_rate=0.10, employer_match_rate=0.0, income_tax_rate=0.30,
+           investment_return=0.0, monthly_cash_savings=0, projects_allowance=6_000)
+    d = _run(p, _cash_flow_household()).detail
+    assert d["saved"][0] == pytest.approx(70_000 - 10_000 - 50_000 - 6_000)

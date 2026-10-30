@@ -219,6 +219,7 @@ class PlanInputs:
     aca_income_cap: float = 0.0996     # premium capped at this share of MAGI below the subsidy cliff
     medicare_cost: float = 8_500.0     # Medicare B/D, Medigap and out-of-pocket per person per year
     health_excess_inflation: float = 0.02
+    projects_allowance: float = 0.0    # yearly irregular projects/hobby budget while working (today's $)
     use_sepp: bool = False             # 72(t) payments from the 401(k) before 59 1/2
     payoff_mortgage: bool = False      # pay the mortgage off from savings in the first retired year
     events: list[LifeEvent] = field(default_factory=list)
@@ -724,7 +725,8 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
                 # Cash flow: take-home salary less living costs, the mortgage and other debts.
                 housing_work = (np.where(mortgage > 0, pi_payment * 12, 0.0) + escrow_month_v * 12) * price_index
                 take_home = salary_v * (1 - inputs.income_tax_rate) - employee
-                living_now = (household.living_spending + household.other_debt_payments) * price_index
+                living_now = (household.living_spending + household.other_debt_payments
+                              + inputs.projects_allowance) * price_index
                 saved_v = (take_home - living_now - housing_work
                            + inputs.monthly_cash_savings * 12 * price_index)
             else:

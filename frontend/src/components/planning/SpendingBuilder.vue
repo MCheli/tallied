@@ -29,7 +29,8 @@ const info = `<strong>Built from your transactions.</strong> The last 12 months 
         <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Living spending</h4>
         <dl class="space-y-1.5">
           <div class="flex justify-between gap-2"><dt class="text-gray-600 dark:text-gray-300">{{ (builder.covered_months ?? 12) < 12 ? `Last ${builder.covered_months} months (${money(builder.observed_total ?? 0)}), as a year` : 'Last 12 months' }}</dt><dd class="tabular-nums font-medium text-gray-900 dark:text-white">{{ money(builder.trailing_total) }}</dd></div>
-          <div class="flex justify-between gap-2"><dt class="text-gray-600 dark:text-gray-300">One-off spikes</dt><dd class="tabular-nums text-gray-900 dark:text-white">−{{ money(builder.spike_total) }}</dd></div>
+          <div v-if="builder.projects_observed" class="flex justify-between gap-2"><dt class="text-gray-600 dark:text-gray-300">Projects &amp; hobbies (budgeted separately)</dt><dd class="tabular-nums text-gray-900 dark:text-white">−{{ money(builder.projects_observed) }}</dd></div>
+          <div class="flex justify-between gap-2"><dt class="text-gray-600 dark:text-gray-300">One-off spikes</dt><dd class="tabular-nums text-gray-900 dark:text-white">−{{ money(builder.spikes_outside_projects ?? builder.spike_total) }}</dd></div>
           <div class="flex justify-between gap-2"><dt class="text-gray-600 dark:text-gray-300">Work costs that stop ({{ percent(builder.work_reduction, 0) }} of {{ money(builder.work_costs) }})</dt><dd class="tabular-nums text-gray-900 dark:text-white">−{{ money(builder.work_costs * builder.work_reduction) }}</dd></div>
           <div class="flex justify-between gap-2 border-t border-gray-100 dark:border-gray-800 pt-1.5"><dt class="font-semibold text-gray-900 dark:text-white">Suggested a year</dt><dd class="tabular-nums font-semibold text-gray-900 dark:text-white">{{ money(builder.suggested) }}</dd></div>
         </dl>
