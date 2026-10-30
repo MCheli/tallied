@@ -79,18 +79,29 @@ def test_extract_translates_refusal_and_truncation(fake_ai):
 
 def test_vehicle_curve_interpolates_history_and_projects_deterministically():
     history, projections = valuation.vehicle_value_curve(
-        purchase_price=28500, purchase_year=2019, current_value=22000, current_year=2026,
+        purchase_price=28500, purchase_date=date(2019, 7, 1), current_value=22000, today=date(2026, 7, 1),
         annual_depreciation_pct=10,
     )
-    assert [y for y, _ in history] == [2020, 2021, 2022, 2023, 2024, 2025, 2026]
+    assert [d for d, _ in history] == [date(y, 1, 1) for y in range(2020, 2027)] + [date(2026, 7, 1)]
     values = [float(v) for _, v in history]
     assert values[-1] == 22000 and all(a > b for a, b in zip(values, values[1:]))
-    assert [y for y, _ in projections] == [2027, 2028, 2029, 2030, 2031]
+    assert [d for d, _ in projections] == [date(y, 7, 1) for y in range(2027, 2032)]
     assert float(projections[0][1]) == 19800 and float(projections[4][1]) == round(22000 * 0.9 ** 5)
     # the rate is clamped, never trusted blindly
-    _, wild = valuation.vehicle_value_curve(purchase_price=None, purchase_year=None, current_value=1000,
-                                            current_year=2026, annual_depreciation_pct=400)
+    _, wild = valuation.vehicle_value_curve(purchase_price=None, purchase_date=None, current_value=1000,
+                                            today=date(2026, 7, 1), annual_depreciation_pct=400)
     assert float(wild[0][1]) == 400
+
+
+def test_vehicle_curve_follows_elapsed_time_not_calendar_years():
+    """VEH-CHART-001: a June purchase loses about half a year's value by 1 January, not a whole year's."""
+    history, _ = valuation.vehicle_value_curve(
+        purchase_price=16000, purchase_date=date(2024, 7, 1), current_value=9000, today=date(2026, 7, 1),
+        annual_depreciation_pct=2,
+    )
+    jan_2025 = float(dict(history)[date(2025, 1, 1)])
+    expected = 16000 * (9000 / 16000) ** ((date(2025, 1, 1) - date(2024, 7, 1)).days / (date(2026, 7, 1) - date(2024, 7, 1)).days)
+    assert abs(jan_2025 - expected) <= 1 and jan_2025 > 13000   # whole-year steps gave 12,000
 
 
 def test_property_projection_clamps_rate():
@@ -285,5 +296,5 @@ def test_vehicle_bought_this_year_keeps_todays_value_point(db_session):
                             model="claude-opus-5-5", confidence="medium", today=date(2026, 10, 30))
     rows = [(r.date, int(r.value), r.is_projected) for r in
             db_session.query(AssetValueHistory).filter_by(vehicle_id=v.id).order_by(AssetValueHistory.date)]
-    assert rows[:3] == [(date(2026, 6, 2), 6200, False), (date(2026, 10, 30), 6500, False), (date(2027, 1, 1), 6370, True)]
+    assert rows[:3] == [(date(2026, 6, 2), 6200, False), (date(2026, 10, 30), 6500, False), (date(2027, 10, 30), 6370, True)]
     assert v.valuation_source == "research" and float(v.estimated_value) == 6500

@@ -213,7 +213,8 @@ const timeAxis = () => ({
 })
 const fullDate = (d: string | number) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 
-// The backend gives every vehicle a value on every date (0 before it was bought), so the areas stack cleanly.
+// One line per vehicle (stacked bands made every line above jump when another vehicle was bought).
+// The backend gives every vehicle a value on every date, 0 before it was owned; those leading days are left blank.
 const aggregateChartOption = computed(() => {
   const agg = aggregateHistory.value
   if (!agg || agg.dates.length === 0) return null
@@ -221,10 +222,12 @@ const aggregateChartOption = computed(() => {
   const projStart = agg.is_projected.indexOf(true)
   const lastHist = projStart >= 0 ? projStart - 1 : agg.dates.length - 1
   const series = names.flatMap((name, i) => {
-    const pts = agg.vehicles[name].map((v, idx) => [agg.dates[idx], v] as [string, number | null])
+    const values = agg.vehicles[name]
+    const owned = values.findIndex(v => (v ?? 0) > 0)
+    const pts = values.map((v, idx) => [agg.dates[idx], owned >= 0 && idx >= owned ? v : null] as [string, number | null])
     const color = COLORS[i % COLORS.length]
-    const out: any[] = [{ name, type: 'line', stack: 'total', areaStyle: { opacity: 0.3 }, emphasis: { focus: 'series' }, data: pts.slice(0, lastHist + 1), color, showSymbol: false }]
-    if (projStart >= 0) out.push({ name: `${name} (projected)`, type: 'line', stack: 'total-proj', areaStyle: { opacity: 0.12 }, lineStyle: { type: 'dashed' }, emphasis: { focus: 'series' }, data: pts.slice(Math.max(0, lastHist)), color, showSymbol: false })
+    const out: any[] = [{ name, type: 'line', data: pts.slice(0, lastHist + 1), color, showSymbol: false, lineStyle: { width: 2 } }]
+    if (projStart >= 0) out.push({ name: `${name} (projected)`, type: 'line', lineStyle: { type: 'dashed', width: 2 }, data: pts.slice(Math.max(0, lastHist)), color, showSymbol: false })
     return out
   })
   return {
@@ -339,7 +342,7 @@ const inputClass = 'w-full px-3 py-2 min-h-10 text-sm border border-gray-200 dar
         title="Vehicle Value Over Time"
         :empty="!aggregateChartOption"
         empty-text="No value history yet. Refresh a vehicle's value to build it."
-        info="<strong>Vehicle Value History</strong><br>Stacked area of each vehicle's value: zero before you bought it, the purchase price on the purchase date, interpolated history to today's estimate, and five dashed projected years computed from the depreciation rate Claude expects. All of it is an estimate, not market data."
+        info="<strong>Vehicle Value History</strong><br>One line per vehicle: the purchase price on the purchase date, history interpolated by elapsed time to today's estimate, and five dashed projected years computed from the depreciation rate Claude expects. All of it is an estimate, not market data."
         :sql="historySql" :sql-tables="['asset_value_histories']"
       >
         <div class="h-72"><VChart v-if="aggregateChartOption" :option="aggregateChartOption" autoresize class="w-full h-full" /></div>

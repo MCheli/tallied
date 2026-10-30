@@ -37,31 +37,41 @@ def _money(value: float) -> Decimal:
 def vehicle_value_curve(
     *,
     purchase_price: float | None,
-    purchase_year: int | None,
+    purchase_date: date | None,
     current_value: float,
-    current_year: int,
+    today: date,
     annual_depreciation_pct: float,
     years_ahead: int = 5,
-) -> tuple[list[tuple[int, Decimal]], list[tuple[int, Decimal]]]:
-    """(history, projections) as (year, value) pairs.
+) -> tuple[list[tuple[date, Decimal]], list[tuple[date, Decimal]]]:
+    """(history, projections) as (date, value) pairs.
 
-    History interpolates geometrically from the purchase price to today's value
-    when both are known; otherwise it is just today's value. Projections apply
-    the depreciation rate (clamped to 0..60 percent) from today's value.
+    History has a point on each 1 January between the purchase and today, plus today, interpolated
+    geometrically by elapsed time from the purchase price to today's value (so a June purchase loses half
+    a year's value by January, not a whole year's). Without a purchase it is just today's value.
+    Projections fall on today's anniversaries, applying the depreciation rate (clamped to 0..60 percent).
     """
-    history: list[tuple[int, Decimal]] = []
-    if purchase_price and purchase_year and purchase_year < current_year and purchase_price > 0 and current_value > 0:
-        span = current_year - purchase_year
-        ratio = (current_value / purchase_price) ** (1 / span)
-        for i in range(1, span):
-            history.append((purchase_year + i, _money(purchase_price * ratio ** i)))
-    history.append((current_year, _money(current_value)))
+    history: list[tuple[date, Decimal]] = []
+    if purchase_price and purchase_date and purchase_date < today and purchase_price > 0 and current_value > 0:
+        span = (today - purchase_date).days
+        for year in range(purchase_date.year + 1, today.year + 1):
+            d = date(year, 1, 1)
+            if purchase_date < d < today:
+                frac = (d - purchase_date).days / span
+                history.append((d, _money(purchase_price * (current_value / purchase_price) ** frac)))
+    history.append((today, _money(current_value)))
 
     rate = clamp(annual_depreciation_pct, 0.0, 60.0) / 100
     projections = [
-        (current_year + k, _money(current_value * (1 - rate) ** k)) for k in range(1, years_ahead + 1)
+        (_anniversary(today, k), _money(current_value * (1 - rate) ** k)) for k in range(1, years_ahead + 1)
     ]
     return history, projections
+
+
+def _anniversary(d: date, years: int) -> date:
+    try:
+        return d.replace(year=d.year + years)
+    except ValueError:   # 29 February
+        return d.replace(year=d.year + years, day=28)
 
 
 def fleet_value_grid(points: dict[str, list[tuple[date, float, bool]]], today: date) -> dict:
@@ -170,9 +180,9 @@ def store_vehicle_valuation(db, vehicle: Vehicle, *, value: float, annual_deprec
     vehicle.valuation_confidence = confidence
     history, projections = vehicle_value_curve(
         purchase_price=float(vehicle.purchase_price) if vehicle.purchase_price else None,
-        purchase_year=vehicle.purchase_date.year if vehicle.purchase_date else None,
+        purchase_date=vehicle.purchase_date,
         current_value=float(value),
-        current_year=today.year,
+        today=today,
         annual_depreciation_pct=annual_depreciation_pct,
     )
     db.execute(delete(AssetValueHistory).where(
@@ -181,14 +191,10 @@ def store_vehicle_valuation(db, vehicle: Vehicle, *, value: float, annual_deprec
     if vehicle.purchase_price and vehicle.purchase_date:
         db.add(AssetValueHistory(vehicle_id=vehicle.id, date=vehicle.purchase_date, value=vehicle.purchase_price,
                                  source="purchase", is_projected=False))
-    for year, val in history:
-        if year == today.year:
-            if not (vehicle.purchase_date and vehicle.purchase_date == today):
-                db.add(AssetValueHistory(vehicle_id=vehicle.id, date=today, value=val, source="ai_estimate", is_projected=False))
-            continue
-        if vehicle.purchase_date and year == vehicle.purchase_date.year:
-            continue   # the purchase row already marks that year
-        db.add(AssetValueHistory(vehicle_id=vehicle.id, date=date(year, 1, 1), value=val, source="ai_estimate", is_projected=False))
-    for year, val in projections:
-        db.add(AssetValueHistory(vehicle_id=vehicle.id, date=date(year, 1, 1), value=val, source="ai_estimate", is_projected=True))
+    for d, val in history:
+        if vehicle.purchase_date and d == vehicle.purchase_date:
+            continue   # the purchase row already marks that day
+        db.add(AssetValueHistory(vehicle_id=vehicle.id, date=d, value=val, source="ai_estimate", is_projected=False))
+    for d, val in projections:
+        db.add(AssetValueHistory(vehicle_id=vehicle.id, date=d, value=val, source="ai_estimate", is_projected=True))
     db.flush()

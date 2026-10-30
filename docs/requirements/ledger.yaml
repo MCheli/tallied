@@ -1032,20 +1032,21 @@ requirements:
       - "Found 2026-10-30 reviewing the owner's real data on a local copy of production after the net worth backfill."
 
   - id: VEH-CHART-001
-    title: The vehicle value chart stacks every vehicle on one timeline
+    title: The vehicle value chart shows each vehicle on one timeline
     job: look
     area: assets
     priority: p1
     visible: true
     done_means:
-      - "Every vehicle has a value on every date of the fleet chart: zero before it was bought, a step to the purchase price on the purchase date, linear between its own points, held after its last one."
-      - "The fleet chart and each vehicle's chart use a time axis, so points sit at their real dates and the tooltip names the date."
+      - "The fleet chart draws one line per vehicle from its purchase date on a time axis (not stacked, so buying one vehicle does not move the others' lines); the tooltip gives each value and the total."
+      - "History interpolates by elapsed time from the purchase price to today's value, with a point each 1 January; projections fall on today's anniversaries."
     status: done
     evidence:
       - backend/tests/test_api/test_property_assets_planning.py::test_fleet_value_history_puts_every_vehicle_on_every_date
+      - backend/tests/test_ai.py::test_vehicle_curve_follows_elapsed_time_not_calendar_years
       - artifacts/screens/assets/desktop.png
     notes:
-      - "Found 2026-10-30 by the owner on a phone: vehicles bought on different dates left gaps on the shared category axis and the stacked areas went jagged."
+      - "Found 2026-10-30 by the owner on a phone: gaps made stacked areas jagged; then stacking made lines jump and calendar-year steps made a June purchase drop a whole year's value by January."
 
   - id: INC-PAY-001
     title: Income shows total pay and the same salary/RSU split as the Dashboard
