@@ -7,8 +7,9 @@ source, model and confidence.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from itertools import pairwise
 
 from app.ai import extract, model_for
 from app.ai.schemas import PropertyOutlook, VehicleValuation
@@ -61,6 +62,38 @@ def vehicle_value_curve(
         (current_year + k, _money(current_value * (1 - rate) ** k)) for k in range(1, years_ahead + 1)
     ]
     return history, projections
+
+
+def fleet_value_grid(points: dict[str, list[tuple[date, float, bool]]], today: date) -> dict:
+    """Every vehicle's value on one shared list of dates, so the series stack.
+
+    A vehicle is 0 before its first point (it was not owned yet; a zero the day before the purchase makes
+    the purchase a step, not a ramp), interpolated linearly between its own points, and held at its last
+    value after them. Dates after today are projected.
+    """
+    series = {name: sorted(pts) for name, pts in points.items() if pts}
+    grid: set[date] = {d for pts in series.values() for d, _, _ in pts}
+    if not grid:
+        return {"dates": [], "total": [], "vehicles": {}, "is_projected": []}
+    earliest = min(grid)
+    grid |= {pts[0][0] - timedelta(days=1) for pts in series.values() if pts[0][0] > earliest}
+    dates = sorted(grid)
+
+    def value_on(pts: list[tuple[date, float, bool]], d: date) -> float:
+        if d < pts[0][0]:
+            return 0.0
+        for (d0, v0, _), (d1, v1, _) in pairwise(pts):
+            if d0 <= d <= d1:
+                return v0 if d1 == d0 else v0 + (v1 - v0) * (d - d0).days / (d1 - d0).days
+        return pts[-1][1]
+
+    vehicles = {name: [round(value_on(pts, d), 2) for d in dates] for name, pts in series.items()}
+    return {
+        "dates": [d.isoformat() for d in dates],
+        "total": [round(sum(v[i] for v in vehicles.values()), 2) for i in range(len(dates))],
+        "vehicles": vehicles,
+        "is_projected": [d > today for d in dates],
+    }
 
 
 def property_projection(

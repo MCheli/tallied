@@ -1031,6 +1031,22 @@ requirements:
     notes:
       - "Found 2026-10-30 reviewing the owner's real data on a local copy of production after the net worth backfill."
 
+  - id: VEH-CHART-001
+    title: The vehicle value chart stacks every vehicle on one timeline
+    job: look
+    area: assets
+    priority: p1
+    visible: true
+    done_means:
+      - "Every vehicle has a value on every date of the fleet chart: zero before it was bought, a step to the purchase price on the purchase date, linear between its own points, held after its last one."
+      - "The fleet chart and each vehicle's chart use a time axis, so points sit at their real dates and the tooltip names the date."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_property_assets_planning.py::test_fleet_value_history_puts_every_vehicle_on_every_date
+      - artifacts/screens/assets/desktop.png
+    notes:
+      - "Found 2026-10-30 by the owner on a phone: vehicles bought on different dates left gaps on the shared category axis and the stacked areas went jagged."
+
   - id: SPEND-CAT-001
     title: Transactions are categorized by merchant rules, on every sync, without overwriting the owner
     job: understand

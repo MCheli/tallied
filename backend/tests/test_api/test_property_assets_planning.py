@@ -55,3 +55,29 @@ def test_plan_table_reports_retirement_year_and_no_savings_columns(client, born_
     assert "expenses_annual" not in table["metrics"] and "savings_rate" not in table["metrics"]
     first_row = table["rows"][str(table["years"][0])]
     assert "expenses_annual" not in first_row
+
+
+def test_fleet_value_history_puts_every_vehicle_on_every_date(client, db_session):
+    """VEH-CHART-001: stacked series need a value on every date; a gap made the stacked areas jagged."""
+    from app.models.asset_value_history import AssetValueHistory
+
+    rav4 = Vehicle(year=2019, make="Toyota", model="RAV4")
+    civic = Vehicle(year=2015, make="Honda", model="Civic")
+    db_session.add_all([rav4, civic])
+    db_session.flush()
+    db_session.add_all([
+        AssetValueHistory(vehicle_id=rav4.id, date=date(2022, 1, 1), value=Decimal("28000"), source="purchase", is_projected=False),
+        AssetValueHistory(vehicle_id=rav4.id, date=date(2024, 1, 1), value=Decimal("24000"), source="ai_estimate", is_projected=False),
+        AssetValueHistory(vehicle_id=rav4.id, date=date(2099, 1, 1), value=Decimal("1000"), source="ai_estimate", is_projected=True),
+        AssetValueHistory(vehicle_id=civic.id, date=date(2023, 1, 1), value=Decimal("9000"), source="purchase", is_projected=False),
+        AssetValueHistory(vehicle_id=civic.id, date=date(2024, 1, 1), value=Decimal("8500"), source="ai_estimate", is_projected=False),
+    ])
+    db_session.commit()
+    body = client.get("/api/v1/assets/value-history/aggregate").json()
+    assert body["dates"] == ["2022-01-01", "2022-12-31", "2023-01-01", "2024-01-01", "2099-01-01"]
+    civic_series = body["vehicles"]["2015 Honda Civic"]
+    assert civic_series == [0, 0, 9000, 8500, 8500]                       # not owned, step on purchase, held after
+    rav4_series = body["vehicles"]["2019 Toyota RAV4"]
+    assert None not in rav4_series and rav4_series[2] == 26000            # interpolated between its own points
+    assert body["total"][3] == 32500
+    assert body["is_projected"] == [False, False, False, False, True]

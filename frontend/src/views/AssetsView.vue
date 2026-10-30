@@ -205,37 +205,51 @@ const depreciationSubtitle = computed(() => {
 })
 
 // ── Charts ──
+const timeAxis = () => ({
+  type: 'time',
+  axisLabel: { ...mobileAxis(), formatter: '{yyyy}' },
+  axisLine: { lineStyle: { color: axisLineColor.value } },
+  splitLine: { show: false },
+})
+const fullDate = (d: string | number) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+
+// The backend gives every vehicle a value on every date (0 before it was bought), so the areas stack cleanly.
 const aggregateChartOption = computed(() => {
   const agg = aggregateHistory.value
   if (!agg || agg.dates.length === 0) return null
   const names = Object.keys(agg.vehicles)
   const projStart = agg.is_projected.indexOf(true)
+  const lastHist = projStart >= 0 ? projStart - 1 : agg.dates.length - 1
   const series = names.flatMap((name, i) => {
-    const values = agg.vehicles[name]
+    const pts = agg.vehicles[name].map((v, idx) => [agg.dates[idx], v] as [string, number | null])
     const color = COLORS[i % COLORS.length]
-    // null = the vehicle has no point on that date (a gap); the backend already returns it that way
-    const historical = values.map((v, idx) => (projStart >= 0 && idx >= projStart ? null : v))
-    const projected = values.map((v, idx) => (projStart >= 0 && idx >= projStart - 1 ? v : null))
-    const out: any[] = [{ name, type: 'line', stack: 'total', areaStyle: { opacity: 0.3 }, emphasis: { focus: 'series' }, data: historical, color, symbol: 'circle', symbolSize: 4, connectNulls: false }]
-    if (projStart >= 0) out.push({ name: `${name} (projected)`, type: 'line', stack: 'total-proj', areaStyle: { opacity: 0.12 }, lineStyle: { type: 'dashed' }, emphasis: { focus: 'series' }, data: projected, color, symbol: 'circle', symbolSize: 4, connectNulls: false })
+    const out: any[] = [{ name, type: 'line', stack: 'total', areaStyle: { opacity: 0.3 }, emphasis: { focus: 'series' }, data: pts.slice(0, lastHist + 1), color, showSymbol: false }]
+    if (projStart >= 0) out.push({ name: `${name} (projected)`, type: 'line', stack: 'total-proj', areaStyle: { opacity: 0.12 }, lineStyle: { type: 'dashed' }, emphasis: { focus: 'series' }, data: pts.slice(Math.max(0, lastHist)), color, showSymbol: false })
     return out
   })
   return {
     ...baseOption.value,
     legend: { ...mobileLegend(), data: names },
     grid: { ...baseOption.value.grid, bottom: isMobile.value ? 44 : 36 },
-    xAxis: { type: 'category', data: agg.dates.map((d) => d.substring(0, 4)), axisLabel: mobileAxis(), axisLine: { lineStyle: { color: axisLineColor.value } } },
+    xAxis: timeAxis(),
     yAxis: { type: 'value', axisLabel: { ...mobileAxis(), formatter: yAxisMoney }, axisLine: { show: false }, splitLine: { lineStyle: { color: splitLineColor.value, type: 'dashed' } } },
     tooltip: {
       ...baseOption.value.tooltip,
       formatter: (params: any) => {
-        const list = Array.isArray(params) ? params : [params]
-        let html = `<div style="font-weight:600;margin-bottom:4px">${list[0]?.axisValue || ''}</div>`
+        const list = (Array.isArray(params) ? params : [params]).filter((p: any) => p.value?.[1] != null)
+        if (!list.length) return ''
+        // On the day history meets the projection both series have a point; show each vehicle once.
+        const seen = new Set<string>()
+        let html = `<div style="font-weight:600;margin-bottom:4px">${fullDate(list[0].value[0])}</div>`
         let total = 0
         for (const p of list) {
-          if (p.value != null) { html += `<div>${p.marker} ${p.seriesName}: <strong>${money(Number(p.value))}</strong></div>`; total += Number(p.value) }
+          const vehicle = String(p.seriesName).replace(' (projected)', '')
+          if (seen.has(vehicle)) continue
+          seen.add(vehicle)
+          html += `<div>${p.marker} ${p.seriesName}: <strong>${money(Number(p.value[1]))}</strong></div>`
+          total += Number(p.value[1])
         }
-        if (list.length > 1) html += `<div style="margin-top:4px;font-weight:600">Total: ${money(total)}</div>`
+        if (seen.size > 1) html += `<div style="margin-top:4px;font-weight:600">Total: ${money(total)}</div>`
         return html
       },
     },
@@ -247,18 +261,17 @@ function vehicleChartOption(vehicleId: number) {
   const hist = vehicleHistories.value[vehicleId]
   if (!hist || hist.history.length === 0) return null
   const entries = hist.history
-  const dates = entries.map((e) => e.date.substring(0, 4))
   const lastHistIdx = entries.reduce((last, e, i) => (!e.is_projected ? i : last), -1)
-  const historical = entries.map((e) => (e.is_projected ? null : e.value))
-  const projected = entries.map((e, i) => (e.is_projected || i === lastHistIdx ? e.value : null))
+  const historical = entries.filter((e) => !e.is_projected).map((e) => [e.date, e.value])
+  const projected = entries.filter((e, i) => e.is_projected || i === lastHistIdx).map((e) => [e.date, e.value])
   const series: any[] = [{ name: 'Value', type: 'line', data: historical, color: COLORS[0], symbol: 'circle', symbolSize: 3, lineStyle: { width: 2 }, areaStyle: { opacity: 0.1 } }]
   if (entries.some((e) => e.is_projected)) series.push({ name: 'Projected', type: 'line', data: projected, color: COLORS[0], symbol: 'circle', symbolSize: 3, lineStyle: { width: 2, type: 'dashed' }, areaStyle: { opacity: 0.05 } })
   return {
     ...baseOption.value,
     grid: { left: 4, right: 8, top: 8, bottom: 4, containLabel: true },
-    xAxis: { type: 'category', data: dates, axisLabel: mobileAxis(), axisLine: { lineStyle: { color: axisLineColor.value } } },
+    xAxis: timeAxis(),
     yAxis: { type: 'value', axisLabel: { ...mobileAxis(), formatter: yAxisMoney }, axisLine: { show: false }, splitLine: { lineStyle: { color: splitLineColor.value, type: 'dashed' } } },
-    tooltip: { ...baseOption.value.tooltip, formatter: (params: any) => { const p = (Array.isArray(params) ? params : [params])[0]; return p && p.value != null ? `<div>${p.axisValue}: <strong>${money(Number(p.value))}</strong></div>` : '' } },
+    tooltip: { ...baseOption.value.tooltip, formatter: (params: any) => { const p = (Array.isArray(params) ? params : [params])[0]; return p && p.value?.[1] != null ? `<div>${fullDate(p.value[0])}: <strong>${money(Number(p.value[1]))}</strong></div>` : '' } },
     legend: { show: false },
     series,
   }
@@ -326,7 +339,7 @@ const inputClass = 'w-full px-3 py-2 min-h-10 text-sm border border-gray-200 dar
         title="Vehicle Value Over Time"
         :empty="!aggregateChartOption"
         empty-text="No value history yet. Refresh a vehicle's value to build it."
-        info="<strong>Vehicle Value History</strong><br>Stacked area of each vehicle's value: the purchase price (when you entered a purchase date), interpolated history to today's estimate, and five dashed projected years computed from the depreciation rate Claude expects. All of it is an estimate, not market data."
+        info="<strong>Vehicle Value History</strong><br>Stacked area of each vehicle's value: zero before you bought it, the purchase price on the purchase date, interpolated history to today's estimate, and five dashed projected years computed from the depreciation rate Claude expects. All of it is an estimate, not market data."
         :sql="historySql" :sql-tables="['asset_value_histories']"
       >
         <div class="h-72"><VChart v-if="aggregateChartOption" :option="aggregateChartOption" autoresize class="w-full h-full" /></div>

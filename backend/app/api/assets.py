@@ -14,6 +14,7 @@ from app.ai import AIError, ai_available, extract  # noqa: F401
 from app.dependencies import get_tenant_db
 from app.models.asset import Vehicle
 from app.models.asset_value_history import AssetValueHistory
+from app.services.valuation import fleet_value_grid
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
@@ -169,54 +170,15 @@ def get_vehicle_value_history(vehicle_id: int, db: Session = Depends(get_tenant_
 
 @router.get("/value-history/aggregate")
 def get_aggregate_value_history(db: Session = Depends(get_tenant_db)):
-    """Returns combined value history across all vehicles for a cumulative chart."""
+    """Every vehicle's value on one shared list of dates, for the stacked chart."""
     vehicles = db.execute(select(Vehicle).order_by(Vehicle.id)).scalars().all()
-    vehicle_map = {v.id: f"{v.year} {v.make} {v.model}" for v in vehicles}
-
-    rows = db.execute(
-        select(AssetValueHistory).order_by(AssetValueHistory.date)
-    ).scalars().all()
-
-    # Group by date string
-    date_values: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
-    all_dates: set[str] = set()
-
-    for r in rows:
-        d = r.date.isoformat()
-        all_dates.add(d)
-        name = vehicle_map.get(r.vehicle_id, f"Vehicle {r.vehicle_id}")
-        date_values[d][name] = float(r.value)
-
-    sorted_dates = sorted(all_dates)
-    vehicle_names = sorted(vehicle_map.values())
-
-    # Build per-vehicle arrays
-    vehicles_data: dict[str, list[float | None]] = {name: [] for name in vehicle_names}
-    totals: list[float] = []
-
-    for d in sorted_dates:
-        total = 0.0
-        for name in vehicle_names:
-            val = date_values[d].get(name)
-            vehicles_data[name].append(val if val else None)
-            total += val if val else 0
-        totals.append(round(total, 2))
-
-    # Also include is_projected flag per date
-    date_projected: dict[str, bool] = {}
-    for r in rows:
-        d = r.date.isoformat()
-        if r.is_projected:
-            date_projected[d] = True
-
-    is_projected = [date_projected.get(d, False) for d in sorted_dates]
-
-    return {
-        "dates": sorted_dates,
-        "total": totals,
-        "vehicles": vehicles_data,
-        "is_projected": is_projected,
-    }
+    names = [f"{v.year} {v.make} {v.model}" for v in vehicles]
+    label = {v.id: (n if names.count(n) == 1 else f"{n} #{v.id}") for v, n in zip(vehicles, names)}
+    points: dict[str, list[tuple[date, float, bool]]] = defaultdict(list)
+    for r in db.execute(select(AssetValueHistory).order_by(AssetValueHistory.date)).scalars():
+        if r.vehicle_id in label:
+            points[label[r.vehicle_id]].append((r.date, float(r.value), r.is_projected))
+    return fleet_value_grid(dict(sorted(points.items())), date.today())
 
 
 @router.get("/summary")
