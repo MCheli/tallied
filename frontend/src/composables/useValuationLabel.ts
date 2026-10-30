@@ -14,7 +14,10 @@ export function valuationLabel(v: {
 }): string {
   if (v.estimated_value == null) return 'No estimate yet'
   const { date } = useFormatters()
-  const parts: string[] = [v.valuation_source === 'manual' ? 'Manual value' : 'AI estimate']
+  const kind = v.valuation_source === 'manual' ? 'Manual value'
+    : v.valuation_source === 'research' ? 'Researched estimate (recent sale prices)'
+    : 'AI estimate'
+  const parts: string[] = [kind]
   if (v.valuation_confidence) parts.push(`${v.valuation_confidence} confidence`)
   if (v.valuation_model) parts.push(v.valuation_model)
   if (v.value_last_updated) parts.push(date(v.value_last_updated.slice(0, 10)))
