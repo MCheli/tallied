@@ -76,8 +76,11 @@ def test_snapshot_dedupes_same_day_rows_and_reports_as_of(client, db_session):
 
 
 def test_plan_uses_its_own_age_and_keeps_labels_on_update(client, db_session):
+    from tests.conftest import set_household_age
+
+    set_household_age(client, 40)  # age comes from the household birth date, never a typed assumption
     res = client.post("/api/v1/plans/", json={"name": "Test", "scenario_type": "base", "assumptions": [
-        {"key": "current_age", "value": 40}, {"key": "retirement_age", "value": 62},
+        {"key": "retirement_age", "value": 62},
     ]})
     assert res.status_code in (200, 201), res.text
     plan = res.json()

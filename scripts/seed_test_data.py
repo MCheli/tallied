@@ -402,42 +402,39 @@ def seed(reset=False):
         print("  ✓ Vehicles (2)")
 
         # ── Planning Scenario ──
-        # Add key assumptions
-        assumptions = [
-            ("current_age", "Current Age", 30, "career", "low"),
-            ("retirement_age", "Retirement Age", 60, "career", "high"),
-            ("employee_401k_rate", "401(k) Employee Contribution", 0.10, "career", "medium"),
-            ("employer_match_rate", "401(k) Employer Match", 0.06, "career", "low"),
-            ("total_comp_growth", "Total Comp Growth", 0.04, "career", "high"),
-            ("rsu_pct_of_comp", "RSU % of Total Comp", 0.31, "career", "medium"),
-            ("rsu_pct_annual_increase", "RSU % Annual Increase", 0.005, "career", "low"),
-            ("rsu_pct_cap", "RSU % Cap", 0.50, "career", "low"),
-            ("rsu_tax_rate", "RSU Tax Rate at Vest", 0.40, "tax", "medium"),
-            ("investment_return", "Pre-Retirement Return", 0.07, "markets", "high"),
-            ("retirement_return", "Post-Retirement Return", 0.05, "markets", "high"),
-            ("stock_price_growth", "Company Stock Growth", 0.07, "markets", "medium"),
-            ("inflation", "Inflation Rate", 0.03, "markets", "medium"),
-            ("home_appreciation", "Home Appreciation", 0.03, "markets", "low"),
-            ("monthly_cash_savings", "Monthly Cash Savings", 500, "spending", "medium"),
-            ("retirement_spending", "Retirement Spending", 100000, "spending", "high"),
-            ("retirement_tax_rate", "Retirement Tax Rate", 0.20, "tax", "medium"),
-        ]
-        # Go through the service so projections are computed the same way the
-        # API does (it owns the engine call signature and row mapping).
+        # Every key in the one vocabulary (app/services/plan_assumptions.py) at its default, with
+        # Claudius's own values on top. His birth date (1 January, 30 years ago) keeps him 30 all year.
+        from app.models.planning import HouseholdProfile
         from app.schemas.planning import AssumptionInput
-        from app.services.planning_service import create_plan
+        from app.services.plan_assumptions import ASSUMPTIONS
+        from app.services.planning_service import add_event, create_plan
 
+        db.add(HouseholdProfile(birth_date=date(date.today().year - 30, 1, 1)))
+        db.flush()
+        claudius = {
+            "retirement_age": 55, "rsu_pct_of_comp": 0.31, "monthly_cash_savings": 1500,
+            "retirement_spending": 60000, "ss_monthly_at_fra": 2800, "ss_claim_age": 67,
+        }
+        # Go through the service so projections are computed the same way the API does.
         plan = create_plan(
             db,
-            name="Retire at 60",
+            name="Retire at 55",
             description="Base retirement scenario",
             scenario_type="base",
             assumptions_input=[
-                AssumptionInput(key=key, value=value, display_name=display,
-                                category=category, sensitivity=sensitivity)
-                for key, display, value, category, sensitivity in assumptions
+                AssumptionInput(key=a["key"], value=claudius.get(a["key"], a["value"]), display_name=a["display_name"],
+                                category=a["category"], sensitivity=a["sensitivity"], description=a["description"])
+                for a in ASSUMPTIONS
             ],
+            spending_rule="guardrails",
         )
+        # Health cover before and after 65 is modelled by the plan itself (marketplace, then Medicare).
+        add_event(db, plan.id, {"kind": "layoff", "label": "Layoff, back to work in 6 months", "start_age": 36,
+                                "params": {"severance_weeks": 8, "gap_months": 6, "next_pay_pct": 0.9, "next_equity": 1}})
+        add_event(db, plan.id, {"kind": "part_time", "label": "Part-time consulting", "start_age": 55,
+                                "end_age": 58, "amount": 40000, "pct": 0})
+        add_event(db, plan.id, {"kind": "recurring_expense", "label": "College", "start_age": 48,
+                                "end_age": 51, "amount": 35000, "pct": 0, "enabled": False})
         n_proj = db.query(PlanProjection).filter_by(plan_id=plan.id).count()
         if n_proj:
             print(f"  ✓ Plan + {n_proj} projection rows")

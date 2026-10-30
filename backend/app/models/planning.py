@@ -1,10 +1,19 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+
+class HouseholdProfile(Base):
+    """One row: facts about the household every plan shares. Age is computed from birth_date each day."""
+    __tablename__ = "household_profile"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    birth_date: Mapped[date | None] = mapped_column(Date)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class PlanVersion(Base):
@@ -15,6 +24,10 @@ class PlanVersion(Base):
     description: Mapped[str | None] = mapped_column(Text)
     scenario_type: Mapped[str] = mapped_column(String, default="base")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # How retirement spending responds to markets: fixed | guardrails | vpw (engine/retirement_sim.py)
+    spending_rule: Mapped[str] = mapped_column(String, default="fixed", server_default="fixed")
+    # Shape of real living spending over retirement: flat | smile (engine/retirement_sim.smile_change)
+    spending_profile: Mapped[str] = mapped_column(String, default="flat", server_default="flat")
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime, server_default=func.now()
     )
@@ -24,6 +37,8 @@ class PlanVersion(Base):
 
     assumptions = relationship("PlanAssumption", back_populates="plan", cascade="all, delete-orphan")
     projections = relationship("PlanProjection", back_populates="plan", cascade="all, delete-orphan")
+    events = relationship("PlanEvent", back_populates="plan", cascade="all, delete-orphan",
+                          order_by="PlanEvent.start_age")
 
 
 class PlanAssumption(Base):
@@ -42,6 +57,30 @@ class PlanAssumption(Base):
     sensitivity: Mapped[str] = mapped_column(String, default="medium")
 
     plan = relationship("PlanVersion", back_populates="assumptions")
+
+
+class PlanEvent(Base):
+    """A life event in a plan: part-time years, a job loss, a big purchase, college, a downsize...
+
+    Amounts are in today's dollars (annual for recurring kinds); the engine inflates them along
+    each path. ``kind`` is one of retirement_sim.EVENT_KINDS.
+    """
+    __tablename__ = "plan_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    plan_id: Mapped[int] = mapped_column(Integer, ForeignKey("plan_versions.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    start_age: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_age: Mapped[int | None] = mapped_column(Integer)
+    amount: Mapped[Decimal] = mapped_column(Numeric, nullable=False, default=0)
+    pct: Mapped[Decimal] = mapped_column(Numeric, nullable=False, default=0)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Kind-specific settings, e.g. a layoff's severance weeks, gap months and next-job pay (retirement_sim.LAYOFF_DEFAULTS)
+    params: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now())
+
+    plan = relationship("PlanVersion", back_populates="events")
 
 
 class PlanProjection(Base):

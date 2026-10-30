@@ -17,7 +17,9 @@ from app.models.planning import (
     ActualSnapshot,
     ContributionConfig,
     Forecast,
+    HouseholdProfile,
     PlanAssumption,
+    PlanEvent,
     PlanProjection,
     PlanVersion,
 )

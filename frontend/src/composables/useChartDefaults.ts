@@ -69,5 +69,21 @@ export function useChartDefaults() {
       : { bottom: 0, type: 'scroll' as const, itemGap: 16, textStyle: { fontSize: 11, color: mutedTextColor.value } }
   }
 
-  return { baseOption, COLORS, isDark, isMobile, axisLineColor, splitLineColor, mutedTextColor, mobileAxis, mobileLegend }
+  // Wealth buckets (cash, taxable, company stock, 401(k), home equity) in a fixed order, with
+  // separate light and dark steps; both pass scripts/validate_palette.js (dataviz skill) for
+  // lightness, chroma and colour-blind separation of neighbours.
+  const bucketColors = computed(() => (isDark.value
+    ? ['#6366f1', '#d97706', '#0891b2', '#8b5cf6', '#16a34a']
+    : ['#6366f1', '#f59e0b', '#06b6d4', '#8b5cf6', '#22c55e']))
+  // Status colours carry meaning (lasted / ran out) and are never used for a series identity.
+  const statusColors = computed(() => (isDark.value
+    ? { good: '#22c55e', warning: '#f59e0b', critical: '#f87171' }
+    : { good: '#16a34a', warning: '#d97706', critical: '#dc2626' }))
+  // One hue for magnitude bands (percentile fans): the primary, at two opacities.
+  const bandColor = '#6366f1'
+
+  return {
+    baseOption, COLORS, isDark, isMobile, axisLineColor, splitLineColor, mutedTextColor, mobileAxis, mobileLegend,
+    bucketColors, statusColors, bandColor,
+  }
 }

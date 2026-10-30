@@ -390,6 +390,7 @@ requirements:
     notes:
       - "2026-10-29: current_age hard-coded 33, retirement age from config.yaml, slider PUT wipes metadata (planning brief 1.5)."
       - "2026-10-29: current_age, retirement_age and 401(k) rates are plan assumptions; config.yaml deleted; one vocabulary in DEFAULT_ASSUMPTIONS and the seed; update_plan keeps labels; engine errors are 422."
+      - "2026-10-29 (planning v2): age now comes from the household birth date (household_profile), not a current_age assumption, which migration 0006planv2 removes; the vocabulary moved to services/plan_assumptions.py. See PLAN-V2-002. The test sets a birth date 40 years back and still checks the first projected age and labels."
   - id: PLAN-002
     title: Forecast and plan rows do not double-count RSUs
     job: plan
@@ -418,6 +419,224 @@ requirements:
       - backend/tests/test_api/test_security.py::test_legacy_api_mount_is_gone
     notes:
       - "2026-10-29: page pass landed (commit Page pass)."
+  # PLAN — Planning v2 (docs/requirements/planning-v2.md)
+
+  - id: PLAN-V2-001
+    title: Planning answers "will it work" with a chance of success and a wealth fan, not only a table
+    job: plan
+    area: planning
+    priority: p0
+    visible: true
+    done_means:
+      - "The outlook runs 1,000 Monte Carlo paths with a fixed seed (same answer twice), returns lognormal around the plan's return assumptions with the 1928–2025 volatility of the phase's stock/bond mix; the headline shows the chance of success against the plan's target with an on-track/close/off-track label (icon + text)."
+      - "The wealth chart draws 10–90% and 25–75% bands and the median by age in today's dollars, with the median net worth overlaid, the retirement age and the access milestones (55, 59½, 62, 65, full retirement age, 70) marked, and an empty state."
+      - "The plan line (every return at its median) sits within 15% of the Monte Carlo median at retirement and is what plan_projections stores."
+      - "The page lists the real figures the plan starts from (investable, 401(k) and Roth basis, company stock, pay and its source, scheduled vests, home) with their dates."
+    status: done
+    evidence:
+      - backend/tests/test_engine/test_retirement_sim.py::test_monte_carlo_is_reproducible_and_moves_the_right_way
+      - backend/tests/test_engine/test_retirement_sim.py::test_plan_line_sits_near_the_monte_carlo_median
+      - backend/tests/test_api/test_planning_v2.py::test_outlook_starts_from_the_household_and_income_does_not_stop_after_the_last_vest
+      - frontend/tests/planning-outlook.spec.ts#turns percentile bands into stacked base + width series
+      - frontend/tests/planning-outlook.spec.ts#grades the chance of success against the target
+      - frontend/tests/planning-years.spec.ts#puts milestones on the age axis (59½ on 60) and drops those outside it
+      - artifacts/screens/planning/desktop.png
+      - artifacts/screens/planning/mobile.png
+    notes:
+      - "2026-10-29: built on branch worktree-agent-ab96287648ec64335 (engine/retirement_sim.py, services/retirement_outlook.py, PlanningView.vue)."
+  - id: PLAN-V2-002
+    title: Age comes from a birth date; income does not stop after the last scheduled vest
+    job: plan
+    area: planning
+    priority: p0
+    visible: true
+    done_means:
+      - "The household birth date is stored once (household_profile) and age is computed from it every day; without it the outlook answers 422 and the page asks for the birth date instead of assuming an age. The current_age assumption is gone (migration removes it)."
+      - "RSU income after today's vest schedule comes from refresh grants at the RSU share of comp, ramping in over three years, so working-year income never drops to $0 (engine and API tests with a gross-only W-2)."
+      - "A gross-only W-2 is split into salary and RSU with services/compensation.comp_split; the starting point says so."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_planning_v2.py::test_no_age_is_assumed_until_the_birth_date_is_set
+      - backend/tests/test_engine/test_retirement_sim.py::test_rsu_income_continues_after_the_last_scheduled_vest
+      - backend/tests/test_engine/test_retirement_sim.py::test_salary_only_household_has_no_invented_rsu
+      - backend/tests/test_api/test_planning_v2.py::test_outlook_starts_from_the_household_and_income_does_not_stop_after_the_last_vest
+      - artifacts/screens/planning/desktop.png
+  - id: PLAN-V2-003
+    title: What would need to be true, under any scenario
+    job: plan
+    area: planning
+    priority: p0
+    visible: true
+    done_means:
+      - "For the plan's target chance of success and the selected macro scenario the page shows, each lever on its own: the most it can spend, the earliest retirement age, the extra monthly savings and the return shift that reach it; or 'not reachable'; or the headroom when already met."
+      - "Spending at the reported maximum reaches the target and 15% more does not; the success-by-spending curve falls monotonically; the goal-seek follows the selected scenario."
+      - "Success-by-age and by-spending curves mark the target and the plan's own setting; the return assumptions are shown next to what the same mixes returned 1928–2025."
+    status: done
+    evidence:
+      - backend/tests/test_engine/test_retirement_sim.py::test_goal_seek_answers_are_consistent_with_the_success_rate
+      - backend/tests/test_api/test_planning_v2.py::test_analysis_has_scenarios_goal_seek_sensitivity_and_nest_egg
+      - frontend/tests/planning-outlook.spec.ts#says what would need to be true when the plan is short of the target
+      - frontend/tests/planning-outlook.spec.ts#says how much room there is when the plan already meets the target
+      - frontend/tests/planning-outlook.spec.ts#reports levers that cannot reach the target on their own
+      - artifacts/screens/planning/desktop.png
+  - id: PLAN-V2-004
+    title: Retirement age is a dimension, with the access milestones and the early-retirement bridge
+    job: plan
+    area: planning
+    priority: p0
+    visible: true
+    done_means:
+      - "A table compares retiring at 50, 55, 60, 62, 65, 67 and 70 (where the age curve reaches) and the plan's age: chance of success, wealth at retirement and at the plan-to age, and what opens at that age."
+      - "Before 59½ withdrawals come from cash, taxable and company stock, then the Roth contribution basis (tax- and penalty-free), then the 401(k): penalty-free from 55 when retiring then (rule of 55) or within 72(t) payments (5% amortization), otherwise with the 10% penalty; a chart shows each source by year."
+      - "Full retirement age comes from the birth year (67 from 1960); Social Security pays the claiming factor (70% at 62, 124% at 70 with FRA 67) from the claim age."
+    status: done
+    evidence:
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_rule_of_55_opens_the_401k_without_penalty
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_before_55_the_bridge_is_taxable_then_roth_basis_then_penalty
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_72t_payments_avoid_the_penalty_up_to_the_sepp_amount
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_full_retirement_age_and_claiming_factors
+      - frontend/tests/planning-years.spec.ts#shows where the money for the early years comes from, up to an age
+      - frontend/tests/planning-years.spec.ts#compares the milestone retirement ages plus the plan age
+      - artifacts/screens/planning/desktop.png
+      - artifacts/screens/planning/mobile.png
+  - id: PLAN-V2-005
+    title: What will retirement cost, derived from actual spending
+    job: plan
+    area: planning
+    priority: p0
+    visible: true
+    done_means:
+      - "Living spending is suggested from the last 12 months of spending (D1 rules: no transfers or loan payments), minus one-off spikes (≥ $2,500, ≥ 10× the median purchase, in a category not bought most months) and the share of work costs that stops; the range runs from the uncategorised amount to the trailing total; 'Use' sets the lever as a what-if."
+      - "Housing, health care and events are added by the plan, not typed into living spending: mortgage principal and interest until payoff, escrow for good (optional payoff at retirement); marketplace premiums before 65 capped at 9.96% of last year's MAGI below 400% of the poverty line (full above it and in the first retired year); Medicare-age costs from 65; both rising 2 points above CPI by default."
+      - "Reference points are labelled as population figures: 70–80% of pay, BLS Consumer Expenditure Survey by age. A chart shows each retired year's living, housing, health and other costs."
+      - "Spending shape: flat or the retirement 'smile' (about −1% a year real, −2% in the mid-70s, then −1%)."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_planning_v2.py::test_what_will_retirement_cost_is_built_from_actual_spending
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_marketplace_premium_is_capped_by_income_below_the_cliff_and_medicare_from_65
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_escrow_continues_after_payoff_and_payoff_at_retirement_is_a_lump
+      - backend/tests/test_api/test_planning_v2.py::test_escrow_continues_after_the_mortgage_is_paid_off
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_spending_smile_falls_in_real_terms_and_flat_does_not
+      - frontend/tests/planning-years.spec.ts#breaks a retired year into living, housing, health and other costs
+      - frontend/tests/planning-years.spec.ts#deflates each year by the price level at its start
+      - artifacts/screens/planning/desktop.png
+  - id: PLAN-V2-006
+    title: Withdrawal rules and the nest egg they need
+    job: plan
+    area: planning
+    priority: p1
+    visible: true
+    done_means:
+      - "Fixed spends the target every year; guardrails follow Guyton-Klinger gated so a rate the portfolio can sustain (the VPW rate) is never cut; VPW spends the payment that empties the portfolio at the plan-to age; under guardrails or VPW a path also fails when real spending falls below the floor."
+      - "A table gives, for 30, 40, 50, 60 years and the plan's horizon, the worst and 10th-percentile historical fixed withdrawal rates at the retirement stock share, the VPW starting rate, and the nest egg each needs for the first retired year's net need; the historical rates match Early Retirement Now's published fail-safe rates within 0.15 point; Bengen, Morningstar, ERN and Guyton-Klinger are shown as labelled references."
+    status: done
+    evidence:
+      - backend/tests/test_engine/test_retirement_sim.py::test_guardrails_cut_ten_percent_after_a_crash
+      - backend/tests/test_engine/test_retirement_sim.py::test_guardrails_do_not_cut_a_withdrawal_rate_the_portfolio_can_sustain
+      - backend/tests/test_engine/test_retirement_sim.py::test_vpw_spends_the_payment_that_empties_the_portfolio_at_the_end
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_historical_safe_withdrawal_rates_match_the_published_record
+      - backend/tests/test_api/test_planning_v2.py::test_analysis_has_scenarios_goal_seek_sensitivity_and_nest_egg
+      - artifacts/screens/planning/desktop.png
+  - id: PLAN-V2-007
+    title: Macro scenarios, Social Security shortfall and every historical start year
+    job: plan
+    area: planning
+    priority: p1
+    visible: true
+    done_means:
+      - "Scenarios: your assumptions, strong market now (1982–1999), crash in the first retired year, lost decade, stagflation and depression replayed from the retirement year, ten years of high inflation, low returns for good; each shows its chance of success; selecting one redraws the fan and reruns the goal-seek, age table and sensitivity under it."
+      - "Replays use the 1928–2025 Damodaran returns and BLS CPI; the 1966 start fails a 4.8% 30-year retirement that 1982 survives; the historical chart counts only complete retirements."
+      - "A toggle pays 81% of scheduled Social Security from 2034 (2025 Trustees Report)."
+    status: done
+    evidence:
+      - backend/tests/test_engine/test_retirement_sim.py::test_historical_cohorts_are_complete_sequences_and_1966_is_hard
+      - backend/tests/test_engine/test_retirement_sim.py::test_stagflation_regime_replays_history_from_retirement
+      - backend/tests/test_engine/test_retirement_sim.py::test_a_crash_in_the_first_retired_year_is_sequence_risk
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_social_security_from_claim_age_and_trust_fund_shortfall_from_2034
+      - backend/app/engine/history_data.py
+      - artifacts/screens/planning/desktop.png
+  - id: PLAN-V2-008
+    title: Career shocks - acquisition, layoff, no re-employment - and whether the money runs out
+    job: plan
+    area: planning
+    priority: p0
+    visible: true
+    done_means:
+      - "Acquisition: at close vested shares are bought for cash at the deal price, unvested grants convert to cash at the deal price and pay on their original dates, and equity after close is a stated yearly amount."
+      - "Layoff: severance, unemployment benefit (up to 26 weeks, Massachusetts maximum by default), all unvested grants accelerate and pay at once, a gap without pay with spending and COBRA/marketplace cover from savings, then a new job at a share of today's pay with or without equity; or never re-employed, which retires the plan at the layoff with optional part-time income."
+      - "For each shock the page shows whether and when the plan line runs out, the share of markets that run out, and the minimum part-time income (to the planned retirement age) that keeps the plan line solvent, undoes the shock, or reaches the target."
+      - "Ten other templates (part-time bridge, simple job loss, stock crash and boom, big purchase, child costs, college, long-term care, relocation, downsizing, windfall) are saved per plan with edit, on/off and remove; each shows its own effect in points; invalid kinds, parameters and ages are 422."
+    status: done
+    evidence:
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_acquisition_cashes_out_vested_shares_and_pays_unvested_at_the_deal_price_on_schedule
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_layoff_pays_severance_and_benefit_accelerates_vesting_then_a_gap_and_lower_pay
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_layoff_with_no_next_job_retires_at_the_layoff_and_income_keeps_it_solvent
+      - backend/tests/test_engine/test_retirement_sim.py::test_life_events_change_the_path_as_described
+      - backend/tests/test_api/test_planning_v2.py::test_life_events_crud_impact_and_layoff_outcome
+      - frontend/tests/planning-years.spec.ts#summarises layoffs and acquisitions in words
+      - frontend/tests/planning-years.spec.ts#places a fixed-age template (long-term care at 85) whatever the current age
+      - frontend/tests/planning-outlook.spec.ts#places template events relative to the current and retirement ages
+      - artifacts/screens/planning/desktop.png
+  - id: PLAN-V2-009
+    title: Sprint to retirement
+    job: plan
+    area: planning
+    priority: p1
+    visible: true
+    done_means:
+      - "With the 401(k) at the IRS limit and every equity payout invested, the page shows the most living spending that reaches the target for each retirement age and four return assumptions (−2 to +1 points), the earliest age for each spending level, and the earliest age at the plan's spending; more working years and better returns never allow less spending (test)."
+      - "A tornado shows how spending ±20%, returns ±1 point, pay after a job change (70%/120%), new equity grants (none/at today's share) and the gap between jobs (±6 months) move the chance of success; job levers use the plan's layoff or, if none, a stated job change."
+      - "Levers sit next to the overall tornado (retirement age, spending, comp growth, returns, inflation, savings, company stock, stock share, claim age)."
+    status: done
+    evidence:
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_sprint_grid_spending_rises_with_retirement_age_and_returns
+      - backend/tests/test_api/test_planning_v2.py::test_sprint_to_retirement_grid_and_levers
+      - backend/tests/test_api/test_planning_v2.py::test_analysis_has_scenarios_goal_seek_sensitivity_and_nest_egg
+      - frontend/tests/planning-years.spec.ts#maps both kinds of sensitivity onto one tornado shape, keeping per-row baselines
+      - artifacts/screens/planning/desktop.png
+  - id: PLAN-V2-010
+    title: Levers are what-ifs until saved; plans can be kept and compared
+    job: plan
+    area: planning
+    priority: p0
+    visible: true
+    done_means:
+      - "Moving a lever calls POST /plans/{id}/what-if (or /sprint), which writes nothing; the page marks changed levers and offers Save changes and Reset; a save that fails says nothing was changed."
+      - "Save as new plan copies the levers, the spending rule and shape, and the life events; plans side by side shows each saved plan's outcome."
+      - "Unknown assumptions, rules, shapes or scenarios are 422; out-of-range values are clamped to the vocabulary's range."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_planning_v2.py::test_what_if_changes_the_answer_and_writes_nothing
+      - backend/tests/test_api/test_planning_v2.py::test_save_spending_rule_profile_and_copy_a_plan
+      - backend/tests/test_api/test_planning_v2.py::test_catalogue_lists_rules_profiles_scenarios_and_templates
+      - frontend/tests/planning-outlook.spec.ts#finds the levers that differ from the saved plan
+      - artifacts/screens/planning/desktop.png
+      - artifacts/screens/planning/mobile.png
+  - id: PLAN-V2-011
+    title: Planning v2 schema ships a migration that keeps existing plans
+    job: plan
+    area: planning
+    priority: p0
+    done_means:
+      - "Alembic 0006planv2 iterates tenant schemas: creates household_profile and plan_events (with params), adds spending_rule and spending_profile, inserts the new assumption keys at their defaults for each existing plan without touching existing values, removes current_age, and runs on an empty database."
+      - "The migration's frozen key list matches services/plan_assumptions.V2_KEYS and their defaults (unit test)."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_planning_v2.py::test_migration_backfills_the_same_keys_the_vocabulary_adds
+      - backend/alembic/versions/0006planv2_plan_events_spending_rule.py
+    notes:
+      - "2026-10-29: verified on local Postgres 16: upgrade head on an empty database; and on a copy of the seeded tenant with the v2 objects removed and retirement_age set to 61: the new keys added, 61 kept, then downgrade and upgrade again."
+  - id: PLAN-V2-012
+    title: Mark's own planning inputs are set
+    job: plan
+    area: planning
+    priority: p0
+    done_means:
+      - "In production the household birth date is set and the active plan has Mark's retirement age, target chance, living spending (from the page's suggestion), spending rule, shape and floor, return assumptions he agrees with, Social Security estimate and claim age, health assumptions, acquisition and layoff terms, and the RSU keep/sell share (planning-v2.md, 'Decisions only Mark can make')."
+    status: todo
+    notes:
+      - "2026-10-29: needs Mark; nothing is guessed. The return defaults (7%/5%, 3% inflation) are far below what the same mixes returned 1928–2025."
+
   # ---------------------------------------------------------------------------
   # PLATFORM — Database, API, Settings, Admin, auth, Guide
   # ---------------------------------------------------------------------------

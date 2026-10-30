@@ -6,7 +6,8 @@ export default defineConfig({
   plugins: [vue(), tailwindcss()],
   server: {
     proxy: {
-      '/api': 'http://localhost:8000'
+      // VITE_API_PROXY lets a second checkout run its own backend (e.g. :8010) beside the main one.
+      '/api': process.env.VITE_API_PROXY || 'http://localhost:8000'
     }
   }
 })

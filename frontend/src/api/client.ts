@@ -5,8 +5,15 @@ import type {
   IncomeHistory,
   MonthlySpending,
   NetWorthSeries,
+  Household,
+  PlanCatalogue,
   PlanCompareResponse,
   PlanCreate,
+  PlanEvent,
+  PlanEventInput,
+  PlanOutlook,
+  SprintResult,
+  WhatIfRequest,
   PlanListItem,
   PlanResponse,
   PlanUpdate,
@@ -210,6 +217,25 @@ export const api = {
     fetchJson<PlanCompareResponse>(`/plans/compare?ids=${ids.join(',')}`),
   getSensitivity: (id: number) => fetchJson<SensitivityResponse>(`/plans/${id}/sensitivity`),
   getVariance: (id: number) => fetchJson<VarianceResponse[]>(`/plans/${id}/variance`),
+
+  // Planning v2: outlook, what-if, life events
+  planning: {
+    catalogue: () => fetchJson<PlanCatalogue>('/plans/catalogue'),
+    household: () => fetchJson<Household>('/plans/household'),
+    setBirthDate: (birth_date: string) =>
+      fetchJson<Household>('/plans/household', { method: 'PUT', body: JSON.stringify({ birth_date }) }),
+    sprint: (id: number, body: WhatIfRequest) =>
+      fetchJson<SprintResult>(`/plans/${id}/sprint`, { method: 'POST', body: JSON.stringify(body) }),
+    outlook: (id: number, regime = 'base', analysis = true) =>
+      fetchJson<PlanOutlook>(`/plans/${id}/outlook` + buildQuery({ regime, analysis: analysis ? undefined : 'false' })),
+    whatIf: (id: number, body: WhatIfRequest) =>
+      fetchJson<PlanOutlook>(`/plans/${id}/what-if`, { method: 'POST', body: JSON.stringify(body) }),
+    addEvent: (planId: number, data: PlanEventInput) =>
+      fetchJson<PlanEvent>(`/plans/${planId}/events`, { method: 'POST', body: JSON.stringify(data) }),
+    updateEvent: (eventId: number, data: Partial<PlanEventInput>) =>
+      fetchJson<PlanEvent>(`/plans/events/${eventId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteEvent: (eventId: number) => fetchVoid(`/plans/events/${eventId}`, { method: 'DELETE' }),
+  },
 
   // Import history
   getImportLog: () => fetchJson<ImportLogEntry[]>('/import/logs'),

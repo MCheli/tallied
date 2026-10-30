@@ -55,7 +55,7 @@ def test_older_statement_adds_history_but_keeps_current_balance(client, db_sessi
     assert summary["account"]["total_balance"] == 190000
 
 
-def test_forecast_year_rsu_income_is_actual_vests_plus_scheduled_at_todays_price(client, db_session):
+def test_forecast_year_rsu_income_is_actual_vests_plus_scheduled_at_todays_price(client, db_session, born_30):
     from app.models.income import W2Record
     from app.models.investment import RSUGrant, StockPrice, VestEvent
 

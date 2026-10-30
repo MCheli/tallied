@@ -128,6 +128,19 @@ def client():
     return TestClient(app)
 
 
+def set_household_age(client, age: int) -> None:
+    """Planning computes age from the household birth date; 1 January keeps the age exact all year."""
+    from datetime import date
+
+    res = client.put("/api/v1/plans/household", json={"birth_date": f"{date.today().year - age}-01-01"})
+    assert res.status_code == 200, res.text
+
+
+@pytest.fixture
+def born_30(client):
+    set_household_age(client, 30)
+
+
 @pytest.fixture
 def seeded_db(db_session):
     """Seed the test database with Claudius Banks data."""

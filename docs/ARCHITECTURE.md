@@ -4,7 +4,7 @@ How the code is put together and the rules that keep it that way. What the produ
 
 ## Stack
 
-- **Backend** `backend/`: FastAPI, SQLAlchemy 2.0 (`Mapped` / `mapped_column`), Alembic, Pydantic v2, psycopg2. Python 3.13 (`.python-version`, the image and CI); the pinned floors are in `backend/requirements.txt`.
+- **Backend** `backend/`: FastAPI, SQLAlchemy 2.0 (`Mapped` / `mapped_column`), Alembic, Pydantic v2, psycopg2, numpy (the planning engine, `engine/retirement_sim.py`). Python 3.13 (`.python-version`, the image and CI); the pinned floors are in `backend/requirements.txt`.
 - **Frontend** `frontend/`: Vue 3 `<script setup lang="ts">`, Vite, Tailwind v4 (`dark:` variants), ECharts via `vue-echarts`, Pinia, Vue Router.
 - **Database**: PostgreSQL 16, one schema per tenant plus `public` for platform tables. Tests use SQLite in memory.
 - **AI**: Anthropic Claude for document parsing, receipt parsing and asset valuation, through `backend/app/ai/` (one client, one place to pick models).

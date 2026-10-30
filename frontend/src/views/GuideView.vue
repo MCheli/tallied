@@ -104,7 +104,7 @@ const pages = [
   {
     name: 'Planning',
     group: 'Planning',
-    description: 'Year-by-year projections to a target retirement age from your current balances, latest W-2, mortgage and vest schedule plus editable assumptions, with scenario comparison. Sensitivity analysis is available through the API.',
+    description: 'Will it work, and what would need to be true? From your balances, pay and actual spending: chance of success (simulated and historical), wealth bands with the 55 / 59½ / 62 / 65 / 67 / 70 milestones, retirement ages compared, what retirement costs, how the early years are paid, the nest egg each withdrawal rule needs, macro scenarios, acquisition and layoff shocks, a sprint-to-retirement grid and the levers that matter most. Levers are what-ifs until you save.',
   },
   {
     name: 'Database',
