@@ -238,6 +238,8 @@ def starting_point(db: Session, birth_date: date, today: date | None = None) -> 
 WORK_COST_CATEGORIES = ("gas", "fuel", "parking", "tolls", "transit", "public transportation", "commute", "commuting",
                         "rideshare", "auto & transport", "transportation")
 UNCATEGORISED = ("", "uncategorized", "uncategorised", "other", "misc", "miscellaneous")
+# Paid from the mortgage escrow: the plan adds escrow as housing, so these are not living spending.
+ESCROW_CATEGORIES = ("property tax", "mortgage insurance", "homeowners insurance", "home insurance")
 # Population references (labelled as such on the page).
 BLS_CE = {"year": 2024, "all": 78_535, "age_65_plus": 61_432, "age_65_74": 65_354, "age_75_plus_2023": 53_031}
 
@@ -252,19 +254,27 @@ def spending_builder(db: Session, household: rs.Household, values: dict[str, flo
     """
     today = today or date.today()
     since = today - timedelta(days=365)
-    rows = db.execute(
+    rows = [r for r in db.execute(
         spending_filter(select(Transaction.date, Transaction.amount, Transaction.category, Transaction.merchant))
         .where(Transaction.date > since, Transaction.date <= today)
-    ).all()
-    total = sum(-float(a or 0) for _, a, _, _ in rows)
+    ).all() if (r[2] or "").strip().lower() not in ESCROW_CATEGORIES]
+    # With less than a year of history, scale what there is to a year instead of calling it a year.
+    first = db.execute(select(func.min(Transaction.date)).where(Transaction.date > since, Transaction.date <= today)).scalar()
+    if first is None or (first - since).days <= 45:
+        covered = 12.0          # history reaches back to (about) the start of the window: a full year
+    else:
+        covered = min(12.0, max(1.0, ((today - first).days + 1) / 30.4375))
+    to_year = 12.0 / covered
+    observed = sum(-float(a or 0) for _, a, _, _ in rows)
+    total = observed * to_year
     by_month: dict[str, float] = {}
     for d, a, _, _ in rows:
         key = d.strftime("%Y-%m")
         by_month[key] = by_month.get(key, 0.0) + -float(a or 0)
     months = [by_month[k] for k in sorted(by_month)]
     median_month = statistics.median(months) if months else 0.0
-    uncategorised = sum(-float(a or 0) for _, a, c, _ in rows if (c or "").strip().lower() in UNCATEGORISED)
-    work = sum(-float(a or 0) for _, a, c, _ in rows if (c or "").strip().lower() in WORK_COST_CATEGORIES)
+    uncategorised = to_year * sum(-float(a or 0) for _, a, c, _ in rows if (c or "").strip().lower() in UNCATEGORISED)
+    work = to_year * sum(-float(a or 0) for _, a, c, _ in rows if (c or "").strip().lower() in WORK_COST_CATEGORIES)
     # One-off spikes: single purchases far above the usual (at least $2,500 and 10x the median purchase)
     # in a category that does not recur most months (rent-like bills are not one-offs).
     amounts = sorted(-float(a or 0) for _, a, _, _ in rows)
@@ -282,7 +292,7 @@ def spending_builder(db: Session, household: rs.Household, values: dict[str, flo
     )
     spike_total = sum(s["amount"] for s in spikes)
     reduction = values.get("commute_reduction", 0.5)
-    base = total - spike_total
+    base = total - spike_total   # one-offs are removed once, not scaled
     suggested = max(0.0, base - work * reduction)
 
     w2 = db.execute(select(W2Record).order_by(W2Record.tax_year.desc()).limit(1)).scalar_one_or_none()
@@ -296,6 +306,8 @@ def spending_builder(db: Session, household: rs.Household, values: dict[str, flo
     return {
         "window": {"from": since.isoformat(), "to": today.isoformat(), "months": len(months)},
         "trailing_total": round(total, 0),
+        "observed_total": round(observed, 0),
+        "covered_months": round(covered, 1),
         "median_month": round(median_month, 0),
         "monthly": [{"month": k, "total": round(by_month[k], 0)} for k in sorted(by_month)],
         "uncategorised": round(uncategorised, 0),

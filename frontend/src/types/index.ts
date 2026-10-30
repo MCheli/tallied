@@ -373,7 +373,10 @@ export interface Milestone {
 
 export interface SpendingBuilder {
   window: { from: string; to: string; months: number }
+  /** A year's spending: the observed total scaled to 12 months when history is shorter */
   trailing_total: number
+  observed_total?: number
+  covered_months?: number
   median_month: number
   monthly: { month: string; total: number }[]
   uncategorised: number

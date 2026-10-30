@@ -28,14 +28,14 @@ const info = `<strong>Built from your transactions.</strong> The last 12 months 
       <div class="min-w-0">
         <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Living spending</h4>
         <dl class="space-y-1.5">
-          <div class="flex justify-between gap-2"><dt class="text-gray-600 dark:text-gray-300">Last 12 months</dt><dd class="tabular-nums font-medium text-gray-900 dark:text-white">{{ money(builder.trailing_total) }}</dd></div>
+          <div class="flex justify-between gap-2"><dt class="text-gray-600 dark:text-gray-300">{{ (builder.covered_months ?? 12) < 12 ? `Last ${builder.covered_months} months (${money(builder.observed_total ?? 0)}), as a year` : 'Last 12 months' }}</dt><dd class="tabular-nums font-medium text-gray-900 dark:text-white">{{ money(builder.trailing_total) }}</dd></div>
           <div class="flex justify-between gap-2"><dt class="text-gray-600 dark:text-gray-300">One-off spikes</dt><dd class="tabular-nums text-gray-900 dark:text-white">−{{ money(builder.spike_total) }}</dd></div>
           <div class="flex justify-between gap-2"><dt class="text-gray-600 dark:text-gray-300">Work costs that stop ({{ percent(builder.work_reduction, 0) }} of {{ money(builder.work_costs) }})</dt><dd class="tabular-nums text-gray-900 dark:text-white">−{{ money(builder.work_costs * builder.work_reduction) }}</dd></div>
           <div class="flex justify-between gap-2 border-t border-gray-100 dark:border-gray-800 pt-1.5"><dt class="font-semibold text-gray-900 dark:text-white">Suggested a year</dt><dd class="tabular-nums font-semibold text-gray-900 dark:text-white">{{ money(builder.suggested) }}</dd></div>
         </dl>
         <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
           Range {{ money(builder.range.low) }}–{{ money(builder.range.high) }}: {{ money(builder.uncategorised) }} is uncategorised and median month is {{ money(builder.median_month) }}.
-          <span v-if="builder.window.months < 12">Fewer than 12 months of data, so this understates a full year.</span>
+          <span v-if="(builder.covered_months ?? 12) < 12">Only {{ builder.covered_months }} months of history, scaled to a year; seasonal costs may be missed. Property tax and insurance paid from escrow are left out because the plan adds escrow as housing.</span>
         </p>
         <ul v-if="builder.spikes.length" class="mt-2 space-y-0.5 text-xs text-gray-500 dark:text-gray-400">
           <li v-for="s in builder.spikes.slice(0, 4)" :key="s.date + s.amount">{{ date(s.date) }} · {{ s.merchant || s.category || 'Purchase' }} · {{ money(s.amount) }}</li>

@@ -116,6 +116,32 @@ def test_what_will_retirement_cost_is_built_from_actual_spending(client, db_sess
     assert b["range"]["high"] == round(12 * 3300 + 9000, -2)
     assert b["references"]["bls"]["age_65_plus"] == 61_432
     assert b["health"]["post65"] == 8_500
+    assert b["covered_months"] == 12
+
+
+def test_short_spending_history_is_scaled_to_a_year_and_escrow_costs_are_left_out(client, db_session, born_30):
+    from datetime import date, timedelta
+    from decimal import Decimal
+
+    from app.models.account import Account
+    from app.models.transaction import Transaction
+    _household(db_session)
+    db_session.add(Account(id="chk2", name="chk2", account_type="cash", display_group="Cash", include_in_nw=True, is_active=True))
+    db_session.flush()
+    today = date.today()
+    for i in range(6):   # six months of history: 1,000 a month of groceries, plus property tax from escrow
+        d = today - timedelta(days=30 * i + 5)
+        db_session.add(Transaction(id=f"s{i}", account_id="chk2", date=d, amount=Decimal("-1000"), merchant="Market",
+                                   category="Groceries", source="test"))
+    db_session.add(Transaction(id="tax", account_id="chk2", date=today - timedelta(days=20), amount=Decimal("-3800"),
+                               merchant="City Tax", category="Property Tax", source="test"))
+    db_session.commit()
+    plan = _plan(client)
+    b = client.get(f"/api/v1/plans/{plan['id']}/outlook", params={"analysis": "false"}).json()["spending_builder"]
+    assert b["observed_total"] == 6000                       # property tax excluded: the plan adds escrow itself
+    covered = (30 * 5 + 5 + 1) / 30.4375                       # first transaction to today
+    assert b["covered_months"] == round(covered, 1)
+    assert b["trailing_total"] == round(6000 * 12 / covered, 0)
 
 
 def test_what_if_changes_the_answer_and_writes_nothing(client, db_session, born_30):
