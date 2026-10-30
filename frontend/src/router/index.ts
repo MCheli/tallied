@@ -30,6 +30,12 @@ const router = createRouter({
       meta: { title: 'Dashboard' },
     },
     {
+      path: '/recap',
+      name: 'recap',
+      component: () => import('../views/RecapView.vue'),
+      meta: { title: 'Weekly Recap' },
+    },
+    {
       path: '/spending',
       name: 'spending',
       component: () => import('../views/SpendingView.vue'),

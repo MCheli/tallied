@@ -1,13 +1,11 @@
 {
-  "capturedAt": "2026-10-30T11:51:01.183Z",
+  "capturedAt": "2026-10-30T20:37:54.389Z",
   "base": "http://localhost:5173",
   "theme": "light",
   "routes": {
     "login/mobile": {
       "consoleErrors": [],
-      "failedRequests": [
-        "GET http://localhost:5173/api/v1/auth/me :: net::ERR_ABORTED"
-      ],
+      "failedRequests": [],
       "badResponses": [],
       "overflow": []
     },
@@ -17,6 +15,17 @@
       "badResponses": [],
       "overflow": [],
       "finalUrl": "http://localhost:5173/",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "recap/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/recap",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -166,6 +175,17 @@
       "badResponses": [],
       "overflow": [],
       "finalUrl": "http://localhost:5173/",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "recap/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5173/recap",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440

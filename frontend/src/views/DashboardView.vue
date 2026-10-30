@@ -12,8 +12,10 @@ import InfoTooltip from '../components/common/InfoTooltip.vue'
 import NetWorthChart from '../components/assets/NetWorthChart.vue'
 import LiquidityWaterfall from '../components/dashboard/LiquidityWaterfall.vue'
 import CompDonut from '../components/dashboard/CompDonut.vue'
+import MonthPaceChart from '../components/dashboard/MonthPaceChart.vue'
+import { recapHeadline, weekLabel } from '../composables/useRecap'
 import LayerCard from '../components/dashboard/LayerCard.vue'
-import type { AssetsSummary, CategorySummary, NetWorthSeries, PropertySummary, RSUSummary } from '../types'
+import type { AssetsSummary, CategorySummary, MonthPace, NetWorthSeries, PropertySummary, RSUSummary, WeeklyRecap } from '../types'
 
 const store = useSnapshotStore()
 const { compact, date, dash } = useFormatters()
@@ -24,6 +26,8 @@ const spending = useTile<CategorySummary[]>()
 const property = useTile<PropertySummary>()
 const assets = useTile<AssetsSummary>()
 const trend = useTile<NetWorthSeries>()
+const pace = useTile<MonthPace>()
+const recap = useTile<WeeklyRecap>()
 
 const window30 = thirtyDayWindow()
 
@@ -36,6 +40,8 @@ onMounted(() => {
     property.load(() => api.getPropertySummary()),
     assets.load(() => api.getAssetsSummary()),
     trend.load(() => api.getNetWorth()),
+    pace.load(() => api.getMonthPace()),
+    recap.load(() => api.getWeeklyRecap()),
   ])
 })
 
@@ -54,6 +60,13 @@ const upcomingVests = computed(() => {
     else byDate.set(v.vest_date, { grant_id: String(v.grant_id), vest_date: v.vest_date, shares: v.shares, est_value: v.est_value ?? 0 })
   }
   return [...byDate.values()].slice(0, 4)
+})
+const paceSubtitle = computed(() => {
+  const p = pace.data.value
+  if (!p) return undefined
+  const diff = p.this_total - p.same_day_last_month
+  const vs = Math.abs(diff) < 1 ? 'the same as' : `${compact(Math.abs(diff))} ${diff > 0 ? 'more than' : 'less than'}`
+  return `${compact(p.this_total)} so far, ${vs} by this day last month (${compact(p.last_month_total)} in all)`
 })
 const symbol = computed(() => rsu.data.value?.symbol ?? 'the grants’ symbol')
 
@@ -148,6 +161,15 @@ WHERE NOT ve.is_actual
 ORDER BY ve.vest_date
 LIMIT 4`,
 
+  monthPace: `-- Spending per day this month and last month; the chart adds each day to the running total
+SELECT date, -SUM(amount) AS spent
+FROM transactions
+WHERE date >= date_trunc('month', current_date) - interval '1 month'
+  AND ((amount < 0 AND (category IS NULL OR category NOT IN ('Transfer', 'Credit Card Payment', 'Loan Payment', 'Mortgage Payment')))
+    OR (amount > 0 AND category IS NOT NULL AND lower(category) NOT IN ('paycheck', 'interest', 'tax refund', 'rewards')))
+GROUP BY date
+ORDER BY date`,
+
   spending30d: `-- Spending = negative amounts, excluding transfers and loan/card payments
 SELECT category, SUM(amount) AS total, COUNT(*) AS count
 FROM transactions
@@ -164,7 +186,7 @@ ORDER BY SUM(amount)`,
     <PageHeader
       title="Dashboard"
       :subtitle="asOf ? `Balances ${asOf}` : undefined"
-      tooltip="What the household is worth right now, split by how quickly the money can be reached, with the next RSU vests and the last 30 days of spending.&lt;br&gt;&lt;br&gt;Every balance is the newest snapshot per account; the as-of date shows how fresh that is."
+      tooltip="What the household is worth right now, split by how quickly the money can be reached, this month's spending against last month's pace, last week's recap, the next RSU vests and the last 30 days of spending.&lt;br&gt;&lt;br&gt;Every balance is the newest snapshot per account; the as-of date shows how fresh that is."
     />
 
     <SyncWarnings />
@@ -226,6 +248,45 @@ ORDER BY SUM(amount)`,
           :sql="SQL.propertyEquity"
           :sqlTables="['property_valuations', 'mortgages', 'accounts']"
         />
+      </div>
+
+      <!-- This month's pace and the weekly recap -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 items-start">
+        <div class="lg:col-span-2 min-w-0">
+          <ChartContainer
+            title="Spending This Month"
+            :subtitle="paceSubtitle"
+            :loading="pace.loading.value"
+            :empty="!pace.loading.value && !pace.data.value"
+            :empty-text="pace.error.value ? `Could not load spending: ${pace.error.value}` : 'No spending yet'"
+            info="Running total of spending by day of the month: this month so far against all of last month, so a line above the grey one means spending is ahead of last month's pace. Spending is money out net of refunds; transfers and loan or card payments are left out (same as the Spending page).&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; transactions, summed by day."
+            :sql="SQL.monthPace"
+            :sqlTables="['transactions']"
+          >
+            <MonthPaceChart v-if="pace.data.value" :data="pace.data.value" />
+          </ChartContainer>
+        </div>
+        <div class="min-w-0">
+          <ChartContainer
+            title="Weekly Recap"
+            :subtitle="recap.data.value ? weekLabel(recap.data.value.week_start, recap.data.value.week_end) : undefined"
+            :loading="recap.loading.value"
+            :empty="!recap.loading.value && !recap.data.value"
+            :empty-text="recap.error.value ? `Could not load the recap: ${recap.error.value}` : 'No recap yet'"
+            info="Last Sunday–Saturday week in one sentence: spending against the four weeks before, net worth change, and what is due next week. Worked out from your data each time; open it for categories, the largest purchases and earlier weeks."
+          >
+            <div v-if="recap.data.value" class="space-y-4">
+              <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{{ recapHeadline(recap.data.value) }}</p>
+              <div class="grid grid-cols-2 gap-3 text-sm">
+                <div><div class="text-xs text-gray-500 dark:text-gray-400">Spent</div><div class="font-semibold text-gray-900 dark:text-white">{{ compact(recap.data.value.spending) }}</div></div>
+                <div><div class="text-xs text-gray-500 dark:text-gray-400">Net worth</div>
+                  <div class="font-semibold" :class="(recap.data.value.net_worth_change ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'">
+                    {{ recap.data.value.net_worth_change != null ? ((recap.data.value.net_worth_change >= 0 ? '+' : '') + compact(recap.data.value.net_worth_change)) : dash }}</div></div>
+              </div>
+              <RouterLink to="/recap" class="inline-flex text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline">Open the recap &rarr;</RouterLink>
+            </div>
+          </ChartContainer>
+        </div>
       </div>
 
       <!-- Charts Row -->

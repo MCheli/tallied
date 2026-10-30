@@ -28,6 +28,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   LogIn,
+  CalendarDays,
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -84,6 +85,7 @@ const navGroups: { group: string; items: NavItem[] }[] = [
     group: 'Overview',
     items: [
       { to: '/', name: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/recap', name: 'recap', label: 'Weekly Recap', icon: CalendarDays },
       { to: '/guide', name: 'guide', label: 'Guide', icon: BookOpen },
     ],
   },

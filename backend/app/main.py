@@ -157,6 +157,7 @@ from app.api import (
     planning,
     platform_admin,
     property,
+    recap,
     retirement,
     rsu,
     schema,
@@ -241,6 +242,7 @@ v1.include_router(transactions.router)
 v1.include_router(snapshot.router)
 v1.include_router(trends.router)
 v1.include_router(spending.router)
+v1.include_router(recap.router)
 v1.include_router(income.router)
 v1.include_router(planning.router)
 v1.include_router(import_unified.router)

@@ -38,6 +38,7 @@ const PASSWORD = process.env.TOUR_PASSWORD || 'demo123';
 const ROUTES = {
   login: '/login',
   dashboard: '/',
+  recap: '/recap',
   guide: '/guide',
   spending: '/spending',
   income: '/income',

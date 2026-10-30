@@ -9,7 +9,7 @@ function toggle(key: string) {
 }
 
 const navGroups = [
-  { name: 'Overview', icon: '🏠', pages: ['Dashboard', 'Guide'] },
+  { name: 'Overview', icon: '🏠', pages: ['Dashboard', 'Weekly Recap', 'Guide'] },
   { name: 'Money', icon: '💰', pages: ['Spending', 'Income', 'Cash'] },
   { name: 'Investments', icon: '📈', pages: ['RSU', '401(k)'] },
   { name: 'Property', icon: '🏡', pages: ['Property', 'Assets'] },
@@ -65,6 +65,11 @@ const pages = [
     name: 'Dashboard',
     group: 'Overview',
     description: 'What you are worth right now: net worth and liquid net worth from the latest balance per account, the liquidity layers (cash, investments, home equity, retirement, liabilities), the compensation split, net worth over time, the next RSU vests and the last 30 days of spending.',
+  },
+  {
+    name: 'Weekly Recap',
+    group: 'Overview',
+    description: 'One Sunday–Saturday week at a glance, worked out from your data whenever it is opened (no AI, nothing stored): net worth change, spending against the four weeks before, the biggest categories and purchases, income, and the bills and RSU vests due the week after. Opens on the last completed week; earlier weeks are one click back.',
   },
   {
     name: 'Spending',

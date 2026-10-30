@@ -5,6 +5,8 @@ import type {
   IncomeHistory,
   MonthlySpending,
   NetWorthSeries,
+  MonthPace,
+  WeeklyRecap,
   Household,
   PlanCatalogue,
   PlanCompareResponse,
@@ -198,6 +200,8 @@ export const api = {
   // Trends
   getNetWorth: (from?: string, to?: string) =>
     fetchJson<NetWorthSeries>('/trends/net-worth' + buildQuery({ from_date: from, to_date: to })),
+  getMonthPace: (month?: string) => fetchJson<MonthPace>('/recap/month-pace' + buildQuery({ month })),
+  getWeeklyRecap: (weekStart?: string) => fetchJson<WeeklyRecap>('/recap/weekly' + buildQuery({ week_start: weekStart })),
   getCashFlow: () =>
     fetchJson<{ months: { month: string; changes: Record<string, number> }[] }>('/trends/cash-flow'),
 

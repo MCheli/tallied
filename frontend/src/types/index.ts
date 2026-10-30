@@ -129,6 +129,38 @@ export interface NetWorthSeries {
   totals: number[]
 }
 
+// ── Weekly recap and month pace ──
+export interface MonthPace {
+  month: string
+  last_month: string
+  days_in_month: number
+  this_month: number[]
+  last_month_series: number[]
+  this_total: number
+  same_day_last_month: number
+  last_month_total: number
+}
+
+export interface WeeklyRecap {
+  week_start: string
+  week_end: string
+  complete: boolean
+  previous_week: string
+  next_week: string | null
+  net_worth_start: number | null
+  net_worth_end: number | null
+  net_worth_change: number | null
+  spending: number
+  prior_weekly_avg: number
+  transaction_count: number
+  income: number
+  categories: { category: string; total: number; prior_avg: number }[]
+  largest: { date: string; merchant: string; category: string; amount: number }[]
+  uncategorized: number
+  upcoming_bills: { merchant: string; category: string; date: string; amount: number }[]
+  upcoming_vests: { date: string; shares: number; est_value: number }[]
+}
+
 // ── Planning ──
 export interface AssumptionInput {
   key: string
