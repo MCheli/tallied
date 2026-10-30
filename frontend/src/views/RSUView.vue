@@ -216,14 +216,14 @@ const priceChartOption = computed(() => {
     <template v-else>
       <!-- Tiles -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard label="Holdings" :value="compact(summary.held_value)" :subtitle="`${number(summary.sellable_shares)} sellable + ${number(summary.unvested_shares)} unvested`"
+        <MetricCard label="Holdings" :value="compact(summary.held_value)" :subtitle="`${number((summary.sellable_shares ?? 0) + (summary.unvested_shares ?? 0))} shares`"
           :info="`<strong>Holdings</strong><br>Market value of the ${symbol} shares you hold or will receive: sellable (vested, in your account) plus unvested (scheduled to vest).<br><br><strong>Formula:</strong> (sellable + unvested shares) × today's price.`"
           :sql="summarySql" :sql-tables="['rsu_grants', 'stock_prices']" />
         <MetricCard label="Sellable" :value="compact(summary.sellable_value)" :subtitle="`${number(summary.sellable_shares)} shares`"
           info="<strong>Sellable</strong><br>Vested shares available to sell now, net of shares withheld for tax at vest.<br><br><strong>Source:</strong> rsu_grants.sellable_shares from the E-Trade export." />
         <MetricCard label="Unvested" :value="compact(summary.unvested_value)" :subtitle="`${number(summary.unvested_shares)} shares`"
           info="<strong>Unvested</strong><br>Granted shares that have not vested yet, valued at today's price. The value at vest will be whatever the stock is worth then.<br><br><strong>Source:</strong> rsu_grants.unvested_shares." />
-        <MetricCard label="Unrealized Gain" :value="compact(lots?.all.gain)" :subtitle="`Cost basis ${compact(lots?.all.cost_basis)} on ${number(lots?.all.shares)} lot shares`"
+        <MetricCard label="Unrealized Gain" :value="compact(lots?.all.gain)" :subtitle="`on ${compact(lots?.all.cost_basis)} cost basis`"
           info="<strong>Unrealized gain</strong><br>(today's price − FMV at vest) × shares, over the sellable shares that could be matched to an actual vest lot (FIFO). Shares without a lot are listed under If You Sold Today." />
       </div>
 

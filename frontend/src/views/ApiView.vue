@@ -9,7 +9,8 @@ import { apiErrorMessage } from '../composables/useApiError'
 import { api } from '../api/client'
 import type { ApiKey, UsageSummary, Webhook, WebhookTestResult } from '../types'
 
-const API = import.meta.env.VITE_API_URL || ''
+// The snippets are copied into a terminal, so they need the full origin, not a path relative to this page.
+const API = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? window.location.origin : '')
 const { number, date } = useFormatters()
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────

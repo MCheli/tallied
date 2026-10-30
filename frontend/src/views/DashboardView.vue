@@ -213,7 +213,7 @@ ORDER BY SUM(amount)`,
           label="12mo Change"
           :value="store.data.net_worth_12mo_change != null ? compact(store.data.net_worth_12mo_change) : dash"
           :changeValue="nwChange"
-          :subtitle="store.data.net_worth_12mo_change != null ? 'year over year' : 'less than a year'"
+          :subtitle="store.data.net_worth_12mo_change != null ? 'in 12 mo' : 'less than a year'"
           info="Net worth now minus net worth as of a year ago, using each account's newest snapshot on or before that date. Accounts that did not exist a year ago count as new money.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Source:&lt;/strong&gt; balance_snapshots history."
           :sql="SQL.nwChange"
           :sqlTables="['accounts', 'balance_snapshots']"
