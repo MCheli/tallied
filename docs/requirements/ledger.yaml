@@ -1051,3 +1051,20 @@ requirements:
       - artifacts/screens/spending/desktop.png
     notes:
       - "2026-10-30: production had 1,090 transactions and none categorized. Merchant rules researched from names, the owner's email and receipts live in the tenant database, not in the repository."
+
+  - id: PLAN-V2-013
+    title: Retirement withdrawals are taxed by account type
+    job: plan
+    area: planning
+    priority: p0
+    done_means:
+      - "The 401(k) is two pools: Roth (tax-free once qualified; contributions withdrawable any time) and pre-tax (ordinary income at retirement_tax_rate). The Roth share comes from the latest statement and new deferrals split by the statement's pre-tax/Roth deferral rates; the match is pre-tax."
+      - "Cash withdrawals are untaxed; taxable accounts and company stock pay capital-gains tax on the gain share only."
+      - "After 59 1/2 (or the rule of 55) pre-tax money is drawn before Roth; before it, Roth contributions first, then 72(t), then penalised withdrawals."
+    status: done
+    evidence:
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_roth_money_comes_out_tax_free_and_pretax_money_is_taxed
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_new_deferrals_split_between_roth_and_pretax
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_before_55_the_bridge_is_taxable_then_roth_basis_then_penalty
+    notes:
+      - "2026-10-30: the first Planning v2 release taxed every withdrawal at a flat 20%, overstating taxes for a Roth-heavy 401(k) and on taxable cost basis."

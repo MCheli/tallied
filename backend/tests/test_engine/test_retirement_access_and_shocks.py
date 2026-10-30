@@ -65,10 +65,12 @@ def test_before_55_the_bridge_is_taxable_then_roth_basis_then_penalty():
     hh = _retiree(50, taxable=10_000, retirement=500_000, roth_basis=20_000)
     res = _run(_p(retirement_age=50, plan_to_age=52, retirement_spending=40_000, retirement_tax_rate=0.2), hh)
     d = res.detail
-    assert d["src_taxable"][0] == pytest.approx(8_000)         # 10k taxable delivers 8k after tax
+    taxable_net = 10_000 * (1 - rs.TAXABLE_WITHDRAWAL_TAX)      # only the gain share is taxed
+    assert d["src_taxable"][0] == pytest.approx(taxable_net)
     assert d["src_roth_basis"][0] == pytest.approx(20_000)     # tax- and penalty-free
-    assert d["src_401k_penalty"][0] == pytest.approx(12_000)   # the rest, at 20% + 10%
-    assert d["retirement"][0] == pytest.approx(500_000 - 20_000 - 12_000 / 0.7)
+    rest = 40_000 - taxable_net - 20_000
+    assert d["src_401k_penalty"][0] == pytest.approx(rest)     # the rest, at 20% + 10%
+    assert d["retirement"][0] == pytest.approx(500_000 - 20_000 - rest / 0.7)
 
 
 def test_72t_payments_avoid_the_penalty_up_to_the_sepp_amount():
@@ -207,3 +209,22 @@ def test_historical_safe_withdrawal_rates_match_the_published_record():
         assert ours["worst"] == pytest.approx(rate, abs=0.0015), horizon
     assert rs.historical_withdrawal_rates(0.6, 30)["worst_start"] == 1966
     assert rs.historical_withdrawal_rates(0.6, 200) is None
+
+
+
+# --- taxes by account type -----------------------------------------------------------------------
+
+def test_roth_money_comes_out_tax_free_and_pretax_money_is_taxed():
+    p = _p(retirement_age=62, plan_to_age=64, retirement_spending=40_000, retirement_tax_rate=0.2)
+    pretax = _run(p, _retiree(62, retirement=1_000_000)).detail["retirement"][0]
+    roth = _run(p, _retiree(62, retirement=1_000_000, roth_balance=1_000_000)).detail["retirement"][0]
+    assert 1_000_000 - pretax == pytest.approx(40_000 / 0.8, rel=0.05)   # grossed up for income tax
+    assert 1_000_000 - roth == pytest.approx(40_000, rel=0.05)           # no tax on qualified Roth
+
+
+def test_new_deferrals_split_between_roth_and_pretax():
+    hh = rs.Household(start_year=2026, current_age=40, salary=100_000, roth_contribution_share=0.25)
+    p = _p(retirement_age=45, plan_to_age=46, employee_401k_rate=0.10, employer_match_rate=0.0,
+           investment_return=0.0, inflation=0.0, total_comp_growth=0.0)
+    d = _run(p, hh).detail
+    assert d["retirement"][0] == pytest.approx(10_000, rel=0.02)

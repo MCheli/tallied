@@ -54,6 +54,8 @@ SS_SHORTFALL_YEAR = 2034      # 2025 Trustees Report: combined OASDI reserves de
 SEPP_RATE = 0.05              # IRS Notice 2022-6: up to the greater of 5% or 120% of the federal mid-term rate
 ACA_SUBSIDY_CLIFF_FPL = 4.0   # premium tax credit ends above 400% of the poverty line (enhanced credits expired 2025)
 TAXABLE_GAIN_SHARE = 0.5      # share of a taxable-account withdrawal that is realised gain (counts towards MAGI)
+CAPITAL_GAINS_RATE = 0.15     # long-term gains: federal 15% bracket (Massachusetts adds 5%; 0% federal at low income)
+TAXABLE_WITHDRAWAL_TAX = TAXABLE_GAIN_SHARE * CAPITAL_GAINS_RATE   # only the gain is taxed, not the cost basis
 
 SPENDING_RULES = ("fixed", "guardrails", "vpw")
 SPENDING_PROFILES = ("flat", "smile")
@@ -105,6 +107,8 @@ class Household:
     irs_401k_limit: float = 23_500.0
     escrow_monthly: float = 0.0       # part of the mortgage payment that is tax and insurance (continues after payoff)
     roth_basis: float = 0.0           # Roth contributions inside the 401(k): withdrawable tax- and penalty-free
+    roth_balance: float = 0.0         # Roth part of `retirement` (contributions + earnings): tax-free after 59 1/2
+    roth_contribution_share: float = 0.0  # share of employee 401(k) deferrals that go to Roth (the match is pre-tax)
     full_retirement_age: float = 67.0  # Social Security FRA from the birth year
 
 
@@ -491,8 +495,16 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
     cash = np.full(n, float(household.cash))
     taxable = np.full(n, float(household.taxable))
     company = np.full(n, float(household.company_stock))
-    retire = np.full(n, float(household.retirement))
-    roth_basis = np.full(n, float(min(household.roth_basis, household.retirement)))
+    # The 401(k) is two pools taxed differently: pre-tax money is ordinary income when withdrawn
+    # (retirement_tax_rate); Roth money is tax-free once qualified, and its contributions (roth_basis)
+    # can come out tax- and penalty-free at any age.
+    # Roth contributions on record imply at least that much Roth money.
+    roth_start = float(min(max(household.roth_balance, household.roth_basis, 0.0), household.retirement))
+    roth = np.full(n, roth_start)
+    pre = np.full(n, float(household.retirement) - roth_start)
+    roth_basis = np.full(n, float(min(household.roth_basis, roth_start)))
+    roth_share = float(min(max(household.roth_contribution_share, 0.0), 1.0))
+    cg_tax = TAXABLE_WITHDRAWAL_TAX
     home = np.full(n, float(household.home_value))
     mortgage = np.full(n, float(household.mortgage_balance))
     escrow_month = float(min(household.escrow_monthly, household.mortgage_payment_monthly))
@@ -632,7 +644,7 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
         ss = 0.0
         health_v = np.zeros(n)
         housing_v = np.zeros(n)
-        src = {k: np.zeros(n) for k in ("taxable", "roth", "k401", "k401_pen")}
+        src = {k: np.zeros(n) for k in ("taxable", "taxable_gross", "roth", "roth_q", "k401", "k401_pen")}
         if working:
             growth = (1 + real_raise) ** t
             share = min(inputs.rsu_pct_cap, max(0.0, share0 + inputs.rsu_pct_annual_increase * t)) if share0 > 0 else 0.0
@@ -661,14 +673,20 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
             taxable = taxable * (1 + ret_p)
             company = company * (1 + market.company[:, t])
             company_index = company_index * (1 + market.company[:, t])
-            retire = retire * (1 + ret_p)
-            retire += contrib_v
+            pre = pre * (1 + ret_p)
+            roth = roth * (1 + ret_p)
+            roth += employee * roth_share
+            roth_basis = roth_basis + employee * roth_share
+            pre += contrib_v - employee * roth_share
             company += rsu_net * hold
             taxable += saved_v + rsu_net * (1 - hold) + other_net + windfall_v
             # Out-of-work spending, gap health cover and one-off costs come out of savings.
             out = (household.spending_last_12m * job_loss + extra_spend) * price_index + gap_health
             unmet = _withdraw(out, [cash, taxable, company], 0.0)
-            unmet = _withdraw(unmet, [retire], tax_r + EARLY_WITHDRAWAL_PENALTY)
+            before = roth.copy()
+            unmet = unmet - _take(unmet, roth, 0.0, cap_gross=roth_basis)
+            roth_basis = roth_basis - (before - roth)
+            unmet = _withdraw(unmet, [pre, roth], tax_r + EARLY_WITHDRAWAL_PENALTY)
             newly = alive & (unmet > 1.0)
             depleted_age[newly] = age
             alive &= ~newly
@@ -678,7 +696,7 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
                 mortgage, _ = _vec_amortize(mortgage, household.mortgage_rate, pi_payment)
         else:
             # --- living spending under the rule and profile ---
-            liquid_start = cash + taxable + company + retire
+            liquid_start = cash + taxable + company + pre + roth
             if t > r_idx and inputs.spending_profile == "smile":
                 profile_mult *= 1 + smile_change(age - 1)
             target_nominal = target_real * spending_mult * profile_mult * price_index
@@ -687,7 +705,7 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
                 initial_wr = np.where(liquid_start > 0, spend_nominal / np.maximum(liquid_start, 1.0), 0.0)
                 if inputs.use_sepp and age < PENALTY_FREE_AGE and not rule_of_55:
                     le = sepp_life_expectancy(age)
-                    sepp_annual = retire * SEPP_RATE / (1 - (1 + SEPP_RATE) ** (-le))
+                    sepp_annual = pre * SEPP_RATE / (1 - (1 + SEPP_RATE) ** (-le))
             elif inputs.spending_rule == "fixed":
                 spend_nominal = target_nominal.copy()
             elif inputs.spending_rule == "guardrails":
@@ -733,9 +751,12 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
                     take = np.minimum(left, np.maximum(b, 0.0))
                     b -= take
                     left = left - take
-                take = np.minimum(left / gross_401k, np.maximum(retire, 0.0))
-                retire -= take
+                take = np.minimum(left / gross_401k, np.maximum(pre, 0.0))
+                pre -= take
                 left = left - take * gross_401k
+                take = np.minimum(left, np.maximum(roth, 0.0))
+                roth -= take
+                left = left - take
                 mortgage_paid += mortgage - left
                 mortgage = left
                 pi_payment = np.where(mortgage > 0, pi_payment, 0.0)
@@ -759,35 +780,45 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
 
             # --- withdrawals, and the early-access bridge ---
             remaining = need.copy()
-            for b in (cash, taxable, company):
-                got = _take(remaining, b, tax_r)
+            # Cash is principal (no tax); taxable accounts and company stock pay tax on the gain only.
+            got = _take(remaining, cash, 0.0)
+            src["taxable"] += got
+            remaining = remaining - got
+            for b in (taxable, company):
+                got = _take(remaining, b, cg_tax)
                 src["taxable"] += got
+                src["taxable_gross"] += got / (1 - cg_tax)
                 remaining = remaining - got
             if age >= PENALTY_FREE_AGE or rule_of_55:
-                got = _take(remaining, retire, tax_r)
+                # Pre-tax first (taxed as income), Roth last (tax-free, and it keeps growing tax-free).
+                got = _take(remaining, pre, tax_r)
                 src["k401"] += got
+                remaining = remaining - got
+                got = _take(remaining, roth, 0.0)
+                src["roth_q"] += got
                 remaining = remaining - got
             else:
                 # Roth contributions come out first, tax- and penalty-free (once rolled to a Roth IRA).
-                before = retire.copy()
-                got = _take(remaining, retire, 0.0, cap_gross=roth_basis)
-                roth_basis -= before - retire
+                before = roth.copy()
+                got = _take(remaining, roth, 0.0, cap_gross=roth_basis)
+                roth_basis -= before - roth
                 src["roth"] += got
                 remaining = remaining - got
                 if inputs.use_sepp:
-                    got = _take(remaining, retire, tax_r, cap_gross=sepp_annual)
+                    got = _take(remaining, pre, tax_r, cap_gross=sepp_annual)
                     src["k401"] += got
                     remaining = remaining - got
-                got = _take(remaining, retire, tax_r + EARLY_WITHDRAWAL_PENALTY)
-                src["k401_pen"] += got
-                remaining = remaining - got
+                for b in (pre, roth):   # Roth earnings before 59 1/2 are taxed and penalised too
+                    got = _take(remaining, b, tax_r + EARLY_WITHDRAWAL_PENALTY)
+                    src["k401_pen"] += got
+                    remaining = remaining - got
             unmet = remaining
             withdrawal = need - unmet
             pretax_gross = (src["k401"] / (1 - tax_r) if tax_r < 1 else src["k401"]) \
                 + (src["k401_pen"] / (1 - tax_r - EARLY_WITHDRAWAL_PENALTY) if tax_r + EARLY_WITHDRAWAL_PENALTY < 1 else 0)
             # MAGI: pre-tax 401(k) withdrawals, part-time pay, 85% of Social Security, and the gains share of
             # taxable withdrawals (the rest is cost basis). Roth basis is not income.
-            magi_prev = pretax_gross + other_gross + 0.85 * ss_v + TAXABLE_GAIN_SHARE * src["taxable"] / max(1 - tax_r, 1e-9)
+            magi_prev = pretax_gross + other_gross + 0.85 * ss_v + TAXABLE_GAIN_SHARE * src["taxable_gross"]
 
             target_now = target_real * spending_mult * profile_mult
             ratio = (spend_nominal / price_index) / target_now if target_now > 0 else np.ones(n)
@@ -809,18 +840,19 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
             taxable = taxable * (1 + ret_p)
             company = company * (1 + market.company[:, t])
             company_index = company_index * (1 + market.company[:, t])
-            retire = retire * (1 + ret_p)
-            roth_basis = np.minimum(roth_basis, retire)
+            pre = pre * (1 + ret_p)
+            roth = roth * (1 + ret_p)
+            roth_basis = np.minimum(roth_basis, roth)
             prev_return = ret_p
             salary = 0.0
             rsu = 0.0
 
         home = home * (1 + inputs.home_appreciation + (infl - inputs.inflation))
 
-        for b in (cash, taxable, company, retire):
+        for b in (cash, taxable, company, pre, roth):
             np.maximum(b, 0.0, out=b)
         deflate = price_index * (1 + infl)  # end-of-period dollars back to today's
-        liquid = cash + taxable + company + retire
+        liquid = cash + taxable + company + pre + roth
         liquid_real[:, t] = np.where(alive, liquid, 0.0) / deflate
         nw_real[:, t] = (np.where(alive, liquid, 0.0) + home - mortgage) / deflate
 
@@ -828,7 +860,7 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
         detail["cash"][t] = cash[0]
         detail["taxable"][t] = taxable[0]
         detail["company_stock"][t] = company[0]
-        detail["retirement"][t] = retire[0]
+        detail["retirement"][t] = pre[0] + roth[0]
         detail["home_equity"][t] = home[0] - mortgage[0]
         detail["salary"][t] = first(salary)
         detail["rsu_income"][t] = first(rsu)
@@ -845,7 +877,7 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
         detail["extra_spend"][t] = first(extra_spend * price_index)
         detail["src_taxable"][t] = first(src["taxable"])
         detail["src_roth_basis"][t] = first(src["roth"])
-        detail["src_401k"][t] = first(src["k401"])
+        detail["src_401k"][t] = first(src["k401"] + src["roth_q"])   # pre-tax and qualified Roth
         detail["src_401k_penalty"][t] = first(src["k401_pen"])
         detail["magi"][t] = first(magi_prev) if not working else 0.0
         detail["equity_payout"][t] = first(payout)

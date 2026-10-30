@@ -38,7 +38,8 @@ def test_social_security_claim_age_factors():
 
 
 def test_retired_fixed_spending_draws_target_grossed_up_for_tax():
-    hh = _household(current_age=65, cash=0, taxable=1_000_000, company_stock=0, retirement=0, home_value=0,
+    # Pre-tax 401(k) money is ordinary income, so spending is grossed up by the retirement tax rate.
+    hh = _household(current_age=65, cash=0, taxable=0, company_stock=0, retirement=1_000_000, home_value=0,
                     mortgage_balance=0, mortgage_payment_monthly=0, salary=0, rsu_income=0, scheduled_vests={})
     p = _p(retirement_age=65, plan_to_age=67, retirement_spending=40_000, retirement_tax_rate=0.20)
     res = rs.run(p, hh, _flat_market(3))
@@ -167,7 +168,7 @@ def test_a_crash_in_the_first_retired_year_is_sequence_risk():
 
 def test_vpw_spends_the_payment_that_empties_the_portfolio_at_the_end():
     hh = _household(current_age=90, salary=0, rsu_income=0, scheduled_vests={}, cash=0, company_stock=0,
-                    taxable=100_000, retirement=0, home_value=0, mortgage_balance=0, mortgage_payment_monthly=0)
+                    taxable=0, retirement=100_000, home_value=0, mortgage_balance=0, mortgage_payment_monthly=0)
     p = _p(retirement_age=90, plan_to_age=94, retirement_tax_rate=0.0, inflation=0.0, retirement_return=0.0,
                       spending_rule="vpw", spending_floor=0.0, retirement_spending=20_000)
     res = rs.run(p, hh, _flat_market(5))
@@ -180,8 +181,9 @@ def test_401k_before_60_only_after_taxable_and_with_penalty():
                     taxable=10_000, retirement=500_000, home_value=0, mortgage_balance=0, mortgage_payment_monthly=0)
     p = _p(retirement_age=50, plan_to_age=51, retirement_spending=30_000, retirement_tax_rate=0.2)
     res = rs.run(p, hh, _flat_market(2))
-    # 30k net = 37.5k gross; 10k from taxable at 20%, then (37.5k - 10k) * 0.8 = 22k net left -> 22k / 0.7 from 401(k).
-    assert res.detail["retirement"][0] == pytest.approx(500_000 - 22_000 / 0.7)
+    # Taxable money pays tax on its gain share only; the rest of the 30k comes from the 401(k) at 20% + 10% penalty.
+    left = 30_000 - 10_000 * (1 - rs.TAXABLE_WITHDRAWAL_TAX)
+    assert res.detail["retirement"][0] == pytest.approx(500_000 - left / 0.7)
 
 
 def test_life_events_change_the_path_as_described():

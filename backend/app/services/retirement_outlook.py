@@ -170,6 +170,13 @@ def starting_point(db: Session, birth_date: date, today: date | None = None) -> 
         select(RetirementAccount).order_by(RetirementAccount.statement_end.desc().nullslast()).limit(1)
     ).scalar_one_or_none()
     roth_basis = float(k401.roth_basis or 0) if k401 else 0.0
+    # Roth share of the 401(k) from the statement, applied to today's balance; deferral split for new money.
+    roth_fraction = 0.0
+    if k401 and k401.total_balance and k401.roth_balance:
+        roth_fraction = min(1.0, float(k401.roth_balance) / float(k401.total_balance))
+    pre_rate = float(k401.pretax_deferral_rate or 0) if k401 else 0.0
+    roth_rate = float(k401.roth_deferral_rate or 0) if k401 else 0.0
+    roth_contribution_share = roth_rate / (pre_rate + roth_rate) if (pre_rate + roth_rate) > 0 else 0.0
 
     household = rs.Household(
         start_year=today.year,
@@ -189,6 +196,8 @@ def starting_point(db: Session, birth_date: date, today: date | None = None) -> 
         irs_401k_limit=irs_limit,
         escrow_monthly=escrow,
         roth_basis=roth_basis,
+        roth_balance=groups.get("retirement", 0.0) * roth_fraction,
+        roth_contribution_share=roth_contribution_share,
         full_retirement_age=rs.full_retirement_age(birth_date.year),
     )
     described = {
@@ -198,6 +207,8 @@ def starting_point(db: Session, birth_date: date, today: date | None = None) -> 
         "company_stock": round(company_stock, 2),
         "company_stock_source": "balances" if company_from_balances else ("sellable_shares" if company_stock else "none"),
         "company_symbol": symbol,
+        "roth_share_of_401k": round(roth_fraction, 4),
+        "roth_share_of_new_deferrals": round(roth_contribution_share, 4),
         "company_price": price,
         "retirement": round(household.retirement, 2),
         "roth_basis": round(min(roth_basis, household.retirement), 2),
