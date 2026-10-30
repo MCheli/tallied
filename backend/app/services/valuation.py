@@ -26,6 +26,9 @@ eight years and two or three sentences of commentary on the location, recent tre
 Do not re-estimate the current value. Typical residential appreciation is 2 to 5 percent a year."""
 
 
+MARKET = "market"   # researched comparable-sale values by date; reference data, not this vehicle's curve
+
+
 def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
@@ -42,8 +45,13 @@ def vehicle_value_curve(
     today: date,
     annual_depreciation_pct: float,
     years_ahead: int = 5,
+    market: list[tuple[date, float]] | None = None,
 ) -> tuple[list[tuple[date, Decimal]], list[tuple[date, Decimal]]]:
     """(history, projections) as (date, value) pairs.
+
+    With a researched market history (what comparable vehicles sold for, by date), history is that curve
+    scaled so it passes through today's value for this vehicle: its condition and miles move it up or down
+    the market, the market's shape over time is kept. That covers years before the purchase too.
 
     History has a point on each 1 January between the purchase and today, plus today, interpolated
     geometrically by elapsed time from the purchase price to today's value (so a June purchase loses half
@@ -51,7 +59,11 @@ def vehicle_value_curve(
     Projections fall on today's anniversaries, applying the depreciation rate (clamped to 0..60 percent).
     """
     history: list[tuple[date, Decimal]] = []
-    if purchase_price and purchase_date and purchase_date < today and purchase_price > 0 and current_value > 0:
+    market = sorted((d, v) for d, v in (market or []) if v and v > 0)
+    if market and market[0][0] < today and current_value > 0:
+        factor = current_value / _value_on(market, today)
+        history = [(d, _money(v * factor)) for d, v in market if d < today]
+    elif purchase_price and purchase_date and purchase_date < today and purchase_price > 0 and current_value > 0:
         span = (today - purchase_date).days
         for year in range(purchase_date.year + 1, today.year + 1):
             d = date(year, 1, 1)
@@ -65,6 +77,30 @@ def vehicle_value_curve(
         (_anniversary(today, k), _money(current_value * (1 - rate) ** k)) for k in range(1, years_ahead + 1)
     ]
     return history, projections
+
+
+def _value_on(points: list[tuple[date, float]], day: date) -> float:
+    """Linear between the surrounding points; the nearest end point outside them."""
+    if day <= points[0][0]:
+        return points[0][1]
+    for (d0, v0), (d1, v1) in pairwise(points):
+        if d0 <= day <= d1:
+            return v0 + (v1 - v0) * (day - d0).days / max(1, (d1 - d0).days)
+    return points[-1][1]
+
+
+def store_market_history(db, vehicle: Vehicle, points: list[tuple[date, float]]) -> None:
+    """Replace the vehicle's researched market history (source "market"). Does not commit; call
+    store_vehicle_valuation afterwards to rebuild the curve from it."""
+    from sqlalchemy import delete
+
+    from app.models.asset_value_history import AssetValueHistory
+
+    db.execute(delete(AssetValueHistory).where(AssetValueHistory.vehicle_id == vehicle.id,
+                                               AssetValueHistory.source == MARKET))
+    for d, v in points:
+        db.add(AssetValueHistory(vehicle_id=vehicle.id, date=d, value=_money(v), source=MARKET, is_projected=False))
+    db.flush()
 
 
 def _anniversary(d: date, years: int) -> date:
@@ -161,9 +197,10 @@ def store_vehicle_valuation(db, vehicle: Vehicle, *, value: float, annual_deprec
                             source: str, model: str | None, confidence: str | None, today: date | None = None) -> None:
     """Save a labelled valuation and rebuild the vehicle's computed value curve. Does not commit.
 
-    Rows the owner entered by hand (source "manual") are never touched. The purchase is the first point;
-    history interpolates from it to today's value (today's point is kept even when the vehicle was bought
-    this year); projections apply the depreciation rate.
+    Rows the owner entered by hand (source "manual") and researched market history (source "market") are
+    never touched. History follows the market history when there is one, otherwise it interpolates from
+    the purchase to today's value; the purchase is always stored as its own point. Projections apply the
+    depreciation rate.
     """
     from datetime import datetime
 
@@ -178,12 +215,15 @@ def store_vehicle_valuation(db, vehicle: Vehicle, *, value: float, annual_deprec
     vehicle.valuation_source = source
     vehicle.valuation_model = model
     vehicle.valuation_confidence = confidence
+    market = [(r.date, float(r.value)) for r in db.query(AssetValueHistory).filter(
+        AssetValueHistory.vehicle_id == vehicle.id, AssetValueHistory.source == MARKET)]
     history, projections = vehicle_value_curve(
         purchase_price=float(vehicle.purchase_price) if vehicle.purchase_price else None,
         purchase_date=vehicle.purchase_date,
         current_value=float(value),
         today=today,
         annual_depreciation_pct=annual_depreciation_pct,
+        market=market,
     )
     db.execute(delete(AssetValueHistory).where(
         AssetValueHistory.vehicle_id == vehicle.id, AssetValueHistory.source.in_(["ai_estimate", "purchase"])))

@@ -14,7 +14,7 @@ from app.ai import AIError, ai_available, extract  # noqa: F401
 from app.dependencies import get_tenant_db
 from app.models.asset import Vehicle
 from app.models.asset_value_history import AssetValueHistory
-from app.services.valuation import fleet_value_grid
+from app.services.valuation import MARKET, fleet_value_grid
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
@@ -153,9 +153,11 @@ def get_vehicle_value_history(vehicle_id: int, db: Session = Depends(get_tenant_
         .where(AssetValueHistory.vehicle_id == vehicle_id)
         .order_by(AssetValueHistory.date)
     ).scalars().all()
+    line, purchase = curve_rows(rows)
 
     return {
         "vehicle_id": vehicle_id,
+        "purchase": purchase,
         "history": [
             {
                 "date": r.date.isoformat(),
@@ -163,22 +165,39 @@ def get_vehicle_value_history(vehicle_id: int, db: Session = Depends(get_tenant_
                 "source": r.source,
                 "is_projected": r.is_projected,
             }
-            for r in rows
+            for r in line
         ],
     }
 
 
+def curve_rows(rows) -> tuple[list, dict | None]:
+    """(rows drawn as the vehicle's line, its purchase point). Researched market rows are reference data
+    behind the line, never drawn. With a market curve the purchase is a marker, not a point on the line:
+    a dealer price would otherwise show as a spike."""
+    has_market = any(r.source == MARKET for r in rows)
+    purchase = next(({"date": r.date.isoformat(), "value": float(r.value)} for r in rows if r.source == "purchase"), None)
+    line = [r for r in rows if r.source != MARKET and not (has_market and r.source == "purchase")]
+    return line, purchase
+
+
 @router.get("/value-history/aggregate")
 def get_aggregate_value_history(db: Session = Depends(get_tenant_db)):
-    """Every vehicle's value on one shared list of dates, for the stacked chart."""
+    """Every vehicle's value on one shared list of dates, plus each purchase as a marker."""
     vehicles = db.execute(select(Vehicle).order_by(Vehicle.id)).scalars().all()
     names = [f"{v.year} {v.make} {v.model}" for v in vehicles]
     label = {v.id: (n if names.count(n) == 1 else f"{n} #{v.id}") for v, n in zip(vehicles, names)}
-    points: dict[str, list[tuple[date, float, bool]]] = defaultdict(list)
+    by_vehicle: dict[int, list] = defaultdict(list)
     for r in db.execute(select(AssetValueHistory).order_by(AssetValueHistory.date)).scalars():
         if r.vehicle_id in label:
-            points[label[r.vehicle_id]].append((r.date, float(r.value), r.is_projected))
-    return fleet_value_grid(dict(sorted(points.items())), date.today())
+            by_vehicle[r.vehicle_id].append(r)
+    points: dict[str, list[tuple[date, float, bool]]] = {}
+    purchases = []
+    for vid, rows in by_vehicle.items():
+        line, purchase = curve_rows(rows)
+        points[label[vid]] = [(r.date, float(r.value), r.is_projected) for r in line]
+        if purchase:
+            purchases.append({"vehicle": label[vid], **purchase})
+    return {**fleet_value_grid(dict(sorted(points.items())), date.today()), "purchases": purchases}
 
 
 @router.get("/summary")

@@ -979,12 +979,15 @@ export interface AssetsSummary {
 }
 
 export interface VehicleHistoryPoint { date: string; value: number; source: string; is_projected: boolean }
-export interface VehicleHistory { vehicle_id: number; history: VehicleHistoryPoint[] }
+export interface VehiclePurchase { date: string; value: number }
+export interface VehicleHistory { vehicle_id: number; history: VehicleHistoryPoint[]; purchase?: VehiclePurchase | null }
 export interface AggregateVehicleHistory {
   dates: string[]
   total: number[]
   vehicles: Record<string, (number | null)[]>
   is_projected: boolean[]
+  /** Each purchase, drawn as a marker (with a market curve it is not a point on the line). */
+  purchases?: (VehiclePurchase & { vehicle: string })[]
 }
 export interface VehicleRefreshResult {
   estimated_value: number

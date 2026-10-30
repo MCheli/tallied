@@ -298,3 +298,26 @@ def test_vehicle_bought_this_year_keeps_todays_value_point(db_session):
             db_session.query(AssetValueHistory).filter_by(vehicle_id=v.id).order_by(AssetValueHistory.date)]
     assert rows[:3] == [(date(2026, 6, 2), 6200, False), (date(2026, 10, 30), 6500, False), (date(2027, 10, 30), 6370, True)]
     assert v.valuation_source == "research" and float(v.estimated_value) == 6500
+
+
+def test_market_history_shapes_the_vehicle_curve_and_the_purchase_is_a_marker(client, db_session):
+    """VEH-MARKET-001: the line follows comparable-sale values over time, scaled to this vehicle's estimate."""
+    from app.models.asset import Vehicle
+    from app.services.valuation import store_market_history, store_vehicle_valuation
+
+    v = Vehicle(year=2015, make="Honda", model="Civic", purchase_price=Decimal("18200"), purchase_date=date(2024, 6, 15))
+    db_session.add(v)
+    db_session.flush()
+    store_market_history(db_session, v, [(date(2020, 1, 1), 12000), (date(2022, 7, 1), 16000), (date(2026, 7, 1), 10000)])
+    store_vehicle_valuation(db_session, v, value=9000, annual_depreciation_pct=5, reasoning="comps", source="research",
+                            model="claude-opus-5-5", confidence="medium", today=date(2026, 7, 1))
+    db_session.commit()
+
+    body = client.get(f"/api/v1/assets/vehicles/{v.id}/value-history").json()
+    line = [(p["date"], p["value"], p["source"]) for p in body["history"] if not p["is_projected"]]
+    assert line == [("2020-01-01", 10800.0, "ai_estimate"), ("2022-07-01", 14400.0, "ai_estimate"), ("2026-07-01", 9000.0, "ai_estimate")]
+    assert body["purchase"] == {"date": "2024-06-15", "value": 18200.0}   # a marker, not a spike in the line
+
+    agg = client.get("/api/v1/assets/value-history/aggregate").json()
+    assert agg["dates"][0] == "2020-01-01" and agg["purchases"] == [{"vehicle": "2015 Honda Civic", "date": "2024-06-15", "value": 18200.0}]
+

@@ -228,6 +228,8 @@ const aggregateChartOption = computed(() => {
     const color = COLORS[i % COLORS.length]
     const out: any[] = [{ name, type: 'line', data: pts.slice(0, lastHist + 1), color, showSymbol: false, lineStyle: { width: 2 } }]
     if (projStart >= 0) out.push({ name: `${name} (projected)`, type: 'line', lineStyle: { type: 'dashed', width: 2 }, data: pts.slice(Math.max(0, lastHist)), color, showSymbol: false })
+    const bought = (agg.purchases ?? []).filter(p => p.vehicle === name).map(p => [p.date, p.value])
+    if (bought.length) out.push({ name: `${name} (bought)`, type: 'scatter', data: bought, color, symbol: 'diamond', symbolSize: 11, z: 5 })
     return out
   })
   return {
@@ -246,6 +248,7 @@ const aggregateChartOption = computed(() => {
         let html = `<div style="font-weight:600;margin-bottom:4px">${fullDate(list[0].value[0])}</div>`
         let total = 0
         for (const p of list) {
+          if (p.seriesType === 'scatter') { html += `<div>${p.marker} ${p.seriesName}: <strong>${money(Number(p.value[1]))}</strong></div>`; continue }
           const vehicle = String(p.seriesName).replace(' (projected)', '')
           if (seen.has(vehicle)) continue
           seen.add(vehicle)
@@ -268,13 +271,14 @@ function vehicleChartOption(vehicleId: number) {
   const historical = entries.filter((e) => !e.is_projected).map((e) => [e.date, e.value])
   const projected = entries.filter((e, i) => e.is_projected || i === lastHistIdx).map((e) => [e.date, e.value])
   const series: any[] = [{ name: 'Value', type: 'line', data: historical, color: COLORS[0], symbol: 'circle', symbolSize: 3, lineStyle: { width: 2 }, areaStyle: { opacity: 0.1 } }]
+  if (hist.purchase) series.push({ name: 'Bought', type: 'scatter', data: [[hist.purchase.date, hist.purchase.value]], color: COLORS[2], symbol: 'diamond', symbolSize: 10, z: 5 })
   if (entries.some((e) => e.is_projected)) series.push({ name: 'Projected', type: 'line', data: projected, color: COLORS[0], symbol: 'circle', symbolSize: 3, lineStyle: { width: 2, type: 'dashed' }, areaStyle: { opacity: 0.05 } })
   return {
     ...baseOption.value,
     grid: { left: 4, right: 8, top: 8, bottom: 4, containLabel: true },
     xAxis: timeAxis(),
     yAxis: { type: 'value', axisLabel: { ...mobileAxis(), formatter: yAxisMoney }, axisLine: { show: false }, splitLine: { lineStyle: { color: splitLineColor.value, type: 'dashed' } } },
-    tooltip: { ...baseOption.value.tooltip, formatter: (params: any) => { const p = (Array.isArray(params) ? params : [params])[0]; return p && p.value?.[1] != null ? `<div>${fullDate(p.value[0])}: <strong>${money(Number(p.value[1]))}</strong></div>` : '' } },
+    tooltip: { ...baseOption.value.tooltip, formatter: (params: any) => (Array.isArray(params) ? params : [params]).filter((p: any) => p.value?.[1] != null).slice(0, 2).map((p: any) => `<div>${p.seriesName === 'Bought' ? 'Bought ' : ''}${fullDate(p.value[0])}: <strong>${money(Number(p.value[1]))}</strong></div>`).join('') },
     legend: { show: false },
     series,
   }
@@ -342,7 +346,7 @@ const inputClass = 'w-full px-3 py-2 min-h-10 text-sm border border-gray-200 dar
         title="Vehicle Value Over Time"
         :empty="!aggregateChartOption"
         empty-text="No value history yet. Refresh a vehicle's value to build it."
-        info="<strong>Vehicle Value History</strong><br>One line per vehicle: the purchase price on the purchase date, history interpolated by elapsed time to today's estimate, and five dashed projected years computed from the depreciation rate Claude expects. All of it is an estimate, not market data."
+        info="<strong>Vehicle Value History</strong><br>One line per vehicle. When comparable-sale history has been researched, the line follows that market curve, scaled to pass through this vehicle's estimate, including years before you owned it; otherwise it runs from the purchase price to today's estimate by elapsed time. Diamonds mark what you paid. The five dashed years ahead apply the expected depreciation rate. Every value is an estimate built from comparable sales, not an appraisal."
         :sql="historySql" :sql-tables="['asset_value_histories']"
       >
         <div class="h-72"><VChart v-if="aggregateChartOption" :option="aggregateChartOption" autoresize class="w-full h-full" /></div>

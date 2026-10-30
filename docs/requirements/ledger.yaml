@@ -1156,6 +1156,22 @@ requirements:
     notes:
       - "2026-10-30: the owner tapped 401(k) on a phone and nothing happened, after six deploys that day."
 
+  - id: VEH-MARKET-001
+    title: A vehicle's line follows its market value over the years, like a price-trend chart
+    job: look
+    area: assets
+    priority: p1
+    visible: true
+    done_means:
+      - "A vehicle can carry researched comparable-sale values by date (source 'market', with method and sources in its valuation notes); its curve follows that market history scaled through today's estimate, including years before the purchase."
+      - "The purchase is a diamond marker on the fleet and vehicle charts, not a point on the line; raw market rows are never drawn."
+    status: done
+    evidence:
+      - backend/tests/test_ai.py::test_market_history_shapes_the_vehicle_curve_and_the_purchase_is_a_marker
+      - artifacts/screens/assets/desktop.png
+    notes:
+      - "2026-10-30: the owner pointed out the trucks did not suddenly become worth their value; they depreciated over time, as CarGurus-style price trends show."
+
   - id: SPEND-CAT-001
     title: Transactions are categorized by merchant rules, on every sync, without overwriting the owner
     job: understand
