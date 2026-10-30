@@ -22,6 +22,7 @@ from app.services.balances import latest_balances
 from app.services.spending_rules import INCOME_CATEGORIES, spending_filter
 
 PRIOR_WEEKS = 4
+VEST_LOOKAHEAD_DAYS = 30
 
 
 def _month_start(d: date, offset: int = 0) -> date:
@@ -131,7 +132,7 @@ def weekly_recap(db: Session, today: date, week_start: date | None = None) -> di
 
     nw_start, nw_end = _net_worth(db, start - timedelta(days=1)), _net_worth(db, end)
 
-    # Coming up in the week after this one: bills due by their monthly pattern, and RSU vests.
+    # Coming up: bills due the week after by their monthly pattern, and RSU vests in the next 30 days.
     next_start, next_end = end + timedelta(days=1), end + timedelta(days=7)
     history = [
         {"date": r.date.isoformat(), "amount": float(r.amount), "merchant": r.merchant, "category": r.category}
@@ -157,13 +158,14 @@ def weekly_recap(db: Session, today: date, week_start: date | None = None) -> di
     for vest_date, shares, symbol in db.execute(
         select(VestEvent.vest_date, VestEvent.shares, RSUGrant.symbol)
         .join(RSUGrant, VestEvent.grant_id == RSUGrant.id)
-        .where(VestEvent.vest_date >= next_start, VestEvent.vest_date <= next_end, VestEvent.is_actual.is_(False))
+        .where(VestEvent.vest_date >= next_start, VestEvent.vest_date <= end + timedelta(days=VEST_LOOKAHEAD_DAYS),
+               VestEvent.is_actual.is_(False))
     ).all():
         row = vests.setdefault(vest_date, {"date": vest_date.isoformat(), "shares": 0, "est_value": 0.0})
         row["shares"] += shares
         row["est_value"] = round(row["est_value"] + shares * prices.get(symbol or "", 0.0), 2)
 
-    return {
+    recap = {
         "week_start": start.isoformat(),
         "week_end": end.isoformat(),
         "complete": end < today,
@@ -185,4 +187,44 @@ def weekly_recap(db: Session, today: date, week_start: date | None = None) -> di
         "upcoming_bills": bills,
         "upcoming_vests": sorted(vests.values(), key=lambda v: v["date"]),
     }
+    recap["headline"] = headline(recap)
+    return recap
+
+
+def usd(v: float) -> str:
+    return f"${abs(v):,.0f}"
+
+
+def short_date(iso: str) -> str:
+    d = date.fromisoformat(iso)
+    return f"{d:%b} {d.day}"
+
+
+def headline(r: dict) -> str:
+    """One plain sentence from the recap's numbers; no model writes it, so it is never a guess."""
+    parts: list[str] = []
+    if r["spending"] <= 0:
+        parts.append("No spending this week")
+    else:
+        s = f"You spent {usd(r['spending'])}"
+        avg = r["prior_weekly_avg"]
+        if avg > 0:
+            pct = round((r["spending"] - avg) / avg * 100)
+            s += ", about your usual week" if abs(pct) < 5 else f", {abs(pct)}% {'more' if pct > 0 else 'less'} than your 4-week average of {usd(avg)}"
+        if r["categories"]:
+            top = r["categories"][0]
+            s += f"; the most went to {top['category']} ({usd(top['total'])})"
+        parts.append(s)
+    change = r["net_worth_change"]
+    if change is not None:
+        parts.append("Net worth held steady" if change == 0 else f"Net worth {'rose' if change > 0 else 'fell'} {usd(change)}")
+    if r["upcoming_bills"]:
+        n = len(r["upcoming_bills"])
+        parts.append(f"Next week: {n} bill{'s' if n > 1 else ''} (~{usd(sum(b['amount'] for b in r['upcoming_bills']))})")
+    vests = r["upcoming_vests"]
+    if vests:
+        shares, value = sum(v["shares"] for v in vests), sum(v["est_value"] for v in vests)
+        when = ", ".join(short_date(v["date"]) for v in vests)
+        parts.append(f"RSU vest{'s' if len(vests) > 1 else ''} {when}: {shares} shares (~{usd(value)})")
+    return ". ".join(parts) + "."
 

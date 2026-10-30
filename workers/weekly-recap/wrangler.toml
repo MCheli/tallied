@@ -1,0 +1,21 @@
+name = "tallied-weekly-recap"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+
+# Mondays 12:00 UTC (8 am Eastern in summer, 7 am in winter): the recap of the Sunday–Saturday week just ended.
+[triggers]
+crons = ["0 12 * * MON"]
+
+# Cloudflare Email Routing sends only to addresses verified as Email Routing destinations on the account,
+# from an address on a domain with Email Routing enabled.
+[[send_email]]
+name = "MAILER"
+
+[vars]
+TALLIED_API_URL = "https://money.markcheli.com"
+RECAP_FROM = "recap@markcheli.com"
+
+# Secrets (wrangler secret put):
+#   TALLIED_API_KEY  read-only Tallied API key for the household
+#   RECAP_TO         the verified address the recap goes to
+#   TRIGGER_TOKEN    lets POST /send?token=... send the recap now (for testing)

@@ -13,7 +13,7 @@ import NetWorthChart from '../components/assets/NetWorthChart.vue'
 import LiquidityWaterfall from '../components/dashboard/LiquidityWaterfall.vue'
 import CompDonut from '../components/dashboard/CompDonut.vue'
 import MonthPaceChart from '../components/dashboard/MonthPaceChart.vue'
-import { recapHeadline, weekLabel } from '../composables/useRecap'
+import { weekLabel } from '../composables/useRecap'
 import LayerCard from '../components/dashboard/LayerCard.vue'
 import type { AssetsSummary, CategorySummary, MonthPace, NetWorthSeries, PropertySummary, RSUSummary, WeeklyRecap } from '../types'
 
@@ -273,10 +273,10 @@ ORDER BY SUM(amount)`,
             :loading="recap.loading.value"
             :empty="!recap.loading.value && !recap.data.value"
             :empty-text="recap.error.value ? `Could not load the recap: ${recap.error.value}` : 'No recap yet'"
-            info="Last Sunday–Saturday week in one sentence: spending against the four weeks before, net worth change, and what is due next week. Worked out from your data each time; open it for categories, the largest purchases and earlier weeks."
+            info="Last Sunday–Saturday week in one sentence: spending against the four weeks before, net worth change, the bills due next week and RSU vests in the next 30 days. Worked out from your data each time; open it for categories, the largest purchases and earlier weeks."
           >
             <div v-if="recap.data.value" class="space-y-4">
-              <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{{ recapHeadline(recap.data.value) }}</p>
+              <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{{ recap.data.value.headline }}</p>
               <div class="grid grid-cols-2 gap-3 text-sm">
                 <div><div class="text-xs text-gray-500 dark:text-gray-400">Spent</div><div class="font-semibold text-gray-900 dark:text-white">{{ compact(recap.data.value.spending) }}</div></div>
                 <div><div class="text-xs text-gray-500 dark:text-gray-400">Net worth</div>

@@ -159,6 +159,7 @@ export interface WeeklyRecap {
   uncategorized: number
   upcoming_bills: { merchant: string; category: string; date: string; amount: number }[]
   upcoming_vests: { date: string; shares: number; est_value: number }[]
+  headline: string
 }
 
 // ── Planning ──

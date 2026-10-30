@@ -9,6 +9,7 @@ Production runs on the 83RR PowerEdge (Ubuntu, Docker Compose, NGINX reverse pro
 | `tallied-db` | `postgres:16-alpine` | the database, volume `tallied_db_data` |
 | `tallied` | `ghcr.io/mcheli/tallied:latest` | `backend/entrypoint.sh`: `alembic upgrade head`, then gunicorn serving the API and the built SPA on 8000 |
 | `tallied-scheduler` (optional) | same image, `command: python -m app.scheduler`, `APP_ROLE=scheduler` | the sync scheduler (SimpleFIN on a 12h loop plus NOTIFY-driven manual syncs). Without it, set nothing and the web container runs the scheduler in-process. If you add it, set `APP_ROLE=web` on `tallied`. |
+| `weekly-recap` worker | Cloudflare Worker in `workers/weekly-recap/` | Mondays 12:00 UTC: fetches `/api/v1/recap/weekly/email` with a read-only API key and sends it through Email Routing |
 | `email-receipt` worker | Cloudflare Worker in `workers/email-receipt/` | receives forwarded receipts at the configured address and POSTs them to `/api/v1/email-import/inbound` |
 
 Startup refuses to run with default secrets, and refuses `FINANCE_DEV_MODE=true` against a non-local database.
@@ -107,3 +108,14 @@ Uploaded documents are not stored; only extracted data is. Provider credentials 
 | Google sign-in loops | redirect URI in Google Cloud Console must be exactly `https://money.markcheli.com/api/v1/auth/google/callback` |
 | SimpleFIN sync stuck "running" | the watchdog fails jobs older than the cutoff at next boot; `SELECT * FROM <tenant>.sync_jobs ORDER BY id DESC LIMIT 5` |
 | Receipts rejected 401 | `FINANCE_EMAIL_WEBHOOK_SECRET` differs between worker and app |
+
+## Weekly recap email worker
+
+`workers/weekly-recap/` runs on a cron trigger (Mondays 12:00 UTC) and emails the last Sunday–Saturday week's recap. Tallied renders the message (`GET /api/v1/recap/weekly/email`: subject, HTML, text); the worker only fetches it and sends it with a `send_email` binding, so the app needs no mail server.
+
+- The recipient must be a verified Email Routing destination address on the Cloudflare account, and `RECAP_FROM` must be on a domain with Email Routing enabled.
+- Secrets: `TALLIED_API_KEY` (a **read**-permission key named `weekly-recap-email`), `RECAP_TO`, `TRIGGER_TOKEN`.
+- Deploy: `cd workers/weekly-recap && npm install && CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... npx wrangler deploy`.
+- Send one now: `curl -X POST "https://tallied-weekly-recap.<subdomain>.workers.dev/send?token=$TRIGGER_TOKEN"`; it answers `sent: <subject>` or `failed: <reason>`.
+- A failed Monday run shows as an error on the worker's Cron Events in the Cloudflare dashboard.
+

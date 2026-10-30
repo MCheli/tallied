@@ -1273,13 +1273,28 @@ requirements:
     visible: true
     done_means:
       - "/recap opens on the last completed week and steps back week by week; any date picks its week."
-      - "It shows net worth change, spending against the prior four-week average, top categories with their averages, the five largest purchases, income, and bills and vests due the following week."
+      - "It shows net worth change, spending against the prior four-week average, top categories with their averages, the five largest purchases, income, bills due the following week and RSU vests in the next 30 days."
       - "The headline sentence is built from those numbers only; the Dashboard shows it with a link to the page."
     status: done
     evidence:
       - backend/tests/test_weekly_recap.py::test_last_completed_week_is_sunday_to_saturday_before_today
       - backend/tests/test_weekly_recap.py::test_weekly_recap_compares_the_week_with_the_prior_four_and_looks_ahead
       - backend/tests/test_weekly_recap.py::test_weekly_recap_any_day_picks_its_week_and_empty_data_is_zero
-      - frontend/tests/recap.spec.ts#writes the headline from the numbers
+      - backend/tests/test_weekly_recap.py::test_headline_for_an_empty_or_ordinary_week
+      - frontend/tests/recap.spec.ts#labels a week within a month and across months
       - artifacts/screens/recap/desktop.png
+
+  - id: RECAP-EMAIL-001
+    title: The weekly recap arrives by email every Monday
+    job: look
+    area: dashboard
+    priority: p1
+    visible: false
+    done_means:
+      - "GET /recap/weekly/email returns the last completed week's recap as subject, HTML and plain text, with merchant names escaped and a link to that week's page; it sends nothing itself."
+      - "The weekly-recap Cloudflare worker fetches it with a read-only API key on Mondays at 12:00 UTC and sends it through Email Routing; a failure fails the cron run instead of passing silently."
+    status: done
+    evidence:
+      - backend/tests/test_weekly_recap.py::test_recap_email_has_subject_html_and_text_with_the_vests
+      - workers/weekly-recap/src/index.ts
 

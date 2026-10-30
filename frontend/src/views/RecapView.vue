@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { api } from '../api/client'
 import { useFormatters } from '../composables/useFormatters'
 import { useTile } from '../composables/useDashboardTiles'
-import { addDays, recapHeadline, weekLabel } from '../composables/useRecap'
+import { addDays, weekLabel } from '../composables/useRecap'
 import PageHeader from '../components/common/PageHeader.vue'
 import MetricCard from '../components/common/MetricCard.vue'
 import ChartContainer from '../components/common/ChartContainer.vue'
@@ -70,7 +70,7 @@ ORDER BY spent DESC`
     <div v-else-if="recap.error.value" class="text-red-600 dark:text-red-400 text-sm">Could not load the recap: {{ recap.error.value }}</div>
 
     <div v-else-if="r" class="space-y-6">
-      <p class="text-base text-gray-800 dark:text-gray-200 max-w-3xl leading-relaxed" data-testid="recap-headline">{{ recapHeadline(r) }}</p>
+      <p class="text-base text-gray-800 dark:text-gray-200 max-w-3xl leading-relaxed" data-testid="recap-headline">{{ r.headline }}</p>
 
       <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
         <MetricCard
@@ -145,10 +145,10 @@ ORDER BY spent DESC`
 
       <ChartContainer
         title="Coming Up"
-        :subtitle="`Week of ${shortDay(addDays(r.week_end, 1))}`"
+        :subtitle="`Bills from ${shortDay(addDays(r.week_end, 1))} to ${shortDay(addDays(r.week_end, 7))}; RSU vests through ${shortDay(addDays(r.week_end, 30))}`"
         :empty="r.upcoming_bills.length === 0 && r.upcoming_vests.length === 0"
-        empty-text="No bills or vests expected the following week"
-        info="Bills expected in the following Sunday–Saturday week: merchants charged about monthly at a steady amount (the Recurring Expenses rule), due on the same day of the month as their last charge. RSU vests scheduled that week, at the latest share price."
+        empty-text="No bills due the following week and no vests in the next 30 days"
+        info="Bills expected in the following Sunday–Saturday week: merchants charged about monthly at a steady amount (the Recurring Expenses rule), due on the same day of the month as their last charge. RSU vests scheduled in the 30 days after the week, valued at the latest share price."
       >
         <div class="space-y-2">
           <div v-for="b in r.upcoming_bills" :key="`bill-${b.merchant}`" class="flex items-center justify-between gap-3 text-sm py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
