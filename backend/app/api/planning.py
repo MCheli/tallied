@@ -37,6 +37,8 @@ from app.schemas.planning import (
     PlanUpdate,
     SensitivityItem,
     SensitivityResponse,
+    SsEarningsResponse,
+    SsEarningsUpdate,
     VarianceMetric,
     VarianceResponse,
     WhatIfRequest,
@@ -142,7 +144,19 @@ def get_household(db: Session = Depends(get_tenant_db)):
     if profile is None or profile.birth_date is None:
         return HouseholdResponse()
     return HouseholdResponse(birth_date=profile.birth_date,
-                             age=retirement_outlook.age_on(profile.birth_date, date.today()))
+                             age=retirement_outlook.age_on(profile.birth_date, date.today()),
+                             ss_earnings_years=len(profile.ss_earnings or {}))
+
+
+@router.put("/household/ss-earnings", response_model=SsEarningsResponse, dependencies=[Depends(require_permission("write"))])
+def put_ss_earnings(payload: SsEarningsUpdate, db: Session = Depends(get_tenant_db)):
+    """Store the Social Security earnings record so retiring early reduces the statement's estimate."""
+    try:
+        profile = retirement_outlook.set_ss_earnings(db, payload.earnings)
+        db.commit()
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return SsEarningsResponse(years=len(profile.ss_earnings or {}), factor_by_retirement_age=retirement_outlook.ss_factors(profile))
 
 
 @router.put("/household", response_model=HouseholdResponse, dependencies=[Depends(require_permission("write"))])

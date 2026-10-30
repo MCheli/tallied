@@ -33,6 +33,18 @@ class PlanUpdate(BaseModel):
 class HouseholdResponse(BaseModel):
     birth_date: date | None = None
     age: int | None = None
+    ss_earnings_years: int = 0
+
+
+class SsEarningsUpdate(BaseModel):
+    # Covered earnings by year from the Social Security statement ("Earnings Taxed for Social Security").
+    earnings: dict[int, float]
+
+
+class SsEarningsResponse(BaseModel):
+    years: int
+    # Benefit relative to the statement's estimate if work stops at each age (the statement assumes work until claiming).
+    factor_by_retirement_age: dict[int, float]
 
 
 class HouseholdUpdate(BaseModel):

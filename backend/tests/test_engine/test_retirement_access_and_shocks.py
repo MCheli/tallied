@@ -228,3 +228,41 @@ def test_new_deferrals_split_between_roth_and_pretax():
            investment_return=0.0, inflation=0.0, total_comp_growth=0.0)
     d = _run(p, hh).detail
     assert d["retirement"][0] == pytest.approx(10_000, rel=0.02)
+
+
+
+# --- working-years cash flow --------------------------------------------------------------------
+
+def _cash_flow_household(**kw) -> rs.Household:
+    base = dict(start_year=2026, current_age=40, salary=100_000, living_spending=50_000)
+    base.update(kw)
+    return rs.Household(**base)
+
+
+def test_savings_from_pay_are_take_home_minus_actual_spending():
+    p = _p(retirement_age=45, plan_to_age=46, employee_401k_rate=0.10, employer_match_rate=0.0, income_tax_rate=0.30,
+           investment_return=0.0, monthly_cash_savings=0)
+    d = _run(p, _cash_flow_household()).detail
+    assert d["saved"][0] == pytest.approx(100_000 * 0.7 - 10_000 - 50_000)
+
+
+def test_a_pay_shortfall_is_drawn_from_savings():
+    p = _p(retirement_age=45, plan_to_age=46, employee_401k_rate=0.10, employer_match_rate=0.0, income_tax_rate=0.30,
+           investment_return=0.0, monthly_cash_savings=0)
+    d = _run(p, _cash_flow_household(cash=50_000, living_spending=80_000, other_debt_payments=2_000)).detail
+    assert d["saved"][0] == pytest.approx(70_000 - 10_000 - 82_000)
+    assert d["cash"][0] == pytest.approx(50_000 - 22_000)
+
+
+# --- Social Security for early retirement ---------------------------------------------------------
+
+MAX_EARNER = {y: rs.TAXABLE_MAX[y] for y in range(2005, 2026)}
+
+
+def test_ss_estimate_is_reduced_for_years_not_worked():
+    assert rs.ss_stop_factor({}, 2040, 2059) == 1.0                   # no record: use the statement as is
+    assert rs.ss_stop_factor(MAX_EARNER, 2059, 2059) == pytest.approx(1.0)
+    early = rs.ss_stop_factor(MAX_EARNER, 2035, 2059)                # 30 max years instead of 35+
+    later = rs.ss_stop_factor(MAX_EARNER, 2038, 2059)               # 33 max years
+    assert rs.ss_stop_factor(MAX_EARNER, 2045, 2059) == pytest.approx(1.0)   # 35+ max years: no reduction
+    assert 0.8 < early < later < 1.0

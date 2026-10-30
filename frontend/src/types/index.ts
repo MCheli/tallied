@@ -359,6 +359,11 @@ export interface StartingPoint {
   scheduled_vest_count: number
   last_scheduled_vest: string | null
   spending_last_12m: number
+  /** Working-years living spending a year (refunds netted, one-offs out, scaled to a year) */
+  living_spending?: number
+  other_debt_payments?: number
+  savings_from?: 'cash_flow' | 'typed'
+  roth_share_of_401k?: number
   irs_401k_limit: number
   investable: number
   full_retirement_age: number

@@ -150,3 +150,21 @@ def test_price_cache_keeps_seed_rows(db_session, monkeypatch):
     db_session.add(StockPrice(symbol="AAPL", price_date=date.today() - timedelta(days=1), close_price=Decimal("1"), source="seed"))
     db_session.commit()
     assert stock_price.get_or_fetch_price(db_session, "AAPL") == 531.01  # no row for today: fetched and cached
+
+
+
+def test_refunds_net_spending_but_income_does_not(client, db_session):
+    _account(db_session, "card", group="Credit Cards", atype="credit_card")
+    today = date.today()
+    db_session.add_all([
+        Transaction(id="r1", account_id="card", date=today, amount=Decimal("-250"), merchant="Car auction", category="Car Auctions", category_group="Auto & Transport", source="test"),
+        Transaction(id="r2", account_id="card", date=today, amount=Decimal("250"), merchant="Car auction", category="Car Auctions", category_group="Auto & Transport", source="test"),
+        Transaction(id="r3", account_id="card", date=today, amount=Decimal("-120"), merchant="Shop", category="Shopping", category_group="Shopping", source="test"),
+        Transaction(id="r4", account_id="card", date=today, amount=Decimal("20"), merchant="Shop", category="Shopping", category_group="Shopping", source="test"),
+        Transaction(id="r5", account_id="card", date=today, amount=Decimal("5000"), merchant="Employer", category="Paycheck", category_group="Income", source="test"),
+        Transaction(id="r6", account_id="card", date=today, amount=Decimal("75"), merchant="Venmo", category=None, source="test"),
+    ])
+    db_session.commit()
+    cats = {c["category"]: c["total"] for c in client.get("/api/v1/spending/by-category").json()}
+    assert cats == {"Car Auctions": 0.0, "Shopping": -100.0}       # refunded deposit nets to zero; returns net
+    assert client.get("/api/v1/spending/monthly-trend").json()[0]["total"] == -100.0

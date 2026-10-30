@@ -34,9 +34,9 @@ ASSUMPTIONS: list[dict] = [
     {"key": "employer_match_rate", "display_name": "401(k) Employer Match", "category": "career", "value": 0.06, "unit": "pct",
      "sensitivity": "low", "min": 0, "max": 0.2, "description": "Employer contribution as a share of salary."},
     # spending and savings
-    {"key": "monthly_cash_savings", "display_name": "Monthly Savings from Pay", "category": "spending", "value": 440, "unit": "usd_month",
+    {"key": "monthly_cash_savings", "display_name": "Extra Monthly Savings", "category": "spending", "value": 440, "unit": "usd_month",
      "sensitivity": "medium", "min": 0, "max": 50000,
-     "description": "What you save from salary each month after living costs, in today's dollars; it grows in step with salary. After-tax RSU proceeds are saved on top."},
+     "description": "Extra saved each month by spending less, in today's dollars. With spending history, savings from pay are take-home salary minus actual living spending, housing and loan payments (equity covers any shortfall), plus this. Without history, this is the whole monthly saving from salary. After-tax RSU proceeds are saved on top."},
     {"key": "retirement_spending", "display_name": "Retirement Living Spending", "category": "spending", "value": 100000, "unit": "usd",
      "sensitivity": "high", "min": 0, "max": 1000000,
      "description": "Yearly living spending in retirement in today's dollars, before tax. Excludes the mortgage, property tax/insurance and health care, which the plan adds itself. 'What will retirement cost?' derives a figure from your actual spending."},

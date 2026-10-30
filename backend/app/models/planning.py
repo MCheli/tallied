@@ -13,6 +13,8 @@ class HouseholdProfile(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     birth_date: Mapped[date | None] = mapped_column(Date)
+    # Social Security earnings record {year: covered earnings}, from the owner's statement.
+    ss_earnings: Mapped[dict | None] = mapped_column(JSON)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
 

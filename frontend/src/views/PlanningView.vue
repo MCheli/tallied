@@ -401,7 +401,7 @@ const MILESTONE_NOTE: Record<number, string> = {
 const sp = computed(() => o.value?.starting_point)
 const startInfo = `<strong>What feeds the plan.</strong> Investable = cash and credit cards + taxable investments + company stock + 401(k), from the latest balance per account (Dashboard's numbers).
 Company stock = sellable vested shares × today's price when no account holds it. Salary and RSU come from the latest W-2; a gross-only W-2 is split using that year's vests.
-Scheduled vests = unvested vest events × today's price. Roth basis = Roth contributions on the latest 401(k) statement. Age comes from the household birth date.`
+Scheduled vests = unvested vest events × today's price. Roth basis = Roth contributions on the latest 401(k) statement. Age comes from the household birth date. Living spending = the last year's spending net of refunds, one-off spikes removed, scaled to a year when history is shorter; while working, savings from pay are take-home salary minus living spending, housing and loan payments (equity covers a shortfall).`
 </script>
 
 <template>
@@ -559,6 +559,7 @@ Scheduled vests = unvested vest events × today's price. Roth basis = Roth contr
             <div><dt class="text-xs text-gray-400">Company stock</dt><dd class="font-semibold text-gray-900 dark:text-white">{{ money(sp.company_stock) }}</dd><dd class="text-[11px] text-gray-400">{{ sp.company_stock_source === 'sellable_shares' ? `sellable ${sp.company_symbol} shares` : sp.company_stock_source }}</dd></div>
             <div><dt class="text-xs text-gray-400">Pay ({{ sp.w2_year ?? 'no W-2' }})</dt><dd class="font-semibold text-gray-900 dark:text-white">{{ compact(sp.salary) }} + {{ compact(sp.rsu_income) }} RSU</dd><dd class="text-[11px] text-gray-400">{{ sp.comp_source === 'vests' ? 'split from vests' : sp.comp_source === 'w2' ? 'from the W-2' : 'none on file' }}</dd></div>
             <div><dt class="text-xs text-gray-400">Scheduled vests</dt><dd class="font-semibold text-gray-900 dark:text-white">{{ compact(sp.scheduled_vest_value) }}</dd><dd class="text-[11px] text-gray-400">{{ sp.scheduled_vest_count }} through {{ fmtDate(sp.last_scheduled_vest) }}</dd></div>
+            <div v-if="sp.savings_from === 'cash_flow'"><dt class="text-xs text-gray-400">Living spending</dt><dd class="font-semibold text-gray-900 dark:text-white">{{ compact(sp.living_spending ?? 0) }}/yr</dd><dd class="text-[11px] text-gray-400">+ {{ compact(sp.other_debt_payments ?? 0) }} loans; savings = take-home − spending − housing</dd></div>
             <div><dt class="text-xs text-gray-400">Home</dt><dd class="font-semibold text-gray-900 dark:text-white">{{ compact(sp.home_value - sp.mortgage_balance) }} equity</dd><dd class="text-[11px] text-gray-400">{{ compact(sp.mortgage_balance) }} at {{ percent(sp.mortgage_rate, 2) }}</dd></div>
           </dl>
         </section>

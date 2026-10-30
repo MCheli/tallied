@@ -104,6 +104,14 @@ class Household:
     rsu_income: float = 0.0
     scheduled_vests: dict[int, float] = field(default_factory=dict)  # period -> value at today's price
     spending_last_12m: float = 0.0
+    # Cash flow while working (today's $ a year). When living_spending is set, savings from pay are
+    # take-home salary minus living spending, housing and other debt payments (it can be negative:
+    # equity then pays for part of life); monthly_cash_savings is extra saved on top by spending less.
+    living_spending: float = 0.0       # excludes housing, health cover paid from pay, and debt payments
+    other_debt_payments: float = 0.0   # loans other than the mortgage (student loan, HEAT loan, ...)
+    # Covered earnings by year from the Social Security statement: the benefit is reduced for the years
+    # not worked when retiring before the claim age (the statement assumes work until claiming).
+    ss_earnings: dict[int, float] = field(default_factory=dict)
     irs_401k_limit: float = 23_500.0
     escrow_monthly: float = 0.0       # part of the mortgage payment that is tax and insurance (continues after payoff)
     roth_basis: float = 0.0           # Roth contributions inside the 401(k): withdrawable tax- and penalty-free
@@ -421,6 +429,52 @@ class SimResult:
         return float(self.success.mean()) if self.success.size else 0.0
 
 
+# Social Security contribution and benefit base (taxable maximum) by year (SSA). It moves with the national
+# average wage index, so it serves to index past earnings to today's wage level.
+TAXABLE_MAX = {
+    1995: 61_200, 1996: 62_700, 1997: 65_400, 1998: 68_400, 1999: 72_600, 2000: 76_200, 2001: 80_400,
+    2002: 84_900, 2003: 87_000, 2004: 87_900, 2005: 90_000, 2006: 94_200, 2007: 97_500, 2008: 102_000,
+    2009: 106_800, 2010: 106_800, 2011: 106_800, 2012: 110_100, 2013: 113_700, 2014: 117_000, 2015: 118_500,
+    2016: 118_500, 2017: 127_200, 2018: 128_400, 2019: 132_900, 2020: 137_700, 2021: 142_800, 2022: 147_000,
+    2023: 160_200, 2024: 168_600, 2025: 176_100,
+}
+PIA_BEND_POINTS_2025 = (1_226, 7_391)   # 90% / 32% / 15% formula, 2025 eligibility year
+
+
+def _pia(aime: float) -> float:
+    b1, b2 = PIA_BEND_POINTS_2025
+    return 0.9 * min(aime, b1) + 0.32 * max(0.0, min(aime, b2) - b1) + 0.15 * max(0.0, aime - b2)
+
+
+def ss_stop_factor(earnings: dict[int, float], stop_year: int, claim_year: int) -> float:
+    """Benefit if covered earnings stop before ``stop_year``, relative to the statement's estimate, which
+    assumes earnings at the taxable maximum until ``claim_year``.
+
+    Past earnings are capped at that year's maximum and indexed to today's wage level by the ratio of
+    taxable maximums; future years at the maximum count as today's maximum. Highest 35 years / 420 months
+    give the AIME; the 90/32/15 formula gives the PIA. Returns at most 1.
+    """
+    if not earnings:
+        return 1.0
+    latest = max(TAXABLE_MAX)
+    top = TAXABLE_MAX[latest]
+    last_year = max(earnings)
+
+    def indexed(through: int) -> list[float]:
+        vals = []
+        for y, e in earnings.items():
+            cap = TAXABLE_MAX.get(y)
+            if cap is None or y >= through:
+                continue
+            vals.append(min(float(e), cap) * top / cap)
+        vals += [float(top)] * max(0, through - (last_year + 1))
+        return sorted(vals, reverse=True)[:35]
+
+    full = _pia(sum(indexed(claim_year)) / 420)
+    stop = _pia(sum(indexed(stop_year)) / 420)
+    return min(1.0, stop / full) if full > 0 else 1.0
+
+
 def ss_factor(claim_age: float, fra: float = 67.0) -> float:
     """Social Security benefit at claim_age as a share of the full-retirement-age benefit.
 
@@ -548,6 +602,10 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
     detail = {k: np.zeros(T) for k in detail_keys}
     fra = household.full_retirement_age
     ss_annual = inputs.ss_monthly_at_fra * 12 * ss_factor(inputs.ss_claim_age, fra)
+    if household.ss_earnings:
+        birth_year = household.start_year - household.current_age
+        stop_year = household.start_year + (inputs.retirement_age - household.current_age)
+        ss_annual *= ss_stop_factor(household.ss_earnings, stop_year, birth_year + round(fra))
     real_ret_retired = (1 + inputs.retirement_return) / (1 + inputs.inflation) - 1
     rule_of_55 = inputs.retirement_age >= RULE_OF_55_AGE
     # 2025 HHS poverty guideline (48 states): $15,650 for one person, +$5,500 for each extra person.
@@ -662,7 +720,15 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
             employee = np.minimum(salary_v * inputs.employee_401k_rate, irs_limit)
             contrib_v = employee + salary_v * inputs.employer_match_rate
             salary_scale = (salary_v / (salary0 * price_index)) if salary0 > 0 else employed
-            saved_v = inputs.monthly_cash_savings * 12 * price_index * salary_scale
+            if household.living_spending > 0:
+                # Cash flow: take-home salary less living costs, the mortgage and other debts.
+                housing_work = (np.where(mortgage > 0, pi_payment * 12, 0.0) + escrow_month_v * 12) * price_index
+                take_home = salary_v * (1 - inputs.income_tax_rate) - employee
+                living_now = (household.living_spending + household.other_debt_payments) * price_index
+                saved_v = (take_home - living_now - housing_work
+                           + inputs.monthly_cash_savings * 12 * price_index)
+            else:
+                saved_v = inputs.monthly_cash_savings * 12 * price_index * salary_scale
             rsu_net = rsu_v * (1 - inputs.rsu_tax_rate)
             other_net = other_income_today * price_index * (1 - inputs.income_tax_rate)
             windfall_v = windfall_today * price_index
@@ -679,9 +745,11 @@ def run(inputs: PlanInputs, household: Household, market: Market) -> SimResult:
             roth_basis = roth_basis + employee * roth_share
             pre += contrib_v - employee * roth_share
             company += rsu_net * hold
-            taxable += saved_v + rsu_net * (1 - hold) + other_net + windfall_v
-            # Out-of-work spending, gap health cover and one-off costs come out of savings.
-            out = (household.spending_last_12m * job_loss + extra_spend) * price_index + gap_health
+            shortfall = np.maximum(-np.asarray(saved_v, dtype=float), 0.0)
+            taxable += np.maximum(saved_v, 0.0) + rsu_net * (1 - hold) + other_net + windfall_v
+            # A pay shortfall, out-of-work spending, gap health cover and one-off costs come out of savings.
+            jobless_spend = 0.0 if household.living_spending > 0 else household.spending_last_12m * job_loss
+            out = shortfall + (jobless_spend + extra_spend) * price_index + gap_health
             unmet = _withdraw(out, [cash, taxable, company], 0.0)
             before = roth.copy()
             unmet = unmet - _take(unmet, roth, 0.0, cap_gross=roth_basis)

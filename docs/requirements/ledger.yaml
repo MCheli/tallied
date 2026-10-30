@@ -1068,3 +1068,29 @@ requirements:
       - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_before_55_the_bridge_is_taxable_then_roth_basis_then_penalty
     notes:
       - "2026-10-30: the first Planning v2 release taxed every withdrawal at a flat 20%, overstating taxes for a Roth-heavy 401(k) and on taxable cost basis."
+
+  - id: SPEND-REFUND-001
+    title: Refunds net spending
+    job: understand
+    area: spending
+    priority: p0
+    done_means:
+      - "A positive amount in a spending category (a return, a refunded deposit, a credit) reduces spending in that category everywhere spending is summed (Spending, Dashboard, Planning). Paychecks, interest and other income categories, and uncategorized money in, are never treated as refunds."
+    status: done
+    evidence:
+      - backend/tests/test_data_rules.py::test_refunds_net_spending_but_income_does_not
+
+  - id: PLAN-V2-014
+    title: Working-years savings come from real cash flow; Social Security reflects retiring early
+    job: plan
+    area: planning
+    priority: p0
+    done_means:
+      - "With spending history, savings from pay = take-home salary (after the plan's tax rate and the employee 401(k) deferral) minus living spending (net of refunds, one-offs removed, scaled to a year), housing and other loan payments. A shortfall is drawn from savings; equity proceeds are invested on top. The 'Extra Monthly Savings' lever adds to that. Without history the typed saving applies."
+      - "With the Social Security earnings record stored, the statement's estimate (which assumes work at the taxable maximum until claiming) is reduced for years not worked when retiring early (top-35 indexed years, 90/32/15 formula)."
+    status: done
+    evidence:
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_savings_from_pay_are_take_home_minus_actual_spending
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_a_pay_shortfall_is_drawn_from_savings
+      - backend/tests/test_engine/test_retirement_access_and_shocks.py::test_ss_estimate_is_reduced_for_years_not_worked
+      - backend/tests/test_api/test_planning_v2.py::test_earnings_record_reduces_social_security_for_early_retirement

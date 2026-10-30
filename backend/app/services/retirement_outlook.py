@@ -63,6 +63,29 @@ def set_birth_date(db: Session, birth_date: date) -> HouseholdProfile:
     return profile
 
 
+def set_ss_earnings(db: Session, earnings: dict[int, float]) -> HouseholdProfile:
+    """Store the Social Security earnings record. Needs a birth date first. Does not commit."""
+    profile = household_profile(db)
+    if profile is None or profile.birth_date is None:
+        raise ValueError("Set the birth date first")
+    this_year = date.today().year
+    clean: dict[str, float] = {}
+    for y, v in earnings.items():
+        y = int(y)
+        if not (1950 <= y <= this_year) or v is None or float(v) < 0:
+            raise ValueError(f"Bad earnings entry for {y}: years 1950-{this_year}, amounts 0 or more")
+        clean[str(y)] = float(v)
+    profile.ss_earnings = clean
+    db.flush()
+    return profile
+
+
+def ss_factors(profile: HouseholdProfile, ages: tuple[int, ...] = (45, 50, 55, 60, 62, 65, 67)) -> dict[int, float]:
+    earnings = {int(y): float(v) for y, v in (profile.ss_earnings or {}).items()}
+    fra_year = profile.birth_date.year + round(rs.full_retirement_age(profile.birth_date.year))
+    return {a: round(rs.ss_stop_factor(earnings, profile.birth_date.year + a, fra_year), 3) for a in ages}
+
+
 def age_on(birth_date: date, today: date) -> int:
     return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
 
@@ -267,6 +290,13 @@ def spending_builder(db: Session, household: rs.Household, values: dict[str, flo
     to_year = 12.0 / covered
     observed = sum(-float(a or 0) for _, a, _, _ in rows)
     total = observed * to_year
+    # Loans other than the mortgage (student loan, HEAT loan): paid from pay while working.
+    debt = db.execute(
+        select(func.coalesce(func.sum(Transaction.amount), 0))
+        .where(Transaction.category.in_(("Loan Payment", "Loan Payments")), Transaction.amount < 0,
+               Transaction.date > since, Transaction.date <= today)
+    ).scalar()
+    other_debt = abs(float(debt or 0)) * to_year
     by_month: dict[str, float] = {}
     for d, a, _, _ in rows:
         key = d.strftime("%Y-%m")
@@ -307,6 +337,7 @@ def spending_builder(db: Session, household: rs.Household, values: dict[str, flo
         "window": {"from": since.isoformat(), "to": today.isoformat(), "months": len(months)},
         "trailing_total": round(total, 0),
         "observed_total": round(observed, 0),
+        "other_debt_payments": round(other_debt, 0),
         "covered_months": round(covered, 1),
         "median_month": round(median_month, 0),
         "monthly": [{"month": k, "total": round(by_month[k], 0)} for k in sorted(by_month)],
@@ -423,6 +454,14 @@ def household_and_inputs(db: Session, plan: PlanVersion, overrides: dict[str, fl
         raise BirthDateMissing()
     values = plan_values(plan, overrides)
     household, start = starting_point(db, profile.birth_date, today)
+    # Working-years cash flow from actual spending (refunds netted, one-offs removed, scaled to a year).
+    sb = spending_builder(db, household, values, today)
+    living = max(0.0, float(sb["trailing_total"]) - float(sb["spike_total"]))
+    earnings = {int(y): float(v) for y, v in (profile.ss_earnings or {}).items()}
+    household = replace(household, living_spending=living, other_debt_payments=float(sb["other_debt_payments"]),
+                        ss_earnings=earnings)
+    start = {**start, "living_spending": round(living, 0), "other_debt_payments": sb["other_debt_payments"],
+             "savings_from": "cash_flow" if living > 0 else "typed"}
     rule = spending_rule or plan.spending_rule or "fixed"
     shape = spending_profile or plan.spending_profile or "flat"
     inputs = to_inputs(values, rule, events_for(plan, event_enabled), shape)

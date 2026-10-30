@@ -57,7 +57,7 @@ def _household(db, with_spending: bool = False):
 
 
 def test_no_age_is_assumed_until_the_birth_date_is_set(client, db_session):
-    assert client.get("/api/v1/plans/household").json() == {"birth_date": None, "age": None}
+    assert client.get("/api/v1/plans/household").json() == {"birth_date": None, "age": None, "ss_earnings_years": 0}
     plan = _plan(client)
     res = client.get(f"/api/v1/plans/{plan['id']}/outlook", params={"analysis": "false"})
     assert res.status_code == 422 and "birth date" in res.text
@@ -308,3 +308,18 @@ def test_migration_backfills_the_same_keys_the_vocabulary_adds():
     assert set(frozen) == set(V2_KEYS)
     assert all(frozen[k] == BY_KEY[k]["value"] for k in V2_KEYS)
     assert list(REMOVED_KEYS) == mod.REMOVED_KEYS and not set(REMOVED_KEYS) & set(BY_KEY)
+
+
+
+def test_earnings_record_reduces_social_security_for_early_retirement(client, db_session, born_30):
+    _household(db_session, with_spending=True)
+    record = {str(y): 176_100 * (y - 2004) / 21 for y in range(2005, 2026)}
+    r = client.put("/api/v1/plans/household/ss-earnings", json={"earnings": record})
+    assert r.status_code == 200, r.text
+    f = r.json()["factor_by_retirement_age"]
+    assert f["67"] == 1.0 and f["45"] < f["55"] < f["60"] <= 1.0
+    assert client.get("/api/v1/plans/household").json()["ss_earnings_years"] == 21
+    assert client.put("/api/v1/plans/household/ss-earnings", json={"earnings": {"1800": 5}}).status_code == 422
+    plan = _plan(client, ss_monthly_at_fra=3000)
+    o = client.get(f"/api/v1/plans/{plan['id']}/outlook", params={"analysis": "false"}).json()
+    assert o["starting_point"]["savings_from"] == "cash_flow" and o["starting_point"]["living_spending"] > 0
