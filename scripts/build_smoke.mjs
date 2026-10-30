@@ -5,6 +5,7 @@
 // only show up here. Run: make build-smoke   (builds first) or node scripts/build_smoke.mjs
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from '../frontend/node_modules/playwright/index.mjs'
@@ -15,7 +16,14 @@ if (!existsSync(path.join(dist, 'index.html'))) {
   console.error(`build-smoke: ${dist}/index.html missing; run "npm run build" in frontend first`)
   process.exit(2)
 }
-const PORT = 4199
+// A free port each run, so two checkouts (e.g. an agent worktree) can run the gate at once
+// without one silently testing the other's bundle.
+const PORT = await new Promise((resolve, reject) => {
+  const srv = net.createServer()
+  srv.unref()
+  srv.on('error', reject)
+  srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolve(port)) })
+})
 const ROUTES = ['/', '/login']
 
 // Hard stop: a hung browser or server must fail the gate, never hang CI.

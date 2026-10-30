@@ -30,7 +30,7 @@ export interface Transaction {
   is_recurring: boolean
   notes: string | null
   source: string | null
-  /** Who set the category: "rule:research", "rule:manual", "email", "manual", or null. */
+  /** Who set the category: "rule:research", "rule:manual", "email", "diary", "manual", or null. */
   category_source?: string | null
   created_at: string | null
 }

@@ -68,10 +68,13 @@ def test_email_categories_are_protected_and_bad_rules_rejected(client, db_sessio
     _setup(db_session)
     t = db_session.get(Transaction, "t6")
     t.category, t.category_group, t.category_source = "Electronics", "Shopping", "email"
+    d = db_session.get(Transaction, "t2")
+    d.category, d.category_group, d.category_source = "Vehicle Fees", "Auto & Transport", "diary"
     db_session.commit()
     db_session.add(CategoryRule(pattern="mystery", match="contains", category="Shopping", category_group="Shopping", source="research"))
     db_session.commit()
     apply_rules(db_session, rederive=True)
     assert db_session.get(Transaction, "t6").category == "Electronics"
+    assert db_session.get(Transaction, "t2").category == "Vehicle Fees"
     r = client.post("/api/v1/transactions/category-rules", json={"pattern": "x", "match": "regex", "category": "A", "category_group": "B"})
     assert r.status_code == 422

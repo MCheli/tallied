@@ -4,8 +4,8 @@ A rule matches on the merchant text (exact, prefix or contains, case-insensitive
 only for one account type and one direction (money out or in). Rules are tried by priority,
 then exact before prefix before contains, then longer patterns first.
 
-A category the owner set by hand ("manual") or one confirmed from a receipt ("email") is
-never overwritten. Rule-set categories can be re-derived when the rules change.
+A category the owner set by hand ("manual"), one confirmed from a receipt ("email") or one
+identified from the owner's diary ("diary") is never overwritten. Rule-set categories can be re-derived when the rules change.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from app.models.transaction import Transaction
 
 logger = logging.getLogger("tallied.categorize")
 
-PROTECTED_SOURCES = ("manual", "email")
+PROTECTED_SOURCES = ("manual", "email", "diary")  # the owner, a receipt, the owner's own records
 _MATCH_ORDER = {"exact": 0, "prefix": 1, "contains": 2}
 
 

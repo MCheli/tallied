@@ -48,6 +48,7 @@ function sourceLabel(src: string | null | undefined): string {
   if (!src) return ''
   if (src === 'manual') return 'Set by you'
   if (src === 'email') return 'From an email receipt'
+  if (src === 'diary') return 'Identified from your diary'
   if (src === 'rule:manual') return 'From your merchant rule'
   if (src === 'rule:research') return 'From a merchant rule Claude researched'
   if (src === 'rule:email') return 'From a merchant rule confirmed by a receipt'

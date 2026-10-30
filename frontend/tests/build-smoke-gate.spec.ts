@@ -30,5 +30,6 @@ describe('production bundle smoke gate', () => {
     expect(script).toContain("'/', '/login'")
     expect(script).toContain("page.on('pageerror'")
     expect(script).toContain('process.exit(1)')
+    expect(script).toContain('srv.listen(0')   // free port per run: parallel checkouts cannot test each other's bundle
   })
 })
