@@ -770,3 +770,22 @@ requirements:
       - scripts/build_smoke.mjs
     notes:
       - "Added 2026-10-29 after the first deploy of the October overhaul shipped a bundle whose entry chunk imported a Rolldown runtime helper from the echarts chunk, which imported InfoTooltip, which imported the entry: production rendered nothing (TypeError: d is not a function) while typecheck, vitest, the tour and CI were all green."
+
+  - id: LOOK-NW-002
+    title: The house and the 401(k) count in net worth, including data saved before D2
+    job: look
+    area: dashboard
+    priority: p0
+    done_means:
+      - "Migration 0004nwbackfill writes each real-estate account's latest valuation and each 401(k)'s statement balance as a balance snapshot when no newer balance exists, creating the 401(k) account if missing. It is idempotent."
+      - "A confirmed 401(k) statement creates the 401(k) account when none exists instead of skipping, and an import without a statement balance fails instead of reporting success."
+      - "RSU imports keep each future vest's scheduled share count so upcoming vests are valued."
+    status: done
+    evidence:
+      - backend/tests/test_net_worth_backfill.py::test_backfill_puts_the_house_and_the_401k_into_net_worth
+      - backend/tests/test_net_worth_backfill.py::test_backfill_is_idempotent_and_never_overrides_a_newer_balance
+      - backend/tests/test_net_worth_backfill.py::test_401k_import_creates_the_account_instead_of_skipping
+      - backend/tests/test_net_worth_backfill.py::test_401k_import_without_a_balance_fails_loudly
+      - backend/tests/test_net_worth_backfill.py::test_rsu_import_keeps_the_scheduled_quantity_on_future_vests
+    notes:
+      - "Found 2026-10-30: production net worth showed about -$411K because the mortgage synced daily while the house valuation and the 401(k) never wrote a balance."

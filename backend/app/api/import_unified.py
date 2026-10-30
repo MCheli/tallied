@@ -94,7 +94,8 @@ The "Restricted Stock" sheet has three row types:
 - "Tax Withholding" rows: Grant Number, Vest Period, Tax Description, Taxable Gain, Effective Tax Rate, Withholding Amount
 Return every grant with all of its vest events.
 Rules: share_price = Est. Market Value / Granted Qty.; fmv_at_vest = Taxable Gain / Vested Qty. for that
-vest period; total_taxes_paid = sum of Withholding Amount for the period; is_actual = Vested Qty. > 0;
+vest period; shares = the period's scheduled Granted Qty. (also for future periods, so upcoming vests are valued);
+total_taxes_paid = sum of Withholding Amount for the period; is_actual = Vested Qty. > 0;
 dates as YYYY-MM-DD; null for missing or zero values.""",
         "expected_fields": ["symbol", "total_shares", "grant_number"],
         "guidance": "Upload your E-Trade RSU vesting schedule .xlsx file.",
@@ -686,19 +687,13 @@ def _record_mortgage_balance(db: Session) -> None:
 
 
 def _record_retirement_balance(db: Session) -> None:
-    """Push the newest 401(k) statement balance into balance_snapshots for the 401(k) account (D2)."""
-    from app.services.balances import record_balance
+    """Push the newest 401(k) statement balance into balance_snapshots (D2), creating the account if needed."""
+    from app.services.balances import ensure_retirement_account, record_balance
 
     ret_acct = db.execute(select(RetirementAccount).order_by(RetirementAccount.updated_at.desc()).limit(1)).scalar_one_or_none()
-    if not ret_acct or ret_acct.total_balance is None:
-        return
-    account = None
-    if ret_acct.account_id:
-        account = db.get(Account, ret_acct.account_id)
-    if account is None:
-        account = db.execute(select(Account).where(Account.account_type == "investment_401k").limit(1)).scalar_one_or_none()
-    if account is None:
-        return
+    if ret_acct is None or ret_acct.total_balance is None:
+        raise ValueError("401(k) statement confirmed but no statement balance was saved; net worth was not updated")
+    account = ensure_retirement_account(db, ret_acct)
     record_balance(db, account.id, ret_acct.total_balance, ret_acct.statement_end or date.today(), "statement")
 
 
