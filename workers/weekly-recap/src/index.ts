@@ -20,6 +20,8 @@ interface RecapEmail {
   html: string;
   text: string;
   week_start: string;
+  chart_png?: string | null; // base64 PNG, referenced from the HTML as cid:<chart_cid>
+  chart_cid?: string | null;
 }
 
 /** RFC 2047 encoded-word for a subject that may contain non-ASCII (en dash, minus sign). */
@@ -37,8 +39,44 @@ function b64(value: string, wrap = true): string {
 }
 
 export function buildMime(mail: RecapEmail, from: string, to: string, now = new Date()): string {
-  const boundary = `recap-${crypto.randomUUID()}`;
+  const alt = `alt-${crypto.randomUUID()}`;
   const domain = from.split("@")[1];
+  const alternative = [
+    `--${alt}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    b64(mail.text),
+    `--${alt}`,
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    b64(mail.html),
+    `--${alt}--`,
+  ];
+  let body: string[];
+  if (mail.chart_png && mail.chart_cid) {
+    // multipart/related keeps the chart inline (shown where the HTML's cid: image is), not as an attachment.
+    const rel = `rel-${crypto.randomUUID()}`;
+    body = [
+      `Content-Type: multipart/related; boundary="${rel}"`,
+      "",
+      `--${rel}`,
+      `Content-Type: multipart/alternative; boundary="${alt}"`,
+      "",
+      ...alternative,
+      `--${rel}`,
+      'Content-Type: image/png; name="spending.png"',
+      "Content-Transfer-Encoding: base64",
+      `Content-ID: <${mail.chart_cid}>`,
+      'Content-Disposition: inline; filename="spending.png"',
+      "",
+      mail.chart_png.replace(/.{76}/g, "$&\r\n"),
+      `--${rel}--`,
+    ];
+  } else {
+    body = [`Content-Type: multipart/alternative; boundary="${alt}"`, "", ...alternative];
+  }
   return [
     `From: Tallied <${from}>`,
     `To: ${to}`,
@@ -46,19 +84,7 @@ export function buildMime(mail: RecapEmail, from: string, to: string, now = new 
     `Date: ${now.toUTCString()}`,
     `Message-ID: <recap-${mail.week_start}-${crypto.randomUUID()}@${domain}>`,
     "MIME-Version: 1.0",
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    "",
-    `--${boundary}`,
-    "Content-Type: text/plain; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    b64(mail.text),
-    `--${boundary}`,
-    "Content-Type: text/html; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    b64(mail.html),
-    `--${boundary}--`,
+    ...body,
     "",
   ].join("\r\n");
 }

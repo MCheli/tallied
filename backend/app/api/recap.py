@@ -28,7 +28,11 @@ def get_weekly_recap_email(
 ):
     """The recap as an email (subject, html, text). The weekly-recap Cloudflare worker fetches this on
     Monday mornings with a read-only API key and sends it; this route sends nothing."""
-    return recap_email.render(weekly_recap(db, date.today(), week_start), settings.base_url)
+    recap = weekly_recap(db, date.today(), week_start)
+    # The chart shows the month the week ends in, up to that Saturday, against the month before.
+    week_end = date.fromisoformat(recap["week_end"])
+    pace = month_pace(db, week_end, week_end)
+    return recap_email.render(recap, settings.base_url, pace)
 
 
 @router.get("/month-pace")

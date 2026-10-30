@@ -1293,8 +1293,10 @@ requirements:
     done_means:
       - "GET /recap/weekly/email returns the last completed week's recap as subject, HTML and plain text, with merchant names escaped and a link to that week's page; it sends nothing itself."
       - "The weekly-recap Cloudflare worker fetches it with a read-only API key on Mondays at 12:00 UTC and sends it through Email Routing; a failure fails the cron run instead of passing silently."
+      - "The email includes the Spending This Month chart as an inline PNG (cid:pace-chart): the month the week ends in, up to that Saturday, against the month before, with a one-line caption."
     status: done
     evidence:
       - backend/tests/test_weekly_recap.py::test_recap_email_has_subject_html_and_text_with_the_vests
+      - backend/tests/test_weekly_recap.py::test_recap_email_carries_the_month_pace_chart_as_an_inline_png
       - workers/weekly-recap/src/index.ts
 
