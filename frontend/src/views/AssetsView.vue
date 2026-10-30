@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
-import { LineChart } from 'echarts/charts'
+import { LineChart, ScatterChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import PageHeader from '../components/common/PageHeader.vue'
@@ -19,7 +19,7 @@ import { valuationLabel } from '../composables/useValuationLabel'
 import { api } from '../api/client'
 import type { AggregateVehicleHistory, AssetsSummary, Vehicle, VehicleHistory, VehicleInput } from '../types'
 
-use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
+use([LineChart, ScatterChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 const { baseOption, COLORS, axisLineColor, splitLineColor, mobileAxis, mobileLegend, isMobile } = useChartDefaults()
 const { money, number, date: fmtDate, dash } = useFormatters()
 const { openData } = useDataExplorer()
