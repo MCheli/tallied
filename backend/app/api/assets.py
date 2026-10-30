@@ -2,7 +2,7 @@
 Fixed capital assets API — vehicles and future asset types.
 """
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -114,7 +114,7 @@ def refresh_vehicle_value(vehicle_id: int, db: Session = Depends(get_tenant_db))
     history and projection points are computed deterministically from those
     (services/valuation.py). Failure is an HTTP error, never a silent no-op.
     """
-    from app.services.valuation import estimate_vehicle_value, vehicle_value_curve
+    from app.services.valuation import estimate_vehicle_value, store_vehicle_valuation
 
     vehicle = db.get(Vehicle, vehicle_id)
     if not vehicle:
@@ -125,41 +125,9 @@ def refresh_vehicle_value(vehicle_id: int, db: Session = Depends(get_tenant_db))
     except AIError as e:
         raise HTTPException(status_code=e.status_code, detail=f"Valuation unavailable: {e}")
 
-    today = date.today()
-    history, projections = vehicle_value_curve(
-        purchase_price=float(vehicle.purchase_price) if vehicle.purchase_price else None,
-        purchase_year=vehicle.purchase_date.year if vehicle.purchase_date else None,
-        current_value=float(valuation.current_value),
-        current_year=today.year,
-        annual_depreciation_pct=valuation.annual_depreciation_pct,
-    )
-
-    vehicle.estimated_value = Decimal(valuation.current_value)
-    vehicle.value_last_updated = datetime.now()
-    vehicle.valuation_notes = valuation.reasoning
-    vehicle.valuation_source = "ai"
-    vehicle.valuation_model = model_id
-    vehicle.valuation_confidence = valuation.confidence
-
-    # Replace the previous AI curve; manual rows are never touched.
-    db.execute(
-        delete(AssetValueHistory).where(
-            AssetValueHistory.vehicle_id == vehicle_id,
-            AssetValueHistory.source.in_(["ai_estimate", "purchase"]),
-        )
-    )
-    db.flush()
-    if vehicle.purchase_price and vehicle.purchase_date:
-        db.add(AssetValueHistory(vehicle_id=vehicle_id, date=vehicle.purchase_date,
-                                 value=vehicle.purchase_price, source="purchase", is_projected=False))
-    for year, value in history:
-        if vehicle.purchase_date and year == vehicle.purchase_date.year:
-            continue
-        db.add(AssetValueHistory(vehicle_id=vehicle_id, date=date(year, 1, 1) if year != today.year else today,
-                                 value=value, source="ai_estimate", is_projected=False))
-    for year, value in projections:
-        db.add(AssetValueHistory(vehicle_id=vehicle_id, date=date(year, 1, 1), value=value,
-                                 source="ai_estimate", is_projected=True))
+    store_vehicle_valuation(db, vehicle, value=float(valuation.current_value),
+                            annual_depreciation_pct=valuation.annual_depreciation_pct, reasoning=valuation.reasoning,
+                            source="ai", model=model_id, confidence=valuation.confidence)
     db.commit()
     db.refresh(vehicle)
     return {

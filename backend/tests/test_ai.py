@@ -267,3 +267,23 @@ def test_import_logs_endpoint_lists_confirmed_imports(client, db_session):
     res = client.get("/api/v1/import/logs")
     assert res.status_code == 200
     assert res.json()[0]["records_created"] == 3 and res.json()[0]["source"] == "unified_import"
+
+
+
+def test_vehicle_bought_this_year_keeps_todays_value_point(db_session):
+    from datetime import date
+    from decimal import Decimal
+
+    from app.models.asset import Vehicle
+    from app.models.asset_value_history import AssetValueHistory
+    from app.services.valuation import store_vehicle_valuation
+
+    v = Vehicle(year=1991, make="Honda", model="Acty", purchase_price=Decimal("6200"), purchase_date=date(2026, 6, 2))
+    db_session.add(v)
+    db_session.flush()
+    store_vehicle_valuation(db_session, v, value=6500, annual_depreciation_pct=2, reasoning="comps", source="research",
+                            model="claude-opus-5-5", confidence="medium", today=date(2026, 10, 30))
+    rows = [(r.date, int(r.value), r.is_projected) for r in
+            db_session.query(AssetValueHistory).filter_by(vehicle_id=v.id).order_by(AssetValueHistory.date)]
+    assert rows[:3] == [(date(2026, 6, 2), 6200, False), (date(2026, 10, 30), 6500, False), (date(2027, 1, 1), 6370, True)]
+    assert v.valuation_source == "research" and float(v.estimated_value) == 6500

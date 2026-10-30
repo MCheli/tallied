@@ -112,3 +112,50 @@ def estimate_property_outlook(
         purpose="property_outlook",
     )
     return outlook, model_for("fast")
+
+
+def store_vehicle_valuation(db, vehicle: Vehicle, *, value: float, annual_depreciation_pct: float, reasoning: str,
+                            source: str, model: str | None, confidence: str | None, today: date | None = None) -> None:
+    """Save a labelled valuation and rebuild the vehicle's computed value curve. Does not commit.
+
+    Rows the owner entered by hand (source "manual") are never touched. The purchase is the first point;
+    history interpolates from it to today's value (today's point is kept even when the vehicle was bought
+    this year); projections apply the depreciation rate.
+    """
+    from datetime import datetime
+
+    from sqlalchemy import delete
+
+    from app.models.asset_value_history import AssetValueHistory
+
+    today = today or date.today()
+    vehicle.estimated_value = _money(value)
+    vehicle.value_last_updated = datetime.now()
+    vehicle.valuation_notes = reasoning
+    vehicle.valuation_source = source
+    vehicle.valuation_model = model
+    vehicle.valuation_confidence = confidence
+    history, projections = vehicle_value_curve(
+        purchase_price=float(vehicle.purchase_price) if vehicle.purchase_price else None,
+        purchase_year=vehicle.purchase_date.year if vehicle.purchase_date else None,
+        current_value=float(value),
+        current_year=today.year,
+        annual_depreciation_pct=annual_depreciation_pct,
+    )
+    db.execute(delete(AssetValueHistory).where(
+        AssetValueHistory.vehicle_id == vehicle.id, AssetValueHistory.source.in_(["ai_estimate", "purchase"])))
+    db.flush()
+    if vehicle.purchase_price and vehicle.purchase_date:
+        db.add(AssetValueHistory(vehicle_id=vehicle.id, date=vehicle.purchase_date, value=vehicle.purchase_price,
+                                 source="purchase", is_projected=False))
+    for year, val in history:
+        if year == today.year:
+            if not (vehicle.purchase_date and vehicle.purchase_date == today):
+                db.add(AssetValueHistory(vehicle_id=vehicle.id, date=today, value=val, source="ai_estimate", is_projected=False))
+            continue
+        if vehicle.purchase_date and year == vehicle.purchase_date.year:
+            continue   # the purchase row already marks that year
+        db.add(AssetValueHistory(vehicle_id=vehicle.id, date=date(year, 1, 1), value=val, source="ai_estimate", is_projected=False))
+    for year, val in projections:
+        db.add(AssetValueHistory(vehicle_id=vehicle.id, date=date(year, 1, 1), value=val, source="ai_estimate", is_projected=True))
+    db.flush()
