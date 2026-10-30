@@ -148,8 +148,10 @@ export interface PlanResponse {
   description: string | null
   scenario_type: string
   is_active: boolean
+  spending_rule?: SpendingRule
   assumptions: AssumptionResponse[]
   projections: ProjectionRow[]
+  events?: PlanEvent[]
   created_at: string
   updated_at: string
 }
@@ -197,13 +199,358 @@ export interface PlanCreate {
   name: string
   description?: string
   scenario_type?: string
+  spending_rule?: SpendingRule
+  spending_profile?: SpendingProfile
+  copy_from?: number
   assumptions: AssumptionInput[]
 }
 
 export interface PlanUpdate {
   name?: string
   description?: string
+  spending_rule?: SpendingRule
+  spending_profile?: SpendingProfile
   assumptions?: AssumptionInput[]
+}
+
+// ── Planning v2: outlook (backend/app/services/retirement_outlook.py) ──
+export type SpendingRule = 'fixed' | 'guardrails' | 'vpw'
+export type SpendingProfile = 'flat' | 'smile'
+export type AssumptionUnit = 'pct' | 'usd' | 'usd_month' | 'age' | 'count' | 'flag'
+
+export interface AssumptionSpec {
+  key: string
+  display_name: string
+  category: string
+  value: number
+  unit: AssumptionUnit
+  sensitivity: string
+  min: number
+  max: number
+  description: string
+}
+
+export interface PlanEvent {
+  id: number
+  plan_id?: number
+  kind: string
+  label: string
+  start_age: number
+  end_age: number | null
+  amount: number
+  pct: number
+  enabled: boolean
+  params?: Record<string, number> | null
+}
+
+export type PlanEventInput = Omit<PlanEvent, 'id' | 'plan_id'>
+
+export interface EventTemplate {
+  kind: string
+  label: string
+  start: 'r' | 'c' | 'fixed'
+  start_offset: number
+  start_value?: number
+  params?: Record<string, number>
+  end?: 'r' | 'c' | 'fixed'
+  end_offset?: number
+  end_value?: number
+  amount: number
+  pct: number
+  amount_label?: string
+  pct_label?: string
+  help: string
+}
+
+export interface PlanCatalogue {
+  regimes: { key: string; label: string; description: string }[]
+  spending_rules: { key: SpendingRule; label: string; description: string }[]
+  spending_profiles: { key: SpendingProfile; label: string; description: string }[]
+  event_templates: EventTemplate[]
+  layoff_defaults: Record<string, number>
+  assumptions: AssumptionSpec[]
+}
+
+export interface Bands {
+  p10: number[]
+  p25: number[]
+  p50: number[]
+  p75: number[]
+  p90: number[]
+}
+
+export interface OutlookRow {
+  year: number
+  age: number
+  phase: 'working' | 'retired'
+  salary: number
+  rsu_income: number
+  total_comp: number
+  saved: number
+  contrib_401k: number
+  spending: number
+  withdrawal: number
+  social_security: number
+  other_income: number
+  healthcare: number
+  housing: number
+  src_taxable: number
+  src_roth_basis: number
+  src_401k: number
+  src_401k_penalty: number
+  equity_payout: number
+  mortgage_payoff: number
+  gap_costs: number
+  extra_spend: number
+  magi: number
+  cash: number
+  investments: number
+  company_stock: number
+  retirement_bal: number
+  home_equity: number
+  net_worth: number
+  liquid_real: number
+  net_worth_real: number
+  deflator: number
+}
+
+export interface StartingPoint {
+  balances_as_of: string | null
+  cash: number
+  taxable: number
+  company_stock: number
+  company_stock_source: 'balances' | 'sellable_shares' | 'none'
+  company_symbol: string | null
+  company_price: number | null
+  retirement: number
+  roth_basis: number
+  home_value: number
+  mortgage_balance: number
+  mortgage_payment_monthly: number
+  escrow_monthly: number
+  mortgage_rate: number
+  salary: number
+  rsu_income: number
+  comp_source: 'w2' | 'vests' | 'none'
+  w2_year: number | null
+  scheduled_vest_value: number
+  scheduled_vest_count: number
+  last_scheduled_vest: string | null
+  spending_last_12m: number
+  irs_401k_limit: number
+  investable: number
+  full_retirement_age: number
+}
+
+export interface Milestone {
+  age: number
+  label: string
+  title: string
+  detail: string
+}
+
+export interface SpendingBuilder {
+  window: { from: string; to: string; months: number }
+  trailing_total: number
+  median_month: number
+  monthly: { month: string; total: number }[]
+  uncategorised: number
+  spikes: { date: string; merchant: string; category: string; amount: number }[]
+  spike_total: number
+  work_costs: number
+  work_reduction: number
+  suggested: number
+  range: { low: number; high: number }
+  excluded: { mortgage_pi_monthly: number; escrow_monthly: number; payroll_tax: number; saving_401k: number }
+  health: {
+    people: number
+    pre65_full: number
+    pre65_capped_at: number
+    subsidy_cliff_magi: number
+    pre65_at_cliff: number
+    post65: number
+    ltc_reference: { assisted_living: number; nursing_home_private: number; year: number }
+  }
+  references: {
+    replacement_low: number
+    replacement_high: number
+    pay: number
+    bls: { year: number; all: number; age_65_plus: number; age_65_74: number; age_75_plus_2023: number }
+  }
+}
+
+export interface NestEggRow {
+  horizon: number
+  is_plan: boolean
+  fixed_worst: number | null
+  fixed_worst_start: number | null
+  fixed_p10: number | null
+  cohorts: number
+  vpw_first_year: number
+  nest_egg_fixed_worst: number | null
+  nest_egg_fixed_p10: number | null
+  nest_egg_vpw: number | null
+}
+
+export interface NestEgg {
+  need_first_year: number
+  spending_gross: number
+  stock_share: number
+  rows: NestEggRow[]
+  references: { label: string; rate?: number; rates?: number[] }[]
+}
+
+export interface EventOutcome {
+  id: number
+  label: string
+  kind: string
+  success_with: number
+  success_without: number
+  plan_line_runs_out_at: number | null
+  median_failure_age: number | null
+  share_running_out: number
+  income_window: [number, number]
+  income_for_plan_line: number | null
+  income_to_restore: number | null
+  income_for_target: number | null
+}
+
+export interface SprintLever {
+  label: string
+  low_label: string
+  high_label: string
+  base: number
+  success_low: number
+  success_high: number
+}
+
+export interface SprintResult {
+  target: number
+  settings: { employee_401k: string; equity: string; irs_401k_limit: number }
+  shifts: number[]
+  return_labels: string[]
+  grid: { age: number; max_spending: (number | null)[] }[]
+  by_spending: { spending: number; earliest_age: (number | null)[] }[]
+  plan_spending: number
+  earliest_at_plan_spending: number | null
+  base_success: number
+  levers: SprintLever[]
+  job_change: { age: number; synthetic: boolean; params: Record<string, number> }
+}
+
+export interface Household {
+  birth_date: string | null
+  age: number | null
+}
+
+export interface MixStats {
+  stock_share: number
+  from_year: number
+  to_year: number
+  nominal_mean: number
+  real_mean: number
+  nominal_cagr: number
+  real_cagr: number
+  volatility: number
+  inflation_mean: number
+}
+
+export interface OutlookSummary {
+  success_rate: number
+  paths: number
+  median_at_retirement: number
+  p10_at_retirement: number
+  median_at_end: number
+  p10_at_end: number
+  p90_at_end: number
+  median_failure_age: number | null
+  earliest_failure_age: number | null
+  spending_p10_lowest: number | null
+  spending_median: number | null
+  prob_spending_cut: number
+  prob_below_floor: number
+  historical_success_rate: number | null
+  historical_cohorts: number
+}
+
+export interface Cohort {
+  start_year: number
+  success: boolean
+  end_real: number
+  lowest_real: number
+  failure_age: number | null
+}
+
+export interface ScenarioResult {
+  key: string
+  label: string
+  description: string
+  success_rate: number
+  median_end: number
+  p10_end: number
+  median_at_retirement: number
+}
+
+export interface GoalSeekResult {
+  target: number
+  base_success: number
+  max_spending: number | null
+  earliest_retirement_age: number | null
+  extra_monthly_savings: number | null
+  required_return_shift: number | null
+  required_investment_return: number | null
+  required_retirement_return: number | null
+  by_age: { age: number; success: number; median_at_retirement: number; median_at_end: number }[]
+  by_spending: { spending: number; success: number }[]
+}
+
+export interface SensitivityLever {
+  key: string
+  label: string
+  unit: AssumptionUnit
+  base_value: number
+  low_value: number
+  high_value: number
+  success_low: number
+  success_high: number
+}
+
+export interface PlanOutlook {
+  plan: { id: number; name: string; spending_rule: SpendingRule; spending_profile: SpendingProfile }
+  today: string
+  birth_date: string
+  current_age: number
+  retirement_age: number
+  planned_retirement_age: number
+  milestones: Milestone[]
+  plan_to_age: number
+  success_target: number
+  regime: string
+  starting_point: StartingPoint
+  warnings: { key: string; text: string }[]
+  values: Record<string, number>
+  history_reference: { working: MixStats; retired: MixStats }
+  summary: OutlookSummary & { plan_line_runs_out_at: number | null }
+  fan: { ages: number[]; years: number[]; liquid: Bands; net_worth: Bands; plan_line: number[]; spending: Bands }
+  rows: OutlookRow[]
+  cohorts: Cohort[]
+  events: PlanEvent[]
+  spending_builder: SpendingBuilder
+  nest_egg: NestEgg
+  scenarios?: ScenarioResult[]
+  goal_seek?: GoalSeekResult
+  sensitivity?: SensitivityLever[]
+  event_impacts?: { id: number; success_without: number; success_with: number }[]
+  event_outcomes?: EventOutcome[]
+}
+
+export interface WhatIfRequest {
+  overrides?: Record<string, number>
+  spending_rule?: SpendingRule
+  spending_profile?: SpendingProfile
+  regime?: string
+  event_enabled?: Record<number, boolean>
+  analysis?: boolean
 }
 
 // ── Import ──

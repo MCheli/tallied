@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 /** Views and components call the typed client in src/api; raw fetch() lives only there. */
 const src = resolve(__dirname, '..', 'src')
-const ALLOWED = new Set(['api/client.ts', 'api/planning.ts'])
+const ALLOWED = new Set(['api/client.ts'])
 // Files still to be moved onto the client (NFR-CODE-001). Empty since 2026-10-29; never add to it.
 const REMAINING = new Set<string>([])
 

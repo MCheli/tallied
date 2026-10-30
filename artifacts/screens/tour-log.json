@@ -1,12 +1,12 @@
 {
-  "capturedAt": "2026-10-29T14:10:46.092Z",
-  "base": "http://localhost:5173",
+  "capturedAt": "2026-10-30T01:53:35.773Z",
+  "base": "http://localhost:5183",
   "theme": "light",
   "routes": {
     "login/mobile": {
       "consoleErrors": [],
       "failedRequests": [
-        "GET http://localhost:5173/api/v1/auth/me :: net::ERR_ABORTED"
+        "GET http://localhost:5183/api/v1/auth/config :: net::ERR_ABORTED"
       ],
       "badResponses": [],
       "overflow": []
@@ -16,7 +16,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/",
+      "finalUrl": "http://localhost:5183/",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -27,7 +27,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/guide",
+      "finalUrl": "http://localhost:5183/guide",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -38,7 +38,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/spending",
+      "finalUrl": "http://localhost:5183/spending",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -49,7 +49,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/income",
+      "finalUrl": "http://localhost:5183/income",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -60,7 +60,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/cash",
+      "finalUrl": "http://localhost:5183/cash",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -71,7 +71,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/rsu",
+      "finalUrl": "http://localhost:5183/rsu",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -82,7 +82,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/retirement",
+      "finalUrl": "http://localhost:5183/retirement",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -93,7 +93,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/property",
+      "finalUrl": "http://localhost:5183/property",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -104,7 +104,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/assets",
+      "finalUrl": "http://localhost:5183/assets",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -115,7 +115,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/planning",
+      "finalUrl": "http://localhost:5183/planning",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -126,7 +126,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/database",
+      "finalUrl": "http://localhost:5183/database",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -137,7 +137,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/developer",
+      "finalUrl": "http://localhost:5183/developer",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -148,7 +148,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/settings",
+      "finalUrl": "http://localhost:5183/settings",
       "pageScrollWidth": {
         "main": 390,
         "viewport": 390
@@ -165,7 +165,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/",
+      "finalUrl": "http://localhost:5183/",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -176,7 +176,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/guide",
+      "finalUrl": "http://localhost:5183/guide",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -187,7 +187,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/spending",
+      "finalUrl": "http://localhost:5183/spending",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -198,7 +198,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/income",
+      "finalUrl": "http://localhost:5183/income",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -209,7 +209,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/cash",
+      "finalUrl": "http://localhost:5183/cash",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -220,7 +220,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/rsu",
+      "finalUrl": "http://localhost:5183/rsu",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -231,7 +231,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/retirement",
+      "finalUrl": "http://localhost:5183/retirement",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -242,7 +242,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/property",
+      "finalUrl": "http://localhost:5183/property",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -253,7 +253,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/assets",
+      "finalUrl": "http://localhost:5183/assets",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -264,7 +264,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/planning",
+      "finalUrl": "http://localhost:5183/planning",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -275,7 +275,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/database",
+      "finalUrl": "http://localhost:5183/database",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -286,7 +286,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/developer",
+      "finalUrl": "http://localhost:5183/developer",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440
@@ -297,7 +297,7 @@
       "failedRequests": [],
       "badResponses": [],
       "overflow": [],
-      "finalUrl": "http://localhost:5173/settings",
+      "finalUrl": "http://localhost:5183/settings",
       "pageScrollWidth": {
         "main": 1216,
         "viewport": 1440

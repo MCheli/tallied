@@ -44,9 +44,9 @@ def test_depreciation_only_counts_vehicles_with_a_purchase_price(client, db_sess
     assert body["vehicles_with_purchase_price"] == 2
 
 
-def test_plan_table_reports_retirement_year_and_no_savings_columns(client):
+def test_plan_table_reports_retirement_year_and_no_savings_columns(client, born_30):
     res = client.post("/api/v1/plans/", json={"name": "T", "scenario_type": "base", "assumptions": [
-        {"key": "current_age", "value": 30}, {"key": "retirement_age", "value": 60},
+        {"key": "retirement_age", "value": 60},
     ]})
     assert res.status_code in (200, 201), res.text
     table = client.get(f"/api/v1/plans/{res.json()['id']}/table").json()

@@ -7,7 +7,7 @@ from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_tenant_db
+from app.dependencies import get_tenant_db, require_permission
 from app.engine.forecast import generate_forecast
 from app.engine.projection import ProjectionAssumptions, run_projection
 from app.models.account import Account
@@ -25,8 +25,13 @@ from app.schemas.planning import (
     ActualSnapshotCreate,
     ActualSnapshotResponse,
     AssumptionInput,
+    HouseholdResponse,
+    HouseholdUpdate,
     PlanCompareResponse,
     PlanCreate,
+    PlanEventInput,
+    PlanEventResponse,
+    PlanEventUpdate,
     PlanListItem,
     PlanResponse,
     PlanUpdate,
@@ -34,7 +39,10 @@ from app.schemas.planning import (
     SensitivityResponse,
     VarianceMetric,
     VarianceResponse,
+    WhatIfRequest,
 )
+from app.services import planning_service, retirement_outlook
+from app.services.plan_assumptions import ASSUMPTIONS
 from app.services.planning_service import (
     build_projection_input,
     create_plan,
@@ -43,26 +51,8 @@ from app.services.planning_service import (
 
 router = APIRouter(prefix="/plans", tags=["planning"])
 
-# Default assumptions for new plans
-DEFAULT_ASSUMPTIONS: list[dict] = [
-    {"key": "current_age", "display_name": "Current Age", "category": "career", "value": 30, "sensitivity": "low"},
-    {"key": "retirement_age", "display_name": "Retirement Age", "category": "career", "value": 60, "sensitivity": "high"},
-    {"key": "employee_401k_rate", "display_name": "401(k) Employee Contribution", "category": "career", "value": 0.10, "sensitivity": "medium"},
-    {"key": "employer_match_rate", "display_name": "401(k) Employer Match", "category": "career", "value": 0.06, "sensitivity": "low"},
-    {"key": "total_comp_growth", "display_name": "Total Comp Growth", "category": "career", "value": 0.04, "sensitivity": "high"},
-    {"key": "rsu_pct_of_comp", "display_name": "RSU % of Total Comp", "category": "career", "value": 0.37, "sensitivity": "medium"},
-    {"key": "rsu_pct_annual_increase", "display_name": "RSU % Annual Increase", "category": "career", "value": 0.005, "sensitivity": "low"},
-    {"key": "rsu_pct_cap", "display_name": "RSU % Cap", "category": "career", "value": 0.50, "sensitivity": "low"},
-    {"key": "rsu_tax_rate", "display_name": "RSU Tax Rate at Vest", "category": "tax", "value": 0.40, "sensitivity": "medium"},
-    {"key": "investment_return", "display_name": "Pre-Retirement Return", "category": "markets", "value": 0.07, "sensitivity": "high"},
-    {"key": "retirement_return", "display_name": "Post-Retirement Return", "category": "markets", "value": 0.05, "sensitivity": "high"},
-    {"key": "stock_price_growth", "display_name": "Company Stock Growth", "category": "markets", "value": 0.07, "sensitivity": "medium"},
-    {"key": "inflation", "display_name": "Inflation Rate", "category": "markets", "value": 0.03, "sensitivity": "medium"},
-    {"key": "home_appreciation", "display_name": "Home Appreciation", "category": "markets", "value": 0.03, "sensitivity": "low"},
-    {"key": "monthly_cash_savings", "display_name": "Monthly Cash Savings", "category": "spending", "value": 440, "sensitivity": "low"},
-    {"key": "retirement_spending", "display_name": "Retirement Spending", "category": "spending", "value": 100000, "sensitivity": "high"},
-    {"key": "retirement_tax_rate", "display_name": "Retirement Tax Rate", "category": "tax", "value": 0.20, "sensitivity": "medium"},
-]
+# Default assumptions for new plans: the one vocabulary (services/plan_assumptions.py).
+DEFAULT_ASSUMPTIONS: list[dict] = ASSUMPTIONS
 
 
 def _assumptions_to_engine(assumptions: list[PlanAssumption]) -> ProjectionAssumptions:
@@ -103,30 +93,29 @@ def list_plans(db: Session = Depends(get_tenant_db)):
     ]
 
 
-@router.post("/", response_model=PlanResponse, status_code=201)
+@router.post("/", response_model=PlanResponse, status_code=201, dependencies=[Depends(require_permission("write"))])
 def create_plan_endpoint(payload: PlanCreate, db: Session = Depends(get_tenant_db)):
-    # Merge user-provided assumptions with defaults
-    user_keys = {a.key: a for a in payload.assumptions} if payload.assumptions else {}
+    """New plan: every vocabulary key at its default, the source plan's values (copy_from), then the payload's."""
+    source = None
+    if payload.copy_from is not None:
+        source = db.get(PlanVersion, payload.copy_from)
+        if not source:
+            raise HTTPException(status_code=404, detail="Plan to copy not found")
+    base = {a.key: float(a.value) for a in source.assumptions} if source else {}
+    user_keys = {a.key: a for a in payload.assumptions}
 
     assumptions_input = []
     for default in DEFAULT_ASSUMPTIONS:
-        if default["key"] in user_keys:
-            user = user_keys[default["key"]]
-            assumptions_input.append(AssumptionInput(
-                key=default["key"],
-                value=user.value,
-                display_name=user.display_name or default["display_name"],
-                category=user.category or default["category"],
-                sensitivity=user.sensitivity or default["sensitivity"],
-            ))
-        else:
-            assumptions_input.append(AssumptionInput(
-                key=default["key"],
-                value=default["value"],
-                display_name=default["display_name"],
-                category=default["category"],
-                sensitivity=default["sensitivity"],
-            ))
+        user = user_keys.get(default["key"])
+        value = user.value if user else base.get(default["key"], default["value"])
+        assumptions_input.append(AssumptionInput(
+            key=default["key"],
+            value=value,
+            display_name=(user.display_name if user else None) or default["display_name"],
+            category=(user.category if user else None) or default["category"],
+            sensitivity=(user.sensitivity if user else None) or default["sensitivity"],
+            description=default.get("description"),
+        ))
 
     try:
         plan = create_plan(
@@ -135,11 +124,41 @@ def create_plan_endpoint(payload: PlanCreate, db: Session = Depends(get_tenant_d
             description=payload.description,
             scenario_type=payload.scenario_type,
             assumptions_input=assumptions_input,
+            spending_rule=source.spending_rule if source and payload.spending_rule == "fixed" else payload.spending_rule,
+            copy_events_from=source,
+            spending_profile=source.spending_profile if source and payload.spending_profile == "flat" else payload.spending_profile,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     db.refresh(plan)
     return plan
+
+
+@router.get("/household", response_model=HouseholdResponse)
+def get_household(db: Session = Depends(get_tenant_db)):
+    """The household's birth date (age is computed from it every day). Null until set."""
+    profile = retirement_outlook.household_profile(db)
+    if profile is None or profile.birth_date is None:
+        return HouseholdResponse()
+    return HouseholdResponse(birth_date=profile.birth_date,
+                             age=retirement_outlook.age_on(profile.birth_date, date.today()))
+
+
+@router.put("/household", response_model=HouseholdResponse, dependencies=[Depends(require_permission("write"))])
+def put_household(payload: HouseholdUpdate, db: Session = Depends(get_tenant_db)):
+    try:
+        profile = retirement_outlook.set_birth_date(db, payload.birth_date)
+        planning_service.recompute_all(db)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return HouseholdResponse(birth_date=profile.birth_date,
+                             age=retirement_outlook.age_on(profile.birth_date, date.today()))
+
+
+@router.get("/catalogue")
+def plan_catalogue():
+    """Spending rules, macro scenarios, life-event templates and the assumption vocabulary."""
+    return retirement_outlook.catalogue()
 
 
 @router.get("/compare", response_model=PlanCompareResponse)
@@ -272,36 +291,105 @@ def get_plan(plan_id: int, db: Session = Depends(get_tenant_db)):
     return plan
 
 
-@router.put("/{plan_id}", response_model=PlanResponse)
+@router.put("/{plan_id}", response_model=PlanResponse, dependencies=[Depends(require_permission("write"))])
 def update_plan_endpoint(plan_id: int, payload: PlanUpdate, db: Session = Depends(get_tenant_db)):
-    plan = db.get(PlanVersion, plan_id)
-    if not plan:
+    if not db.get(PlanVersion, plan_id):
         raise HTTPException(status_code=404, detail="Plan not found")
-
-    if payload.name is not None:
-        plan.name = payload.name
-    if payload.description is not None:
-        plan.description = payload.description
-
-    if payload.assumptions is not None:
-        try:
-            plan = update_plan(db, plan_id, payload.assumptions)
-        except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
-    else:
-        db.commit()
-
+    try:
+        plan = update_plan(db, plan_id, payload.assumptions, spending_rule=payload.spending_rule,
+                           name=payload.name, description=payload.description,
+                           spending_profile=payload.spending_profile)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     db.refresh(plan)
     return plan
 
 
-@router.delete("/{plan_id}", status_code=204)
+@router.delete("/{plan_id}", status_code=204, dependencies=[Depends(require_permission("write"))])
 def delete_plan(plan_id: int, db: Session = Depends(get_tenant_db)):
+    try:
+        planning_service.delete_plan(db, plan_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Outlook (planning v2): Monte Carlo, history, scenarios, goal-seek
+# ---------------------------------------------------------------------------
+def _outlook_or_422(db: Session, plan_id: int, **kw) -> dict:
     plan = db.get(PlanVersion, plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    db.delete(plan)
-    db.commit()
+    try:
+        return retirement_outlook.outlook(db, plan, **kw)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.get("/{plan_id}/outlook")
+def plan_outlook(
+    plan_id: int,
+    regime: str = Query("base", description="Macro scenario key (see /plans/catalogue)"),
+    analysis: bool = Query(True, description="Include scenarios, goal-seek, sensitivity and event impacts"),
+    db: Session = Depends(get_tenant_db),
+):
+    """The saved plan's outlook: chance of success, wealth bands, historical cohorts and what would need to be true."""
+    return _outlook_or_422(db, plan_id, regime_key=regime, include_analysis=analysis)
+
+
+@router.post("/{plan_id}/what-if")
+def plan_what_if(plan_id: int, payload: WhatIfRequest, db: Session = Depends(get_tenant_db)):
+    """The outlook with levers changed. Writes nothing; save with PUT /plans/{id}."""
+    return _outlook_or_422(
+        db, plan_id, overrides=payload.overrides, spending_rule=payload.spending_rule,
+        regime_key=payload.regime, event_enabled=payload.event_enabled, include_analysis=payload.analysis,
+        spending_profile=payload.spending_profile,
+    )
+
+
+@router.post("/{plan_id}/sprint")
+def plan_sprint(plan_id: int, payload: WhatIfRequest, db: Session = Depends(get_tenant_db)):
+    """'Sprint to retirement' with the given levers: max 401(k), every equity payout invested; the most
+    spending per retirement age and return, the earliest age per spending, and the levers that matter."""
+    plan = db.get(PlanVersion, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    try:
+        return retirement_outlook.sprint(
+            db, plan, payload.overrides, payload.spending_rule, payload.spending_profile, payload.event_enabled,
+            payload.regime)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/{plan_id}/events", response_model=PlanEventResponse, status_code=201,
+             dependencies=[Depends(require_permission("write"))])
+def add_plan_event(plan_id: int, payload: PlanEventInput, db: Session = Depends(get_tenant_db)):
+    try:
+        return planning_service.add_event(db, plan_id, payload.model_dump())
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.put("/events/{event_id}", response_model=PlanEventResponse, dependencies=[Depends(require_permission("write"))])
+def update_plan_event(event_id: int, payload: PlanEventUpdate, db: Session = Depends(get_tenant_db)):
+    try:
+        return planning_service.update_event(db, event_id, payload.model_dump(exclude_unset=True))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.delete("/events/{event_id}", status_code=204, dependencies=[Depends(require_permission("write"))])
+def delete_plan_event(event_id: int, db: Session = Depends(get_tenant_db)):
+    try:
+        planning_service.delete_event(db, event_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return None
 
 
@@ -548,7 +636,10 @@ def plan_table(plan_id: int, db: Session = Depends(get_tenant_db)):
         raise HTTPException(status_code=404, detail="Plan not found")
 
     assumption_ages = {a.key: float(a.value) for a in plan.assumptions}
-    user_age: int = int(assumption_ages.get("current_age", 30))
+    try:
+        user_age: int = planning_service.household_age(db)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     retirement_age: int = int(assumption_ages.get("retirement_age", 60))
 
     today = date.today()
