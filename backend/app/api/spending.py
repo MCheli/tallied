@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import year_month
 from app.dependencies import get_tenant_db
+from app.engine.spending import detect_recurring
 from app.models.account import Account
 from app.models.transaction import Transaction
 from app.schemas.transaction import CategorySummary, MonthlySpending, RecurringExpense
@@ -82,39 +83,29 @@ def recurring_expenses(
     account_types: str | None = Query(None, description="Comma-separated account_types to include"),
     db: Session = Depends(get_tenant_db),
 ):
-    """Merchants that recur within the period. avg_monthly is the merchant's total divided by the months in the period."""
+    """Bills and subscriptions in the period: charged about monthly at a steady amount and still active
+    (engine.spending.detect_recurring). avg_monthly is what the bill costs a month."""
     from datetime import timedelta
 
     end = to_date or date.today()
     start = from_date or (end - timedelta(days=months * 30))
     months_in_range = max(1, (end.year - start.year) * 12 + (end.month - start.month) + 1)
-    min_months_seen = 2 if months_in_range < 6 else max(2, months_in_range // 3)
 
     stmt = spending_filter(
-        select(
-            Transaction.merchant,
-            Transaction.category,
-            func.sum(Transaction.amount).label("total_amount"),
-            func.count(func.distinct(year_month(Transaction.date))).label("months_seen"),
-            func.max(Transaction.date).label("last_date"),
-        )
-    ).where(
-        Transaction.date >= start, Transaction.date <= end, Transaction.merchant.isnot(None),
-    ).group_by(Transaction.merchant, Transaction.category).having(
-        func.count(func.distinct(year_month(Transaction.date))) >= min_months_seen
-    ).order_by(func.sum(Transaction.amount))
+        select(Transaction.date, Transaction.amount, Transaction.merchant, Transaction.category)
+    ).where(Transaction.date >= start, Transaction.date <= end, Transaction.merchant.isnot(None))
     stmt = _apply_account_type_filter(stmt, _parse_account_types(account_types))
-
-    rows = db.execute(stmt).all()
+    rows = [
+        {"date": r.date.isoformat(), "amount": float(r.amount), "merchant": r.merchant, "category": r.category}
+        for r in db.execute(stmt).all()
+    ]
+    found = detect_recurring(rows, end.isoformat(), min_months=2 if months_in_range <= 4 else 3)
     return [
         RecurringExpense(
-            merchant=r.merchant,
-            category=r.category or "Uncategorized",
-            avg_monthly=round(abs(float(r.total_amount)) / months_in_range, 2),
-            months_seen=r.months_seen,
-            last_date=r.last_date,
+            merchant=r["merchant"], category=r["category"], avg_monthly=abs(r["avg_monthly"]),
+            months_seen=r["months_seen"], last_date=date.fromisoformat(r["last_date"]),
         )
-        for r in rows
+        for r in found
     ]
 
 

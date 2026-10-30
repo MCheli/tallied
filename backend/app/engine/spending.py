@@ -65,10 +65,22 @@ def spending_by_category(
     return results
 
 
-def detect_recurring(transactions: list[dict]) -> list[dict]:
+# Habits, not bills: a coffee shop visited every month is not a recurring expense.
+NOT_RECURRING_CATEGORIES = frozenset({
+    "Restaurants", "Fast Food", "Food Delivery", "Coffee Shops", "Groceries", "Gas", "Shopping", "Parking",
+    "Camping", "Travel", "Hotels",
+})
+
+
+def detect_recurring(transactions: list[dict], as_of: str, *, min_months: int = 3) -> list[dict]:
     """
-    Detect recurring expenses by finding merchants that appear in 3+ distinct
-    months with similar amounts (within 20 % of median).
+    Bills and subscriptions: merchants charged about once a month at a steady amount, still active.
+
+    A merchant qualifies when it was charged in at least ``min_months`` distinct months, at most twice a
+    month on average (two phone lines still count; daily parking does not), with at least 60 percent of
+    charges within 25 percent of the median, and a charge within 45 days of ``as_of``. Merchants are
+    grouped by name only; the category shown is the most common one. Categories in
+    NOT_RECURRING_CATEGORIES are habits and never qualify.
 
     Parameters
     ----------
@@ -78,74 +90,59 @@ def detect_recurring(transactions: list[dict]) -> list[dict]:
           - amount : float (negative = expense)
           - merchant : str
           - category : str  (optional, defaults to "Uncategorized")
+    as_of : str (ISO date)
+        End of the period; a merchant with no charge in the 45 days before it has stopped.
 
     Returns
     -------
     list[dict]
-        Sorted by average monthly amount (most expensive first).
-        [
-            {
-                "merchant": "Spotify",
-                "category": "Subscriptions",
-                "avg_monthly": -15.99,
-                "months_seen": 12,
-                "last_date": "2026-03-01",
-            },
-            ...
-        ]
+        Sorted by monthly cost (most expensive first). avg_monthly is the merchant's total over the
+        months from its first to its last charge, so it is what the bill costs a month.
+        [{"merchant": "Spotify", "category": "Streaming", "avg_monthly": -21.99,
+          "months_seen": 3, "last_date": "2026-10-01"}, ...]
     """
-    # Collect (month, amount, date, category) per merchant
-    merchant_data: dict[str, list[dict]] = defaultdict(list)
+    from datetime import date, timedelta
 
+    cutoff = (date.fromisoformat(as_of[:10]) - timedelta(days=45)).isoformat()
+    merchant_data: dict[str, list[dict]] = defaultdict(list)
     for t in transactions:
-        amount = t["amount"]
-        if amount >= 0:
-            continue  # only look at expenses
-        merchant = t.get("merchant", "")
-        if not merchant:
+        if t["amount"] >= 0 or not t.get("merchant"):
             continue
-        merchant_data[merchant].append({
+        merchant_data[t["merchant"]].append({
             "month": _month_key(t["date"]),
-            "amount": amount,
+            "amount": abs(t["amount"]),
             "date": t["date"],
-            "category": t.get("category", "Uncategorized"),
+            "category": t.get("category") or "Uncategorized",
         })
 
     results: list[dict] = []
-
     for merchant, entries in merchant_data.items():
-        # Distinct months
-        months = {e["month"] for e in entries}
-        if len(months) < 3:
+        months = sorted({e["month"] for e in entries})
+        if len(months) < min_months or len(entries) > 2 * len(months):
             continue
-
-        amounts = [abs(e["amount"]) for e in entries]
-        med = median(amounts)
-        if med == 0:
+        last_date = max(e["date"] for e in entries)
+        if last_date < cutoff:
             continue
-
-        # Check that most entries are within 20% of the median
-        within = sum(1 for a in amounts if abs(a - med) / med <= 0.20)
-        if within / len(amounts) < 0.6:
-            continue  # too much variance — probably not recurring
-
-        # Use the most common category
         cat_counts: dict[str, int] = defaultdict(int)
         for e in entries:
             cat_counts[e["category"]] += 1
         category = max(cat_counts, key=cat_counts.get)  # type: ignore[arg-type]
-
-        last_date = max(e["date"] for e in entries)
-
+        if category in NOT_RECURRING_CATEGORIES:
+            continue
+        amounts = [e["amount"] for e in entries]
+        med = median(amounts)
+        if med == 0 or sum(1 for a in amounts if abs(a - med) / med <= 0.25) / len(amounts) < 0.6:
+            continue
+        (y0, m0), (y1, m1) = (map(int, months[0].split("-")), map(int, months[-1].split("-")))
+        span = (y1 - y0) * 12 + (m1 - m0) + 1
         results.append({
             "merchant": merchant,
             "category": category,
-            "avg_monthly": round(-med, 2),  # negative to match expense convention
+            "avg_monthly": round(-sum(amounts) / span, 2),
             "months_seen": len(months),
             "last_date": last_date,
         })
 
-    # Sort by avg_monthly ascending (most negative = biggest spend first)
     results.sort(key=lambda r: r["avg_monthly"])
     return results
 

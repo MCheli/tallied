@@ -115,16 +115,20 @@ ${SPENDING_WHERE}
 GROUP BY category, category_group
 ORDER BY SUM(amount)`
 
-const recurringSql = `-- avg_monthly = total in the period / months in the period
-SELECT merchant, category,
-  SUM(amount) / :months_in_range AS avg_monthly,
+const recurringSql = `-- Candidates; the app then keeps merchants charged at most twice a month,
+-- with most charges within 25% of the median, charged in the last 45 days,
+-- and not in a habit category (dining, delivery, groceries, gas, shopping, parking, trips).
+SELECT merchant,
   COUNT(DISTINCT to_char(date, 'YYYY-MM')) AS months_seen,
+  COUNT(*) AS charges,
+  PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY -amount) AS typical_charge,
   MAX(date) AS last_date
 FROM transactions
 ${SPENDING_WHERE}
-  AND merchant IS NOT NULL
-GROUP BY merchant, category
+  AND merchant IS NOT NULL AND amount < 0
+GROUP BY merchant
 HAVING COUNT(DISTINCT to_char(date, 'YYYY-MM')) >= 2
+  AND COUNT(*) <= 2 * COUNT(DISTINCT to_char(date, 'YYYY-MM'))
 ORDER BY SUM(amount)`
 
 const transactionsSql = `-- All transactions in the period (income and transfers included), newest first

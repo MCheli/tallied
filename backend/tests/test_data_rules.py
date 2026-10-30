@@ -31,20 +31,32 @@ def test_spending_excludes_transfers_and_loan_payments(client, db_session):
     assert "Transfer" in client.get("/api/v1/spending/excluded-categories").json()
 
 
-def test_recurring_uses_the_period_and_per_month_average(client, db_session):
+def test_recurring_lists_bills_not_habits(client, db_session):
     _account(db_session, "chk")
-    first = date(2026, 7, 5)
     rows = []
-    for i in range(4):  # four months, two Whole Foods visits each month
+
+    def tx(key, d, amount, merchant, category):
+        rows.append(Transaction(id=key, account_id="chk", date=d, amount=Decimal(str(amount)), merchant=merchant,
+                                category=category, source="test"))
+
+    for i in range(4):  # July to October
         d = date(2026, 7 + i, 5)
-        rows.append(Transaction(id=f"wf{i}a", account_id="chk", date=d, amount=Decimal("-40"), merchant="Whole Foods", category="Groceries", source="test"))
-        rows.append(Transaction(id=f"wf{i}b", account_id="chk", date=d + timedelta(days=10), amount=Decimal("-60"), merchant="Whole Foods", category="Groceries", source="test"))
-        rows.append(Transaction(id=f"mort{i}", account_id="chk", date=d, amount=Decimal("-2450"), merchant="Bank", category="Transfer", source="test"))
+        tx(f"ph{i}a", d, -90, "Phone Co", "Phone")                       # two lines: still a bill
+        tx(f"ph{i}b", d + timedelta(days=1), -85, "Phone Co", "Phone")
+        tx(f"el{i}", d, -400 + 30 * i, "Power Co", "Gas & Electric")      # varies a little
+        tx(f"mort{i}", d, -2450, "Bank", "Transfer")                     # never spending
+        tx(f"old{i}", date(2026, 3 + i, 5), -9.99, "Old Stream", "Streaming")   # stopped in June
+        for k in range(6):                                               # a habit, many charges a month
+            tx(f"pk{i}{k}", d + timedelta(days=k), -44, "Garage", "Software & AI")
+        tx(f"wf{i}a", d, -40, "Whole Foods", "Groceries")                # steady but a habit category
+        tx(f"am{i}a", d, -12, "Online Store", "Electronics")             # amounts all over the place
+        tx(f"am{i}b", d + timedelta(days=3), -300, "Online Store", "Electronics")
     db_session.add_all(rows)
     db_session.commit()
-    res = client.get("/api/v1/spending/recurring", params={"from_date": first.isoformat(), "to_date": "2026-10-31"}).json()
-    assert [r["merchant"] for r in res] == ["Whole Foods"]
-    assert res[0]["avg_monthly"] == 100.0 and res[0]["months_seen"] == 4
+    res = client.get("/api/v1/spending/recurring", params={"from_date": "2026-03-01", "to_date": "2026-10-31"}).json()
+    assert [r["merchant"] for r in res] == ["Power Co", "Phone Co"]
+    assert res[1]["avg_monthly"] == 175.0 and res[1]["months_seen"] == 4      # what the bill costs a month
+    assert res[0]["avg_monthly"] == 355.0                                       # 400, 370, 340, 310 over four months
 
 
 def test_snapshot_dedupes_same_day_rows_and_reports_as_of(client, db_session):

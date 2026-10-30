@@ -209,7 +209,7 @@ requirements:
     visible: true
     done_means:
       - "Changing the date preset changes Spending by Category, Recurring Expenses, Transactions and Monthly Spending Trend; account-type chips apply to all four."
-      - "Recurring 'per month' is the sum per month divided by the number of months in the period, not a per-transaction average."
+      - "Recurring Expenses lists bills and subscriptions: charged in 2+ months (3+ when the period is longer than four months), at most twice a month, 60% of charges within 25% of the median, charged in the last 45 days; dining, delivery, groceries, gas, shopping, parking and trips never count. 'Per month' is the merchant's total over the months from its first to its last charge (2026-10-30: the owner saw Amazon and daily parking listed as recurring)."
       - "Spending excludes the Transfer category and loan payments (PRODUCT.md D1) in every aggregate, including Dashboard and Cash."
       - "An empty period shows an empty state in each section; the default preset has data with the seed."
     status: done
@@ -217,7 +217,7 @@ requirements:
       - frontend/tests/spending-presets.spec.ts#falls back to a wider preset until there is nowhere wider
       - frontend/tests/spending-presets.spec.ts#builds ranges from local calendar fields
       - backend/tests/test_data_rules.py::test_spending_excludes_transfers_and_loan_payments
-      - backend/tests/test_data_rules.py::test_recurring_uses_the_period_and_per_month_average
+      - backend/tests/test_data_rules.py::test_recurring_lists_bills_not_habits
       - artifacts/screens/spending/desktop.png
       - artifacts/screens/spending/mobile.png
     notes:
