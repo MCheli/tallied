@@ -1047,6 +1047,54 @@ requirements:
     notes:
       - "Found 2026-10-30 by the owner on a phone: vehicles bought on different dates left gaps on the shared category axis and the stacked areas went jagged."
 
+  - id: INC-PAY-001
+    title: Income shows total pay and the same salary/RSU split as the Dashboard
+    job: understand
+    area: income
+    priority: p0
+    visible: true
+    done_means:
+      - "For an imported W-2 (box 1 only), gross pay is box 1 plus pre-tax 401(k), section 125 and transit; take-home subtracts each deduction once."
+      - "Salary and RSU come from the shared helper (that year's vests when the W-2 has no split), so Income, Dashboard and Planning agree."
+    status: done
+    evidence:
+      - backend/tests/test_dashboard_consistency.py::test_income_history_reports_total_pay_and_the_shared_split
+      - frontend/tests/income-math.spec.ts
+      - artifacts/screens/income/desktop.png
+    notes:
+      - "Found 2026-10-30 in the production sweep: every year showed $0 salary, $0 RSU, all 'Other', and take-home ~$13K low."
+
+  - id: SYNC-RECONNECT-001
+    title: A bank reconnected upstream keeps its account, history and categories
+    job: look
+    area: connections
+    priority: p0
+    visible: false
+    done_means:
+      - "An unconfigured upstream account with the same name and institution as a configured account that no longer appears takes over that account's config."
+      - "Transactions resent under new ids re-key the stored row (same account, date, amount, merchant, old id no longer sent) instead of duplicating it; its category stays."
+    status: done
+    evidence:
+      - backend/tests/test_sync_scheduler.py::test_reconnected_bank_keeps_its_account_and_does_not_duplicate_transactions
+    notes:
+      - "2026-10-30: the owner re-linked Ally in SimpleFIN; both accounts came back with new ids and were silently skipped, so balances froze at Sep 24."
+
+  - id: SYNC-WARN-001
+    title: The bank connection's warnings are shown, not only logged
+    job: look
+    area: connections
+    priority: p1
+    visible: true
+    done_means:
+      - "Each sync job stores the provider's warnings; /simplefin/sync/status returns them."
+      - "Dashboard and Cash show them in a banner, saying balances from that bank may be out of date."
+    status: done
+    evidence:
+      - backend/tests/test_sync_scheduler.py::test_sync_status_reports_the_providers_warnings
+      - artifacts/screens/dashboard/desktop.png
+    notes:
+      - "2026-10-30: 'Connection to Ally Bank may need attention' and 'Apple Card ... Auth required' sat in the scheduler log for weeks."
+
   - id: SPEND-CAT-001
     title: Transactions are categorized by merchant rules, on every sync, without overwriting the owner
     job: understand

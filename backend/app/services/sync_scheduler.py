@@ -77,13 +77,17 @@ async def sync_tenant(schema: str, provider_name: str) -> dict:
             logger.exception("%s fetch crashed for %s", provider.display_name, schema)
             return {"schema": schema, "error": f"{type(e).__name__}: {e}"}
 
-        for warning in snapshot.warnings:
+        warnings = list(snapshot.warnings)
+        for warning in warnings:
             logger.warning("%s warning for %s: %s", provider.display_name, schema, warning)
 
         today = date.today()
         balances_synced = txn_added = txn_updated = 0
         new_txn_ids: list[str] = []
         try:
+            for name in adopt_reconnected_accounts(provider, connection, snapshot.accounts):
+                logger.warning("%s: %s came back under a new id after a reconnect; kept its history", provider.display_name, name)
+                warnings.append(f"{name} was reconnected; its history was kept.")
             for acct in snapshot.accounts:
                 cfg = connection.configs.get(acct.id)
                 if cfg is None:
@@ -132,6 +136,9 @@ async def sync_tenant(schema: str, provider_name: str) -> dict:
                             existing_txn.merchant = t.merchant
                             existing_txn.date = t.date
                             txn_updated += 1
+                        elif rekeyed := _rekey_reconnected_duplicate(db, local_id, t, local_txn_id, ids):
+                            rekeyed.amount = t.amount
+                            txn_updated += 1
                         else:
                             db.add(Transaction(
                                 id=local_txn_id, account_id=local_id,
@@ -159,7 +166,46 @@ async def sync_tenant(schema: str, provider_name: str) -> dict:
         "balances_synced": balances_synced,
         "txn_added": txn_added,
         "txn_updated": txn_updated,
+        "warnings": warnings,
     }
+
+
+def adopt_reconnected_accounts(provider, connection, accounts) -> list[str]:
+    """A bank reconnected upstream comes back with new account ids. An unconfigured upstream account takes
+    over the config of a configured one with the same name and institution that no longer appears, so its
+    history continues instead of the account silently going stale. Returns the adopted names."""
+    upstream = {a.id for a in accounts}
+    orphans = [c for external_id, c in connection.configs.items() if external_id not in upstream]
+    adopted = []
+    for a in accounts:
+        if a.id in connection.configs:
+            continue
+        matches = [c for c in orphans if c.account_name == a.name and (c.institution or "") == (a.institution or "")]
+        if len(matches) != 1:
+            continue
+        cfg = matches[0]
+        orphans.remove(cfg)
+        del connection.configs[cfg.external_id]
+        provider.rebind(cfg, a.id)
+        connection.configs[a.id] = cfg
+        adopted.append(a.name)
+    return adopted
+
+
+def _rekey_reconnected_duplicate(db, account_id: str, t, new_id: str, fetched_ids: list[str]):
+    """After a reconnect the provider resends recent transactions under new ids. A stored row on the same
+    account with the same date, amount and merchant whose id the provider no longer sends is the same
+    transaction: give it the new id (keeping its category) instead of adding a duplicate."""
+    prefix = new_id.split("-", 1)[0] + "-"
+    old = db.query(Transaction).filter(
+        Transaction.account_id == account_id, Transaction.date == t.date, Transaction.amount == t.amount,
+        Transaction.merchant == t.merchant, Transaction.id.like(prefix + "%"), Transaction.id.notin_(fetched_ids),
+    ).first()
+    if old is None:
+        return None
+    old.id = new_id
+    db.flush()
+    return old
 
 
 # ── Job rows ──────────────────────────────────────────────────────────────────
@@ -190,6 +236,7 @@ def _finalize_job(schema: str, job_id: int, result: dict) -> None:
             logger.warning("Job %d not found in %s when finalizing", job_id, schema)
             return
         job.finished_at = _utcnow()
+        job.warnings = result.get("warnings") or None
         if "error" in result:
             job.status = "failed"
             job.error = (result.get("error") or "")[:4000]

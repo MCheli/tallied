@@ -8,7 +8,7 @@ import type { W2Record } from '../../types'
 const { currency } = useFormatters()
 
 // Every numeric W-2 field the Income page reads. Grouped for the form.
-type W2Field = keyof Omit<W2Record, 'id' | 'tax_year'>
+type W2Field = keyof Omit<W2Record, 'id' | 'tax_year' | 'total_pay' | 'salary_split' | 'rsu_split' | 'split_source'>
 const FIELD_GROUPS: { title: string; fields: { key: W2Field; label: string }[] }[] = [
   {
     title: 'Pay',

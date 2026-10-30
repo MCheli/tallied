@@ -17,6 +17,7 @@ import {
   type CashRange,
 } from '../composables/useCashRange'
 import PageHeader from '../components/common/PageHeader.vue'
+import SyncWarnings from '../components/common/SyncWarnings.vue'
 import DataExplorer from '../components/common/DataExplorer.vue'
 import DataTable from '../components/common/DataTable.vue'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
@@ -296,6 +297,7 @@ LIMIT 25 OFFSET :offset`,
         {{ syncing ? 'Syncing...' : 'Sync' }}
       </button>
     </PageHeader>
+    <SyncWarnings />
 
     <div v-if="syncResult" class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 text-xs text-green-700 dark:text-green-400">
       {{ syncResult.detail || `Synced ${syncResult.synced} account balance${syncResult.synced === 1 ? '' : 's'} from SimpleFIN.` }}

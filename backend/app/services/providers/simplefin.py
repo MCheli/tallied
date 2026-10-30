@@ -162,6 +162,10 @@ class SimpleFinProvider:
 
     # ── stored connection ─────────────────────────────────────────────────
 
+    def rebind(self, cfg: AccountSyncConfig, external_id: str) -> None:
+        cfg.row.simplefin_account_id = external_id
+        cfg.external_id = external_id
+
     def get_connection(self, db: Session) -> ProviderConnection | None:
         link = db.query(SimpleFinLink).first()
         if not link:

@@ -130,7 +130,7 @@ def test_generic_sync_upserts_accounts_balances_and_transactions(db_session):
     with patch.object(sync_scheduler, "get_provider", lambda name: FakeProvider()), \
          patch.object(sync_scheduler, "tenant_session", fake_tenant_session):
         result = asyncio.run(sync_scheduler.sync_tenant("tenant_test0001", "fake"))
-        assert result == {"schema": "tenant_test0001", "balances_synced": 1, "txn_added": 2, "txn_updated": 0}
+        assert result == {"schema": "tenant_test0001", "balances_synced": 1, "txn_added": 2, "txn_updated": 0, "warnings": []}
         # second run updates instead of duplicating
         snapshot.accounts[0].transactions[0].amount = Decimal("-50")
         result2 = asyncio.run(sync_scheduler.sync_tenant("tenant_test0001", "fake"))
@@ -147,6 +147,61 @@ def test_generic_sync_upserts_accounts_balances_and_transactions(db_session):
     assert (txns["fake-T1"].category, txns["fake-T1"].category_source) == ("Groceries", "rule:research")
     assert txns["fake-T2"].category is None
     assert link_row.last_synced_at is not None
+
+
+def test_reconnected_bank_keeps_its_account_and_does_not_duplicate_transactions(db_session):
+    """SYNC-RECONNECT-001: a bank re-linked upstream comes back with new account and transaction ids."""
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    from app.models.account import Account
+    from app.models.transaction import Transaction
+    from app.services import sync_scheduler
+    from app.services.providers.base import AccountSyncConfig, ProviderConnection
+
+    db_session.add(Account(id="fake-OLD", name="Everyday Checking", account_type="cash", display_group="Cash", include_in_nw=True))
+    db_session.add(Transaction(id="fake-T-old", account_id="fake-OLD", date=date(2026, 9, 20), amount=Decimal("-40"),
+                               merchant="Toll Road", category="Tolls", category_source="manual", source="fake"))
+    db_session.commit()
+    cfg_row = SimpleNamespace(local_account_id="fake-OLD", simplefin_account_id="OLD")
+    connection = ProviderConnection(credential="secret", row=SimpleNamespace(last_synced_at=None), configs={
+        "OLD": AccountSyncConfig(external_id="OLD", account_name="Everyday Checking", institution="Example Bank", account_type="cash",
+                                 sync_balances=True, sync_transactions=True, local_account_id="fake-OLD", row=cfg_row)})
+    snapshot = ProviderSnapshot(accounts=[
+        ProviderAccount(id="NEW", name="Everyday Checking", institution="Example Bank", kind="checking",
+                        balance=Decimal("900"), balance_date=date(2026, 10, 30), transactions=[
+                            ProviderTransaction(id="T-new-1", date=date(2026, 9, 20), amount=Decimal("-40"), merchant="Toll Road"),
+                            ProviderTransaction(id="T-new-2", date=date(2026, 10, 20), amount=Decimal("-40"), merchant="Toll Road"),
+                        ]),
+    ])
+
+    class FakeProvider:
+        name = "fake"
+        display_name = "Fake"
+
+        def get_connection(self, db):
+            return connection
+
+        async def fetch(self, credential):
+            return snapshot
+
+        def rebind(self, cfg, external_id):
+            cfg.row.simplefin_account_id = external_id
+            cfg.external_id = external_id
+
+    @contextmanager
+    def fake_tenant_session(schema):
+        yield db_session
+
+    with patch.object(sync_scheduler, "get_provider", lambda name: FakeProvider()), \
+         patch.object(sync_scheduler, "tenant_session", fake_tenant_session):
+        result = asyncio.run(sync_scheduler.sync_tenant("tenant_test0001", "fake"))
+    assert result["balances_synced"] == 1 and result["txn_added"] == 1 and result["txn_updated"] == 1
+    assert cfg_row.simplefin_account_id == "NEW"
+    assert result["warnings"] == ["Everyday Checking was reconnected; its history was kept."]
+    txns = {t.id: t for t in db_session.query(Transaction).filter_by(account_id="fake-OLD")}
+    assert set(txns) == {"fake-T-new-1", "fake-T-new-2"}
+    assert (txns["fake-T-new-1"].category, txns["fake-T-new-1"].category_source) == ("Tolls", "manual")
 
 
 def test_sync_all_tenants_creates_one_job_per_connected_provider():
@@ -172,3 +227,15 @@ def test_removed_providers_are_gone(client):
     assert client.post("/api/v1/rsu/reload").status_code == 404
     assert client.post("/api/v1/retirement/upload-statement").status_code == 404
     assert client.post("/api/v1/ingest/confirm").status_code == 404
+
+
+def test_sync_status_reports_the_providers_warnings(client, db_session):
+    """SYNC-WARN-001: a bank needing attention was only logged, so its stale balance looked current."""
+    from app.models.sync_job import SyncJob
+
+    db_session.add(SyncJob(provider="simplefin", status="succeeded", trigger="scheduled",
+                           warnings=["Connection to Example Bank may need attention. Auth required"]))
+    db_session.commit()
+    body = client.get("/api/v1/simplefin/sync/status").json()
+    assert body["warnings"] == ["Connection to Example Bank may need attention. Auth required"]
+

@@ -8,7 +8,7 @@ from app.dependencies import get_tenant_db
 from app.models.income import W2Record
 from app.models.investment import RSUGrant
 from app.schemas.snapshot import IncomeBreakdown
-from app.services.compensation import comp_split
+from app.services.compensation import comp_split, pay_view
 
 router = APIRouter(prefix="/income", tags=["income"])
 
@@ -59,6 +59,7 @@ def income_history(db: Session = Depends(get_tenant_db)):
             "employer_health": float(w.employer_health) if w.employer_health else None,
             "base_salary": float(w.base_salary) if w.base_salary else None,
             "rsu_income": float(w.rsu_income) if w.rsu_income else None,
+            **pay_view(db, w),
         })
 
     grant_list = []

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, Text, func, text
+from sqlalchemy import JSON, DateTime, Index, Integer, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -43,4 +43,5 @@ class SyncJob(Base):
     txn_added: Mapped[int] = mapped_column(Integer, default=0)
     txn_updated: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text)
+    warnings: Mapped[list | None] = mapped_column(JSON)  # the provider's own warnings, e.g. a bank needing re-auth
 

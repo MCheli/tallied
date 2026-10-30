@@ -622,6 +622,12 @@ export interface W2Record {
   employer_health: number | null
   base_salary: number | null
   rsu_income: number | null
+  /** Box 1 plus the pre-tax deductions it leaves out (from /income/history). */
+  total_pay?: number
+  /** Salary/RSU split shared with the Dashboard and Planning (vests when the W-2 has only gross pay). */
+  salary_split?: number
+  rsu_split?: number
+  split_source?: 'w2' | 'vests' | 'none'
 }
 
 export interface RSUGrant {
@@ -691,6 +697,7 @@ export interface SimpleFinSyncStatus {
   txn_added?: number
   txn_updated?: number
   error?: string | null
+  warnings?: string[]
 }
 
 export interface ForwardingEmail {

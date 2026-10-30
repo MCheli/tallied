@@ -98,6 +98,9 @@ class Provider(Protocol):
     async def fetch(self, credential: str) -> ProviderSnapshot:
         """Pull accounts, balances and recent transactions."""
 
+    def rebind(self, cfg: AccountSyncConfig, external_id: str) -> None:
+        """Point a stored config at a new upstream id (the bank connection was re-made upstream)."""
+
 
 def type_and_group_for(kind: str | None, account_type: str | None = None) -> tuple[str, str]:
     """Resolve (account_type, display_group) from a stored type or a provider kind."""

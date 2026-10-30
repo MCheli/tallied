@@ -51,6 +51,19 @@ def comp_split(db: Session, w2: W2Record | None) -> CompSplit:
     return CompSplit(round(gross - rsu, 2), round(rsu, 2), "vests" if rsu else "w2")
 
 
+def pay_view(db: Session, w2: W2Record) -> dict:
+    """What the Income page shows for a W-2: total pay (box 1 plus the pre-tax deductions it leaves out)
+    and the salary/RSU split every page shares."""
+    split = comp_split(db, w2)
+    entered_split = bool(w2.base_salary or w2.rsu_income)   # then gross_pay was entered as gross pay
+    return {
+        "total_pay": round(float(w2.gross_pay or 0) + (0.0 if entered_split else pretax_deductions(w2)), 2),
+        "salary_split": split.salary,
+        "rsu_split": split.rsu_income,
+        "split_source": split.source,
+    }
+
+
 def pretax_deductions(w2: W2Record) -> float:
     """Pay that box 1 leaves out: pre-tax 401(k), section 125 (health/FSA) and transit benefits."""
     if w2.w2_wages and w2.gross_pay and float(w2.gross_pay) > float(w2.w2_wages):

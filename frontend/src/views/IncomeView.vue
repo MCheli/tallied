@@ -58,28 +58,29 @@ const split = computed(() => splitW2(selectedW2.value))
 
 // ── "View SQL" text (Postgres; the year is the one selected on the page) ──
 
+const TOTAL_PAY = '(gross_pay + COALESCE(pretax_401k, 0) + COALESCE(cafeteria_125, 0) + COALESCE(transit, 0))'
 const yearSql = (body: string) => `${body}\nFROM w2_records\nWHERE tax_year = ${selectedYear.value || 2025};`
 
-const grossPaySql = computed(() => yearSql(`SELECT tax_year, gross_pay, base_salary, rsu_income,
-       gross_pay - base_salary - rsu_income AS other_income`))
+const grossPaySql = computed(() => yearSql(`-- total pay = W-2 box 1 + the pre-tax deductions box 1 leaves out
+SELECT tax_year, gross_pay AS w2_box1, ${TOTAL_PAY} AS total_pay, base_salary, rsu_income`))
 const totalTaxSql = computed(() => yearSql(`SELECT tax_year,
        federal_tax + state_tax + social_security + medicare AS total_tax,
-       ROUND((federal_tax + state_tax + social_security + medicare) * 100.0 / gross_pay, 1) AS effective_rate`))
+       ROUND((federal_tax + state_tax + social_security + medicare) * 100.0 / ${TOTAL_PAY}, 1) AS effective_rate`))
 const retirement401kSql = computed(() => yearSql(`SELECT tax_year, pretax_401k, roth_401k, pretax_401k + roth_401k AS total_401k`))
 const benefitsSql = computed(() => yearSql(`SELECT tax_year, cafeteria_125, transit, cafeteria_125 + transit AS employee_pretax_benefits,
        employer_health AS employer_paid_health`))
-const takeHomeSql = computed(() => yearSql(`SELECT tax_year, gross_pay,
-       gross_pay
+const takeHomeSql = computed(() => yearSql(`SELECT tax_year, ${TOTAL_PAY} AS total_pay,
+       ${TOTAL_PAY}
          - (federal_tax + state_tax + social_security + medicare)
          - (pretax_401k + roth_401k)
          - (cafeteria_125 + transit) AS take_home`))
-const waterfallSql = computed(() => yearSql(`SELECT tax_year, gross_pay,
+const waterfallSql = computed(() => yearSql(`SELECT tax_year, ${TOTAL_PAY} AS total_pay,
        federal_tax, state_tax, social_security, medicare,
        pretax_401k, roth_401k, cafeteria_125, transit,
-       gross_pay - (federal_tax + state_tax + social_security + medicare)
+       ${TOTAL_PAY} - (federal_tax + state_tax + social_security + medicare)
                  - (pretax_401k + roth_401k) - (cafeteria_125 + transit) AS take_home`))
-const compHistorySql = `SELECT tax_year, gross_pay,
-       gross_pay - (federal_tax + state_tax + social_security + medicare)
+const compHistorySql = `SELECT tax_year, ${TOTAL_PAY} AS total_pay,
+       ${TOTAL_PAY} - (federal_tax + state_tax + social_security + medicare)
                  - (pretax_401k + roth_401k) - (cafeteria_125 + transit) AS take_home,
        pretax_401k + roth_401k AS retirement,
        federal_tax + state_tax + social_security + medicare AS taxes,
@@ -87,18 +88,18 @@ const compHistorySql = `SELECT tax_year, gross_pay,
        employer_health
 FROM w2_records
 ORDER BY tax_year;`
-const compSplitSql = `SELECT tax_year,
-       ROUND(base_salary * 100.0 / gross_pay, 1) AS salary_pct,
-       ROUND(rsu_income * 100.0 / gross_pay, 1) AS rsu_pct,
-       ROUND((gross_pay - base_salary - rsu_income) * 100.0 / gross_pay, 1) AS other_pct
-FROM w2_records
-ORDER BY tax_year;`
-const yoySql = `SELECT tax_year, gross_pay,
+const compSplitSql = `-- RSU income is the year's vests when the W-2 has no split; salary is the rest
+SELECT w.tax_year, ${TOTAL_PAY} AS total_pay,
+       (SELECT SUM(v.shares * v.fmv_at_vest) FROM vest_events v
+         WHERE v.is_actual AND EXTRACT(YEAR FROM v.vest_date) = w.tax_year) AS rsu_from_vests
+FROM w2_records w
+ORDER BY w.tax_year;`
+const yoySql = `SELECT tax_year, ${TOTAL_PAY} AS total_pay,
        federal_tax + state_tax + social_security + medicare AS taxes,
-       ROUND((federal_tax + state_tax + social_security + medicare) * 100.0 / gross_pay, 1) AS tax_rate,
+       ROUND((federal_tax + state_tax + social_security + medicare) * 100.0 / ${TOTAL_PAY}, 1) AS tax_rate,
        pretax_401k + roth_401k AS retirement,
        cafeteria_125 + transit AS pretax_benefits,
-       gross_pay - (federal_tax + state_tax + social_security + medicare)
+       ${TOTAL_PAY} - (federal_tax + state_tax + social_security + medicare)
                  - (pretax_401k + roth_401k) - (cafeteria_125 + transit) AS take_home
 FROM w2_records
 ORDER BY tax_year DESC;`
@@ -261,7 +262,7 @@ const tableRows = computed(() => w2Records.value.map(w => ({ year: w.tax_year, .
       <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <MetricCard label="Gross Pay" :value="compact(split.gross)"
           :subtitle="`${compact(split.baseSalary)} salary + ${compact(split.rsuIncome)} RSU${split.other > 100 ? ' + ' + compact(split.other) + ' other' : ''}`"
-          info="<strong>Gross Pay</strong><br>Total compensation before any tax or deduction: base salary + RSU vesting income + anything else on the W-2.<br><br><strong>Source:</strong> w2_records.gross_pay for the selected year."
+          info="<strong>Gross Pay</strong><br>Total pay before any tax or deduction: W-2 box 1 plus the pre-tax 401(k) and pre-tax benefits box 1 leaves out. When the W-2 has no salary/RSU split, RSU income is that year's vests (the same split as the Dashboard) and the rest is salary.<br><br><strong>Source:</strong> w2_records (gross_pay + pretax_401k + cafeteria_125 + transit) and rsu_vest_events for the selected year."
           :sql="grossPaySql" :sql-tables="['w2_records']" />
         <MetricCard label="Taxes" :value="compact(split.taxes)" :subtitle="`${percent(split.effectiveRate)} effective rate`"
           info="<strong>Taxes</strong><br>Federal income tax + state income tax + Social Security + Medicare withheld. Employer-side payroll taxes are not included.<br><br><strong>Source:</strong> federal_tax, state_tax, social_security, medicare."

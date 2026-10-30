@@ -5,6 +5,7 @@ import { useSnapshotStore } from '../stores/snapshot'
 import { useFormatters } from '../composables/useFormatters'
 import { pctChange, thirtyDayWindow, useTile, waterfallNetWorth } from '../composables/useDashboardTiles'
 import PageHeader from '../components/common/PageHeader.vue'
+import SyncWarnings from '../components/common/SyncWarnings.vue'
 import MetricCard from '../components/common/MetricCard.vue'
 import ChartContainer from '../components/common/ChartContainer.vue'
 import InfoTooltip from '../components/common/InfoTooltip.vue'
@@ -156,6 +157,8 @@ ORDER BY SUM(amount)`,
       :subtitle="asOf ? `Balances ${asOf}` : undefined"
       tooltip="What the household is worth right now, split by how quickly the money can be reached, with the next RSU vests and the last 30 days of spending.&lt;br&gt;&lt;br&gt;Every balance is the newest snapshot per account; the as-of date shows how fresh that is."
     />
+
+    <SyncWarnings />
 
     <!-- Loading state -->
     <div v-if="store.loading" class="flex items-center justify-center h-64">

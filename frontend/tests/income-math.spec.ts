@@ -51,4 +51,11 @@ describe('useIncomeMath', () => {
     expect(waterfallSteps(s).map(x => x.label)).toEqual(['Gross Pay', 'Federal', 'Take-Home'])
     expect(splitW2(null).gross).toBe(0)
   })
+
+  it('an imported box-1 W-2 uses total pay and the shared salary/RSU split from the backend', () => {
+    const s = splitW2({ ...CLAUDIUS_2025, gross_pay: 196800, base_salary: null, rsu_income: null, total_pay: 210000, salary_split: 150000, rsu_split: 60000 })
+    expect(s.gross).toBe(210000)
+    expect([s.baseSalary, s.rsuIncome, s.other]).toEqual([150000, 60000, 0])
+    expect(s.takeHome).toBeCloseTo(128936.8, 2)
+  })
 })

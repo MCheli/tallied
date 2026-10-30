@@ -120,3 +120,19 @@ def test_box1_w2_salary_adds_back_pretax_deductions(db_session):
     db_session.flush()
     split = comp_split(db_session, w2)
     assert (split.salary, split.rsu_income) == (200_000 + 12_000 - 40_000, 40_000)
+
+
+def test_income_history_reports_total_pay_and_the_shared_split(client, db_session):
+    """INC-PAY-001: the Income page showed $0 salary and $0 RSU for an imported W-2 and took pre-tax 401(k) off box 1 twice."""
+    db_session.add(RSUGrant(id="g3", company="MSFT", symbol="MSFT", total_shares=100))
+    db_session.flush()
+    db_session.add(VestEvent(grant_id="g3", vest_date=date(2025, 5, 15), vest_period=1, shares=100, fmv_at_vest=Decimal("400"), is_actual=True))
+    db_session.add(W2Record(tax_year=2025, gross_pay=Decimal("200000"), pretax_401k=Decimal("10000"), cafeteria_125=Decimal("2000")))
+    db_session.add(W2Record(tax_year=2024, gross_pay=Decimal("210000"), base_salary=Decimal("145000"), rsu_income=Decimal("65000"),
+                            pretax_401k=Decimal("10000")))
+    db_session.commit()
+    rows = {r["tax_year"]: r for r in client.get("/api/v1/income/history").json()["w2_records"]}
+    assert rows[2025]["total_pay"] == 212_000
+    assert (rows[2025]["salary_split"], rows[2025]["rsu_split"], rows[2025]["split_source"]) == (172_000, 40_000, "vests")
+    assert rows[2024]["total_pay"] == 210_000          # entered as gross pay with its own split: nothing added
+    assert (rows[2024]["salary_split"], rows[2024]["rsu_split"]) == (145_000, 65_000)

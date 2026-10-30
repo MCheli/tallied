@@ -149,13 +149,14 @@ ORDER BY ve.vest_date;`
 
 // ── Price chart ──
 const priceChartOption = computed(() => {
-  const dates = priceHistory.value.map(p => p.date)
-  const prices = priceHistory.value.map(p => p.price)
-  const minDate = dates[0] || ''
-  const markLines = grants.value
+  // A time axis, so every vest date gets its line (weekly closes rarely land on the vest day itself).
+  const points = priceHistory.value.map(p => [p.date, p.price] as [string, number])
+  const minDate = points[0]?.[0] || ''
+  const markLines = [...new Set(grants.value
     .flatMap(g => g.vest_events || [])
     .filter(ve => ve.is_actual && ve.vest_date && ve.vest_date >= minDate)
-    .map(ve => ({ xAxis: ve.vest_date as string, label: { show: false }, lineStyle: { color: COLORS[5], width: 1, type: 'dashed' as const } }))
+    .map(ve => ve.vest_date as string))]
+    .map(d => ({ xAxis: d, label: { show: false }, lineStyle: { color: COLORS[5], width: 1, type: 'dashed' as const, opacity: 0.6 } }))
 
   return {
     ...baseOption.value,
@@ -163,18 +164,15 @@ const priceChartOption = computed(() => {
       ...baseOption.value.tooltip,
       formatter: (params: any) => {
         const p = Array.isArray(params) ? params[0] : params
-        return `<strong>${p.name}</strong><br/>${money(p.value, { cents: true })}`
+        const d = new Date(p.value[0]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+        return `<strong>Week of ${d}</strong><br/>${money(p.value[1], { cents: true })}`
       },
     },
     xAxis: {
-      type: 'category' as const,
-      data: dates,
-      axisLabel: {
-        ...mobileAxis(),
-        formatter: (v: string) => v.slice(0, 4),
-        interval: (index: number) => index === 0 || dates[index]?.slice(0, 4) !== dates[index - 1]?.slice(0, 4),
-      },
+      type: 'time' as const,
+      axisLabel: { ...mobileAxis(), formatter: '{yyyy}' },
       axisTick: { show: false },
+      splitLine: { show: false },
       axisLine: { lineStyle: { color: axisLineColor.value } },
     },
     yAxis: {
@@ -184,7 +182,7 @@ const priceChartOption = computed(() => {
     },
     series: [{
       type: 'line',
-      data: prices,
+      data: points,
       smooth: true,
       symbol: 'none',
       lineStyle: { width: 2, color: COLORS[0] },

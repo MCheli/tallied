@@ -242,6 +242,7 @@ def simplefin_sync_status(db: Session = Depends(get_tenant_db), ctx: TenantConte
         "txn_added": job.txn_added or 0,
         "txn_updated": job.txn_updated or 0,
         "error": job.error,
+        "warnings": job.warnings or [],
     }
 
 
