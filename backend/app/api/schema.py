@@ -277,12 +277,14 @@ def run_query(
     role with no privileges outside the tenant schema, in a read-only
     transaction with a statement timeout (see services/sql_runner.py).
     """
-    from app.services.sql_runner import QueryRejected, run_readonly_query
+    from app.services.sql_runner import QueryRejected, RunnerUnavailable, run_readonly_query
 
     try:
         return run_readonly_query(db, ctx.tenant_schema, body.sql, body.limit)
     except QueryRejected as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except RunnerUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:

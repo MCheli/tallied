@@ -274,3 +274,29 @@ def test_simplefin_setup_token_accepts_a_public_claim_url():
 
     url = "https://8.8.8.8/simplefin/claim/abc"
     assert SimpleFinProvider.decode_setup_token(base64.b64encode(url.encode()).decode()) == url
+
+
+def test_sql_runner_without_createrole_is_unavailable_not_a_crash():
+    """If the app role cannot create the per-tenant runner role, only the SQL runner fails, with a clear error."""
+    from sqlalchemy.exc import ProgrammingError
+
+    from app.services import sql_runner
+
+    class _Conn:
+        def execution_options(self, **_):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, *_a, **_k):
+            raise ProgrammingError("CREATE ROLE", {}, Exception("permission denied to create role"))
+
+    with patch.object(sql_runner, "engine") as engine, patch.object(sql_runner, "_legacy_checked", True):
+        engine.connect.return_value = _Conn()
+        with pytest.raises(sql_runner.RunnerUnavailable, match="CREATEROLE"):
+            sql_runner.ensure_runner_role("tenant_nocreate1")
+    assert "tenant_nocreate1" not in sql_runner._granted_schemas

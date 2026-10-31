@@ -40,9 +40,11 @@ LABEL org.opencontainers.image.source="https://github.com/MCheli/tallied"
 
 WORKDIR /app
 
-# Install system deps (libpq for psycopg2). No curl: the healthcheck uses Python, and curl pulls in
-# libcurl and libbrotli (CVE-2026-111497) for nothing else. apt-get upgrade takes Debian security fixes.
+# Install system deps (libpq for psycopg2). apt-get upgrade takes Debian security fixes.
+# curl stays for now: the homelab compose healthchecks for tallied and tallied-demo call curl, and they
+# override the Python HEALTHCHECK below. Drop curl once those compose healthchecks use Python.
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    curl \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 

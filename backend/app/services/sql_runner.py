@@ -53,6 +53,10 @@ class QueryRejected(ValueError):
     """The query was refused before reaching the database."""
 
 
+class RunnerUnavailable(RuntimeError):
+    """The runner role could not be set up, e.g. the application role lacks CREATEROLE."""
+
+
 def validate_sql(sql: str, limit: int) -> str:
     """Return the SQL to run (with a LIMIT added) or raise QueryRejected."""
     sql = sql.strip().rstrip(";").strip()
@@ -90,13 +94,22 @@ def ensure_runner_role(schema: str) -> str:
     with _lock:
         if schema in _granted_schemas:
             return role
-        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            _retire_legacy_shared_role(conn)
-            _ensure_role(conn, role)
-            conn.execute(text(f'GRANT USAGE ON SCHEMA "{schema}" TO {role}'))
-            conn.execute(text(f'GRANT SELECT ON ALL TABLES IN SCHEMA "{schema}" TO {role}'))
-            conn.execute(text(f'GRANT SELECT ON ALL SEQUENCES IN SCHEMA "{schema}" TO {role}'))
-            conn.execute(text(f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema}" GRANT SELECT ON TABLES TO {role}'))
+        try:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                _retire_legacy_shared_role(conn)
+                _ensure_role(conn, role)
+                conn.execute(text(f'GRANT USAGE ON SCHEMA "{schema}" TO {role}'))
+                conn.execute(text(f'GRANT SELECT ON ALL TABLES IN SCHEMA "{schema}" TO {role}'))
+                conn.execute(text(f'GRANT SELECT ON ALL SEQUENCES IN SCHEMA "{schema}" TO {role}'))
+                conn.execute(text(f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema}" GRANT SELECT ON TABLES TO {role}'))
+        except SQLAlchemyError as e:
+            # Only the SQL runner is affected; not cached, so it is retried once the role is fixed.
+            logger.error("Could not set up %s (the database role needs CREATEROLE): %s",
+                         role, getattr(e, "orig", None) or type(e).__name__)
+            raise RunnerUnavailable(
+                "The SQL runner is unavailable: the database role cannot create its query role "
+                "(it needs CREATEROLE). See docs/DEPLOYING.md."
+            ) from None
         _granted_schemas.add(schema)
     return role
 
