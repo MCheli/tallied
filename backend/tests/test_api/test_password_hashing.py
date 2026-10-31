@@ -1,6 +1,8 @@
 """Password hashing: argon2id for new hashes, legacy SHA-256 verified once and upgraded on login (CodeQL #13)."""
 import hashlib
 
+import pytest
+
 from app.models.user import User
 from app.services.passwords import hash_password, needs_rehash, verify_and_upgrade, verify_password
 
@@ -15,6 +17,12 @@ def _user(db, email: str, password_hash: str, provider: str = "local") -> User:
     db.add(user)
     db.commit()
     return user
+
+
+@pytest.fixture
+def no_tenant_schema(monkeypatch):
+    # A first login auto-creates the user's tenant schema, which needs Postgres; these tests run on SQLite.
+    monkeypatch.setattr("app.api.auth.create_tenant_schema", lambda schema_name: None)
 
 
 def _login(client, email: str, password: str):
@@ -53,7 +61,7 @@ def test_verify_and_upgrade_leaves_hash_alone_on_wrong_password():
     assert user.password_hash == _legacy("demo123")
 
 
-def test_login_with_legacy_hash_upgrades_to_argon2id(client, db_session):
+def test_login_with_legacy_hash_upgrades_to_argon2id(client, db_session, no_tenant_schema):
     user = _user(db_session, "legacy@test.dev", _legacy("demo123"))
     res = _login(client, "legacy@test.dev", "demo123")
     assert res.status_code == 200, res.text
@@ -64,7 +72,7 @@ def test_login_with_legacy_hash_upgrades_to_argon2id(client, db_session):
     assert _login(client, "legacy@test.dev", "demo123").status_code == 200
 
 
-def test_login_with_argon2_hash_and_wrong_password(client, db_session):
+def test_login_with_argon2_hash_and_wrong_password(client, db_session, no_tenant_schema):
     _user(db_session, "argon@test.dev", hash_password("demo123"))
     assert _login(client, "argon@test.dev", "demo123").status_code == 200
     assert _login(client, "argon@test.dev", "demo124").status_code == 401
