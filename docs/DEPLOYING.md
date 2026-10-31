@@ -48,7 +48,7 @@ docker exec tallied bash -c "cd /app && PYTHONPATH=backend python scripts/setup_
 
 prints a connection string for the `tallied_app` role; put it in `DATABASE_URL` and restart `tallied`. Keep the superuser URL for `pg_dump` and manual work. Migrations run as whatever `DATABASE_URL` is, so `tallied_app` keeps `CREATE` on the database and ownership of tenant schemas (the script does this).
 
-The SQL runner on the Database page executes queries as `tallied_sql_runner`, a role with no login and no privileges on `public`, which the app creates and grants per tenant schema on demand. Nothing to configure.
+The SQL runner on the Database page executes queries as `tallied_sql_runner_<tenant schema>`, one role per tenant with no login, no privileges on `public` and SELECT on that tenant's schema only, which the app creates on demand. Nothing to configure. The shared `tallied_sql_runner` role used before 2026-10-31 is dropped the first time a query runs; if the app role cannot drop it, the log says so and gives the SQL to run as the superuser.
 
 ## First boot and first user
 
