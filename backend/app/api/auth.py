@@ -209,6 +209,8 @@ async def google_callback(request: Request, response: Response, db: Session = De
     if not user_info:
         raise HTTPException(status_code=400, detail="Failed to get user info from Google")
 
+    if user_info.get("email_verified") is not True:
+        raise HTTPException(status_code=403, detail="Google has not verified this email address")
     email = user_info["email"]
     name = user_info.get("name", email.split("@")[0])
 
@@ -224,6 +226,11 @@ async def google_callback(request: Request, response: Response, db: Session = De
         )
         db.add(user)
         db.flush()
+
+    # Disabled or suspended accounts get no session at all (only new sign-ups wait as pending).
+    if not user.is_active or user.status not in ("active", "pending_approval"):
+        db.commit()
+        raise HTTPException(status_code=403, detail="Account is disabled")
 
     user.last_login = datetime.now(timezone.utc)
 

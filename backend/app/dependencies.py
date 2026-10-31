@@ -57,6 +57,7 @@ def get_tenant_context(request: Request) -> TenantContext:
         )
     except (JWTError, KeyError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid token")
+    _require_live_session(ctx)
 
     from app.middleware.rate_limit import rate_limiter
 
@@ -69,6 +70,28 @@ def get_tenant_context(request: Request) -> TenantContext:
     rate_limiter.check(rl_key)
     request.state.rate_limit_key = rl_key
     return ctx
+
+
+def _require_live_session(ctx: TenantContext) -> None:
+    """Re-check a cookie session against the database so that disabling, suspending or removing a user
+    from the tenant takes effect at once rather than when the 4-hour JWT expires."""
+    from app.models.tenant import Tenant, TenantMembership
+    from app.models.user import User
+
+    db = SessionLocal()
+    try:
+        user = db.get(User, ctx.user_id)
+        if not user or not user.is_active or getattr(user, "status", "active") != "active":
+            raise HTTPException(status_code=401, detail="User is not active")
+        tenant = db.get(Tenant, ctx.tenant_id)
+        if not tenant or not tenant.is_active or tenant.schema_name != ctx.tenant_schema:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        member = db.execute(select(TenantMembership.id).where(
+            TenantMembership.user_id == user.id, TenantMembership.tenant_id == tenant.id)).first()
+        if member is None:
+            raise HTTPException(status_code=403, detail="Not a member of this tenant")
+    finally:
+        db.close()
 
 
 def _resolve_api_key(key: str, request: Request | None = None) -> TenantContext:
@@ -102,6 +125,10 @@ def _resolve_api_key(key: str, request: Request | None = None) -> TenantContext:
             raise HTTPException(status_code=401, detail="Invalid API key")
         if not user.is_active or getattr(user, "status", "active") != "active":
             raise HTTPException(status_code=401, detail="User is not active")
+        from app.models.tenant import TenantMembership
+        if db.execute(select(TenantMembership.id).where(
+                TenantMembership.user_id == user.id, TenantMembership.tenant_id == tenant.id)).first() is None:
+            raise HTTPException(status_code=401, detail="Invalid API key")
 
         # Update last_used
         api_key.last_used = datetime.now(timezone.utc)

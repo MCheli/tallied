@@ -650,8 +650,11 @@ requirements:
     done_means:
       - "SELECT email FROM users, SELECT * FROM \"public\".\"users\", SELECT * FROM pg_authid and SELECT pg_read_file('/etc/passwd') all fail from the runner; SELECT count(*) FROM accounts succeeds (e2e test against Postgres)."
       - "Queries run as a role with no privileges on public and no superuser rights, in a read-only transaction, with a statement timeout."
+      - "Each tenant has its own runner role with SELECT on its schema only, so another tenant's tables are refused by Postgres even through query_to_xml, U&\"\" identifiers or set_config (e2e test)."
     status: done
     evidence:
+      - backend/tests/test_e2e/test_sql_runner.py::test_other_tenant_is_refused_even_when_the_regex_is_bypassed
+      - backend/tests/test_e2e/test_sql_runner.py::test_tenants_get_distinct_runner_roles
       - backend/tests/test_e2e/test_sql_runner.py::test_platform_tables_and_superuser_functions_are_refused
       - backend/tests/test_e2e/test_sql_runner.py::test_other_tenant_schema_is_refused
       - backend/tests/test_e2e/test_sql_runner.py::test_statement_timeout_applies
@@ -660,6 +663,7 @@ requirements:
     notes:
       - "2026-10-29: SEC-1, confirmed: search_path includes public and the app role is a superuser."
       - "2026-10-29: queries run as tallied_sql_runner (NOLOGIN, no rights on public) with search_path = tenant only, READ ONLY, 5s statement timeout."
+      - "2026-10-31: security sweep found the shared role kept SELECT on every tenant that had ever run a query, and the regex guard was bypassable. Now tallied_sql_runner_<schema> per tenant; the shared role is dropped on first use."
   - id: PLAT-DB-002
     title: Database page is desktop-only, honestly
     job: platform
@@ -684,10 +688,12 @@ requirements:
     priority: p0
     done_means:
       - "A key created with permissions=read gets 403 on every POST/PUT/DELETE financial route and 200 on GETs; a write key can mutate; admin routes still require an admin user (unit tests)."
+      - "A key can only create keys at or below its own permission level: a write key cannot mint an admin key (unit test)."
     status: done
     evidence:
       - backend/tests/test_api/test_security.py::test_read_only_api_key_cannot_use_mutating_methods
       - backend/tests/test_api/test_security.py::test_write_api_key_can_mutate_but_is_not_admin
+      - backend/tests/test_api/test_security.py::test_api_key_cannot_mint_a_stronger_key
     notes:
       - "2026-10-29: enforced in get_tenant_context (read keys: safe methods only) and require_admin (admin keys only)."
   - id: PLAT-API-002
@@ -730,14 +736,21 @@ requirements:
     area: auth
     priority: p1
     done_means:
-      - "Refresh rejects a user whose status is not active; API-key auth rejects an inactive user; a cookie for a deactivated user or tenant stops working at the next refresh, within 4 hours (unit tests)."
+      - "Refresh rejects a user whose status is not active; API-key auth rejects an inactive user (unit tests)."
+      - "Every cookie request re-checks the user (active), the tenant (active) and the membership, so disabling or removing someone takes effect at once; API keys stop working when the membership is removed (unit tests)."
+      - "Google sign-in refuses a disabled or suspended user and an email Google has not verified (unit tests)."
       - "The login page does not print the demo password; dev mode shows a neutral hint."
     status: done
     evidence:
       - backend/tests/test_api/test_security.py::test_refresh_rejects_suspended_user
       - backend/tests/test_api/test_security.py::test_suspended_user_api_key_is_rejected
+      - backend/tests/test_api/test_security.py::test_cookie_session_is_rechecked_against_the_user_and_membership
+      - backend/tests/test_api/test_security.py::test_api_key_stops_working_when_membership_is_removed
+      - backend/tests/test_api/test_security.py::test_google_sign_in_refuses_disabled_or_suspended_users
+      - backend/tests/test_api/test_security.py::test_google_sign_in_requires_a_verified_email
     notes:
       - "2026-10-29: refresh and API-key auth check user.status; cookies stay stateless, so a deactivated tenant or user loses access at the next refresh (4h at most)."
+      - "2026-10-31: security sweep found the Google callback re-issued full tokens to disabled users. Cookies are now checked against the database on every request (one extra query)."
   - id: PLAT-AUTH-002
     title: Rate limiting covers login and cookie routes
     job: platform

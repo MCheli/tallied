@@ -160,3 +160,143 @@ def test_login_is_rate_limited_per_ip(client):
     login_limiter._requests.clear()
     assert codes[:2] == [401, 401]
     assert codes[2] == 429
+
+
+def _cookie_request(user, tenant):
+    token = jwt.encode(
+        {"sub": str(user.id), "email": user.email, "tenant_id": tenant.id, "tenant_schema": tenant.schema_name,
+         "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+        settings.secret_key, algorithm="HS256",
+    )
+    return _request("GET", {"Cookie": f"tallied_token={token}"})
+
+
+def test_cookie_session_is_rechecked_against_the_user_and_membership(platform_rows):
+    user, tenant, db = platform_rows
+    assert dependencies.get_tenant_context(_cookie_request(user, tenant)).user_id == user.id
+
+    user.is_active = False
+    db.commit()
+    with pytest.raises(HTTPException) as exc:
+        dependencies.get_tenant_context(_cookie_request(user, tenant))
+    assert exc.value.status_code == 401
+
+    user.is_active = True
+    db.query(TenantMembership).filter_by(user_id=user.id).delete()
+    db.commit()
+    with pytest.raises(HTTPException) as exc:
+        dependencies.get_tenant_context(_cookie_request(user, tenant))
+    assert exc.value.status_code == 403
+
+
+def test_api_key_stops_working_when_membership_is_removed(platform_rows):
+    user, tenant, db = platform_rows
+    raw = _make_key(db, user, tenant, "read")
+    db.query(TenantMembership).filter_by(user_id=user.id).delete()
+    db.commit()
+    with pytest.raises(HTTPException) as exc:
+        dependencies.get_tenant_context(_request("GET", {"X-API-Key": raw}))
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.parametrize("caller,requested,allowed", [
+    ("write", "admin", False),
+    ("read", "write", False),
+    ("write", "write", True),
+    ("write", "read", True),
+    ("admin", "admin", True),
+])
+def test_api_key_cannot_mint_a_stronger_key(db_session, caller, requested, allowed):
+    from app.services.api_key_service import ApiKeyError, create_api_key
+
+    ctx = dependencies.TenantContext(user_id=1, email="c@test.dev", tenant_id=1, tenant_schema="tenant_x",
+                                     auth_method="api_key", permissions=caller)
+    if allowed:
+        key, raw = create_api_key(db_session, ctx, "k", requested)
+        assert key.permissions == requested and ApiKey.hash_key(raw) == key.key_hash
+    else:
+        with pytest.raises(ApiKeyError) as exc:
+            create_api_key(db_session, ctx, "k", requested)
+        assert exc.value.status == 403
+
+
+def _google_callback(client, userinfo):
+    async def fake_token(_request):
+        return {"userinfo": userinfo}
+
+    from app.api import auth
+
+    with patch.object(settings, "google_client_id", "test-client"), \
+            patch.object(auth.oauth, "google", create=True) as google:
+        google.authorize_access_token = fake_token
+        return client.get("/api/v1/auth/google/callback", follow_redirects=False)
+
+
+@pytest.mark.parametrize("is_active,status", [(False, "active"), (True, "suspended")])
+def test_google_sign_in_refuses_disabled_or_suspended_users(client, db_session, is_active, status):
+    user = User(email=f"{status}{is_active}@test.dev", password_hash="", display_name="D", auth_provider="google",
+                is_active=is_active, status=status)
+    db_session.add(user)
+    db_session.commit()
+    res = _google_callback(client, {"email": user.email, "email_verified": True, "name": "D"})
+    assert res.status_code == 403
+    assert "tallied_token" not in res.cookies
+
+
+def test_google_sign_in_requires_a_verified_email(client, db_session):
+    res = _google_callback(client, {"email": "unverified@test.dev", "email_verified": False})
+    assert res.status_code == 403
+    assert db_session.query(User).filter_by(email="unverified@test.dev").first() is None
+
+
+@pytest.mark.parametrize("claim_url", [
+    "https://127.0.0.1/claim",
+    "https://tallied-db:5432/claim",
+    "https://10.0.0.5/claim",
+    "https://169.254.169.254/latest/meta-data",
+    "https://localhost/claim",
+])
+def test_simplefin_setup_token_cannot_point_at_internal_hosts(claim_url):
+    import base64
+
+    from app.services.providers.base import ProviderError
+    from app.services.providers.simplefin import SimpleFinProvider
+
+    with pytest.raises(ProviderError) as exc:
+        SimpleFinProvider.decode_setup_token(base64.b64encode(claim_url.encode()).decode())
+    assert exc.value.status_code == 400
+
+
+def test_simplefin_setup_token_accepts_a_public_claim_url():
+    import base64
+
+    from app.services.providers.simplefin import SimpleFinProvider
+
+    url = "https://8.8.8.8/simplefin/claim/abc"
+    assert SimpleFinProvider.decode_setup_token(base64.b64encode(url.encode()).decode()) == url
+
+
+def test_sql_runner_without_createrole_is_unavailable_not_a_crash():
+    """If the app role cannot create the per-tenant runner role, only the SQL runner fails, with a clear error."""
+    from sqlalchemy.exc import ProgrammingError
+
+    from app.services import sql_runner
+
+    class _Conn:
+        def execution_options(self, **_):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, *_a, **_k):
+            raise ProgrammingError("CREATE ROLE", {}, Exception("permission denied to create role"))
+
+    with patch.object(sql_runner, "engine") as engine, patch.object(sql_runner, "_legacy_checked", True):
+        engine.connect.return_value = _Conn()
+        with pytest.raises(sql_runner.RunnerUnavailable, match="CREATEROLE"):
+            sql_runner.ensure_runner_role("tenant_nocreate1")
+    assert "tenant_nocreate1" not in sql_runner._granted_schemas
