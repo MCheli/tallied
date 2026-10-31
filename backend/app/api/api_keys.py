@@ -10,6 +10,7 @@ from app.database import get_db
 from app.dependencies import TenantContext, get_tenant_context
 from app.models.api_key import ApiKey
 from app.models.api_usage import ApiUsageLog
+from app.services import api_key_service
 
 router = APIRouter(prefix="/api-keys", tags=["api-keys"])
 
@@ -65,23 +66,10 @@ def create_api_key(
     db: Session = Depends(get_db),
 ):
     """Create a new API key. The full key is returned only once."""
-    if body.permissions not in ("read", "write", "admin"):
-        raise HTTPException(status_code=400, detail="Permissions must be read, write, or admin")
-
-    raw_key = ApiKey.generate_key()
-    key_hash = ApiKey.hash_key(raw_key)
-
-    api_key = ApiKey(
-        user_id=ctx.user_id,
-        tenant_id=ctx.tenant_id,
-        name=body.name,
-        key_prefix=raw_key[:12],
-        key_hash=key_hash,
-        permissions=body.permissions,
-    )
-    db.add(api_key)
-    db.commit()
-    db.refresh(api_key)
+    try:
+        api_key, raw_key = api_key_service.create_api_key(db, ctx, body.name, body.permissions)
+    except api_key_service.ApiKeyError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
 
     return ApiKeyCreatedResponse(
         id=api_key.id,
@@ -101,18 +89,8 @@ def revoke_api_key(
     db: Session = Depends(get_db),
 ):
     """Revoke (deactivate) an API key."""
-    api_key = db.execute(
-        select(ApiKey).where(
-            ApiKey.id == key_id,
-            ApiKey.user_id == ctx.user_id,
-        )
-    ).scalar_one_or_none()
-
-    if not api_key:
+    if not api_key_service.revoke_api_key(db, ctx, key_id):
         raise HTTPException(status_code=404, detail="API key not found")
-
-    api_key.is_active = False
-    db.commit()
     return {"message": "API key revoked"}
 
 
