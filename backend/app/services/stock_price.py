@@ -1,14 +1,18 @@
 """Fetch current stock prices and price history from Yahoo Finance (cached)."""
 import json
+import logging
 import re
 import time
 import urllib.request
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.investment import StockPrice
+
+logger = logging.getLogger("tallied.stock_price")
 
 
 def fetch_price(symbol: str) -> float | None:
@@ -60,6 +64,41 @@ def fetch_price_history(symbol: str, range_: str = "5y", interval: str = "1wk") 
     ]
     _history_cache[key] = (now, points)
     return points
+
+
+RANGE_DAYS = {"1mo": 31, "3mo": 92, "6mo": 183, "1y": 366, "2y": 731, "5y": 1827, "10y": 3653, "max": None}
+
+
+def price_series(db: Session, symbol: str, range_: str = "5y", today: date | None = None) -> list[dict]:
+    """Closing prices for charts and backfills: Yahoo's weekly closes for the long history, with every price
+    stored in `stock_prices` taking precedence on its day, so the series ends on the same price the rest of
+    the app uses. The demo uses stored prices only. Raises ValueError on a bad symbol or range, or when
+    Yahoo fails and nothing is stored."""
+    from app.config import settings
+
+    symbol = symbol.upper()
+    if not valid_symbol(symbol):
+        raise ValueError(f"Invalid symbol: {symbol!r}")
+    if range_ not in RANGE_DAYS:
+        raise ValueError(f"Invalid range: {range_!r}")
+    today = today or date.today()
+    q = select(StockPrice).where(StockPrice.symbol == symbol, StockPrice.price_date <= today)
+    if RANGE_DAYS[range_] is not None:
+        q = q.where(StockPrice.price_date >= today - timedelta(days=RANGE_DAYS[range_]))
+    stored = db.execute(q).scalars().all()
+
+    points: dict[str, float] = {}
+    yahoo_error: ValueError | None = None
+    if not settings.demo_mode:
+        try:
+            points.update({p["date"]: p["price"] for p in fetch_price_history(symbol, range_)})
+        except ValueError as e:
+            yahoo_error = e
+            logger.warning("Price history for %s: Yahoo unavailable, stored prices only (%s)", symbol, e)
+    points.update({r.price_date.isoformat(): round(float(r.close_price), 2) for r in stored})
+    if not points and yahoo_error is not None:
+        raise yahoo_error
+    return [{"date": d, "price": points[d]} for d in sorted(points) if d <= today.isoformat()]
 
 
 def get_or_fetch_price(db: Session, symbol: str) -> float | None:

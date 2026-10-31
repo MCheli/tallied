@@ -113,7 +113,10 @@ FROM rsu_grants;
 
 SELECT close_price FROM stock_prices
 WHERE symbol = '${sym.value}' ORDER BY price_date DESC LIMIT 1;`)
-const priceChartSql = computed(() => `-- Weekly closes come from Yahoo Finance (cached six hours); vest marks from vest_events
+const priceChartSql = computed(() => `-- Weekly closes from Yahoo Finance (cached six hours); a stored price wins on its day
+SELECT price_date, close_price FROM stock_prices
+WHERE symbol = '${sym.value}' ORDER BY price_date;
+-- Vest marks from vest_events
 SELECT ve.vest_date, ve.fmv_at_vest
 FROM vest_events ve
 JOIN rsu_grants g ON ve.grant_id = g.id
@@ -228,8 +231,8 @@ const priceChartOption = computed(() => {
       </div>
 
       <!-- Price chart -->
-      <ChartContainer :title="`${symbol} Stock Price`" subtitle="5-year weekly closes · dashed lines are vest dates"
-        :info="`Weekly closing price of ${symbol} for the last five years from Yahoo Finance (cached six hours). Dashed vertical lines mark the dates your shares vested, so you can see whether they vested at good or bad prices.`"
+      <ChartContainer :title="`${symbol} Stock Price`" subtitle="5 years of closes · dashed lines are vest dates"
+        :info="`Closing price of ${symbol} over five years: weekly closes from Yahoo Finance (cached six hours), with every price Tallied has stored (stock_prices) used on its day, so the line ends on the same price as the rest of the app. If Yahoo is unreachable, the stored prices alone. Dashed vertical lines mark the dates your shares vested, so you can see whether they vested at good or bad prices.`"
         :sql="priceChartSql" :sql-tables="['stock_prices', 'vest_events', 'rsu_grants']"
         :loading="priceLoading" :empty="!priceLoading && priceHistory.length === 0"
         :empty-text="priceError ? `Price history unavailable: ${priceError}` : 'No price history for this symbol'">

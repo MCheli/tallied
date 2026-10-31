@@ -1105,12 +1105,14 @@ requirements:
     visible: true
     done_means:
       - "A system account 'company-stock' (display group Company Stock) holds sellable shares x that day's close, written by the scheduler every cycle; unvested shares are not counted."
-      - "The first run backfills weekly closes to the start of the balance history, assuming no sales (shares held = today's sellable less later releases)."
+      - "The first run backfills weekly closes to the start of the balance history. Sale dates are not recorded, so past holdings are estimated per grant: each grant kept the same share of every release that it holds today (sellable / released). A grant never sold from gives today's shares less later releases; a fully sold grant counts as zero; the estimate lands exactly on today's sellable shares. refresh(rebuild=True) rewrites the history. (Until 2026-10-31 it assumed no sales, which overstated the past for anyone who sells.)"
       - "Net worth, liquid net worth, the liquidity layers and the trend include it; Planning uses the same balance instead of its own estimate."
     status: done
     evidence:
       - backend/tests/test_company_stock.py::test_company_stock_is_sellable_shares_at_the_days_close_and_past_days_exclude_later_vests
       - backend/tests/test_company_stock.py::test_snapshot_counts_company_stock_in_net_worth_and_liquid_net_worth
+      - backend/tests/test_company_stock.py::test_past_holdings_keep_each_grants_share_of_its_releases_when_shares_were_sold
+      - backend/tests/test_company_stock.py::test_rebuild_replaces_the_written_history
       - artifacts/screens/dashboard/desktop.png
     notes:
       - "Found 2026-10-30 in the production sweep: ~$196K of sellable shares were missing from net worth while Planning counted them."
@@ -1360,3 +1362,18 @@ requirements:
     evidence:
       - backend/tests/test_api/test_planning_v2.py::test_analysis_and_sprint_are_cached_by_their_inputs
       - artifacts/screens/planning/desktop.png
+
+  - id: RSU-PRICE-002
+    title: The RSU price chart agrees with the stored price
+    job: understand
+    area: rsu
+    priority: p2
+    visible: true
+    done_means:
+      - "The chart uses Yahoo's weekly closes for the long history, and every price stored in stock_prices takes precedence on its day, so the series ends on the price the rest of the app uses."
+      - "If Yahoo fails, the chart shows the stored prices instead of an error; the demo uses stored prices only and never calls Yahoo."
+    status: done
+    evidence:
+      - backend/tests/test_data_rules.py::test_price_history_prefers_stored_prices_and_survives_yahoo_failing
+      - backend/tests/test_data_rules.py::test_price_history_validates_symbol
+      - artifacts/screens/rsu/desktop.png

@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.dependencies import TenantContext, get_tenant_context, get_tenant_db
+from app.dependencies import get_tenant_db
 from app.models.investment import RSUGrant, VestEvent
 
 router = APIRouter(prefix="/rsu", tags=["rsu"])
@@ -389,12 +389,13 @@ def rsu_summary(db: Session = Depends(get_tenant_db)):
 
 
 @router.get("/price-history")
-def price_history(symbol: str = "MSFT", range: str = "5y", _ctx: "TenantContext" = Depends(get_tenant_context)):
-    """Weekly closes from Yahoo Finance for charting (validated symbol, cached six hours)."""
-    from app.services.stock_price import fetch_price_history
+def price_history(symbol: str = "MSFT", range: str = "5y", db: Session = Depends(get_tenant_db)):
+    """Closing prices for charting: Yahoo weekly closes (cached six hours) with stored prices taking
+    precedence on their days, so the chart agrees with the price used everywhere else."""
+    from app.services.stock_price import price_series
 
     try:
-        points = fetch_price_history(symbol, range)
+        points = price_series(db, symbol, range)
     except ValueError as e:
         status = 400 if "Invalid" in str(e) else 502
         raise HTTPException(status_code=status, detail=str(e))

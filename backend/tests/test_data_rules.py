@@ -121,6 +121,36 @@ def test_price_history_validates_symbol(client):
     assert res.status_code == 400
 
 
+def test_price_history_prefers_stored_prices_and_survives_yahoo_failing(client, db_session, monkeypatch):
+    from app.config import settings
+    from app.models.investment import StockPrice
+    from app.services import stock_price
+
+    today = date.today()
+    week = (today - timedelta(days=14)).isoformat()
+    db_session.add_all([
+        StockPrice(symbol="MSFT", price_date=today - timedelta(days=14), close_price=Decimal("410.00"), source="yahoo"),
+        StockPrice(symbol="MSFT", price_date=today, close_price=Decimal("425.50"), source="yahoo"),
+    ])
+    db_session.commit()
+    yahoo = [{"date": (today - timedelta(days=21)).isoformat(), "price": 400.0}, {"date": week, "price": 399.0}]
+    monkeypatch.setattr(stock_price, "fetch_price_history", lambda symbol, range_: yahoo)
+
+    pts = client.get("/api/v1/rsu/price-history", params={"symbol": "MSFT"}).json()["points"]
+    assert [p["price"] for p in pts] == [400.0, 410.0, 425.5]  # stored wins on its day and ends the series
+    assert pts[-1]["date"] == today.isoformat()
+
+    def down(symbol, range_):
+        raise ValueError("Yahoo Finance error: timeout")
+    monkeypatch.setattr(stock_price, "fetch_price_history", down)
+    assert [p["price"] for p in client.get("/api/v1/rsu/price-history").json()["points"]] == [410.0, 425.5]
+    assert client.get("/api/v1/rsu/price-history", params={"symbol": "AAPL"}).status_code == 502  # nothing stored
+
+    monkeypatch.setattr(settings, "demo_mode", True)
+    monkeypatch.setattr(stock_price, "fetch_price_history", lambda s, r: (_ for _ in ()).throw(AssertionError("fetched")))
+    assert len(client.get("/api/v1/rsu/price-history").json()["points"]) == 2  # the demo never calls Yahoo
+
+
 def test_property_valuation_writes_the_balance_snapshot(client, db_session):
     from app.models.property import Mortgage
 
