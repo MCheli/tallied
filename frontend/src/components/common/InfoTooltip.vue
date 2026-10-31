@@ -5,11 +5,14 @@
  * Opens on hover and keyboard focus, and on tap (click toggles; tapping outside or Escape closes),
  * so it works on phones. Never wider than the viewport.
  *
- * Props: text (HTML string; keep it to what the tile shows and what feeds it).
+ * Props: text (HTML string; keep it to what the tile shows and what feeds it). Sanitised before rendering,
+ * because some tooltips interpolate imported values such as a provider name.
  */
-import { nextTick, onBeforeUnmount, ref } from 'vue'
+import DOMPurify from 'dompurify'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 
-defineProps<{ text: string }>()
+const props = defineProps<{ text: string }>()
+const safeText = computed(() => DOMPurify.sanitize(props.text))
 
 const show = ref(false)
 const tooltipStyle = ref<Record<string, string>>({})
@@ -96,7 +99,7 @@ onBeforeUnmount(close)
       </svg>
     </button>
     <Teleport to="body">
-      <div v-if="show" ref="tipRef" class="info-tooltip-content" role="tooltip" :style="tooltipStyle" v-html="text"></div>
+      <div v-if="show" ref="tipRef" class="info-tooltip-content" role="tooltip" :style="tooltipStyle" v-html="safeText"></div>
     </Teleport>
   </span>
 </template>

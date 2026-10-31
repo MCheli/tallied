@@ -109,7 +109,8 @@ def create_db_credential_endpoint(
     try:
         result = create_db_credential(ctx.tenant_schema, body.access_level)
     except Exception as e:
-        logger.error(f"Failed to create database credential: {e}")
+        # Not str(e): a SQLAlchemy error carries the bound parameters, which include the new role's password.
+        logger.error("Failed to create database credential: %s: %s", type(e).__name__, getattr(e, "orig", None) or "")
         raise HTTPException(status_code=500, detail="Failed to create database credential")
 
     credential = DbCredential(

@@ -306,7 +306,8 @@ def scalar_docs(dark: str = "0"):
 </head><body>
 <script id="api-reference" data-url="./openapi.json"
   data-configuration='{{"theme":"{"saturn" if is_dark else "default"}","layout":"classic","hideDownloadButton":true,"darkMode":{"true" if is_dark else "false"},"hideDarkModeToggle":true}}'></script>
-<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.76.4/dist/browser/standalone.js"
+  integrity="sha384-hwB9WroDTpZaI38gr+u9CXA6ksz5gUYgD2GxXazKl/agT1L2GWUiRFWGJYNiFu4Q" crossorigin="anonymous"></script>
 </body></html>"""
 
 
