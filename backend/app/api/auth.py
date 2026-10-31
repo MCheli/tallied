@@ -4,7 +4,6 @@ Authentication — Google SSO (production) + dev mode login (local development).
 Both modes issue JWT tokens that include tenant context (tenant_id + tenant_schema).
 The rest of the app resolves tenant from the JWT via get_tenant_context dependency.
 """
-import hashlib
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -21,6 +20,7 @@ from app.database import get_db
 from app.models.tenant import Tenant, TenantMembership
 from app.models.user import User
 from app.services.audit_service import log_event
+from app.services.passwords import hash_password, verify_and_upgrade
 from app.services.tenant_service import create_tenant_schema
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -85,30 +85,6 @@ def _set_auth_cookie(response: Response, token: str, refresh_token: str | None =
             path="/api/v1/auth/refresh",
             max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         )
-
-
-try:
-    from argon2 import PasswordHasher
-    _ph = PasswordHasher()
-
-    def _hash_password(password: str) -> str:
-        return _ph.hash(password)
-
-    def _verify_password(password: str, hash: str) -> bool:
-        try:
-            return _ph.verify(hash, password)
-        except Exception:
-            return False
-except ImportError:
-    # Fallback (should not happen in production)
-    import logging as _logging
-    _logging.getLogger("tallied").warning("argon2-cffi not installed, falling back to SHA-256 password hashing")
-
-    def _hash_password(password: str) -> str:
-        return hashlib.sha256(password.encode()).hexdigest()
-
-    def _verify_password(password: str, hash: str) -> bool:
-        return hashlib.sha256(password.encode()).hexdigest() == hash
 
 
 def _resolve_tenant(user: User, db: Session) -> tuple[Tenant, list[Tenant]]:
@@ -300,18 +276,13 @@ def dev_login(body: LoginRequest, request: Request, response: Response, db: Sess
         )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if not _verify_password(body.password, user.password_hash):
-        # Try legacy SHA-256 hash and migrate to argon2 if it matches
-        if hashlib.sha256(body.password.encode()).hexdigest() == user.password_hash:
-            user.password_hash = _hash_password(body.password)
-            db.commit()
-        else:
-            log_event(
-                action="login_failed", resource_type="user", resource_id=str(user.id),
-                user_id=user.id, details={"email": body.email, "reason": "wrong_password"},
-                ip_address=client_ip,
-            )
-            raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not verify_and_upgrade(user, body.password):  # rewrites a legacy SHA-256 hash as argon2id
+        log_event(
+            action="login_failed", resource_type="user", resource_id=str(user.id),
+            user_id=user.id, details={"email": body.email, "reason": "wrong_password"},
+            ip_address=client_ip,
+        )
+        raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled")
@@ -500,7 +471,7 @@ def seed_users(db: Session = Depends(get_db)):
         if not existing:
             user = User(
                 email=u["email"],
-                password_hash=_hash_password(u["password"]),
+                password_hash=hash_password(u["password"]),
                 display_name=u["display_name"],
                 is_admin=u["is_admin"],
                 auth_provider="local",
