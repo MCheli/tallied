@@ -47,6 +47,7 @@ const planId = ref<number | null>(null)
 const outlook = ref<PlanOutlook | null>(null)
 const loading = ref(false)
 const refreshing = ref(false)
+const analyzing = ref(false)  // the outlook is shown; goal-seek, scenarios and sensitivity still computing
 const error = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 const notice = ref<string | null>(null)
@@ -112,16 +113,23 @@ async function loadSaved(id: number) {
   loading.value = true
   error.value = null
   try {
-    const o = await api.planning.outlook(id, regime.value)
+    // The outlook alone is quick; "what would need to be true" re-runs the simulation 100+ times and
+    // takes seconds on the server, so the page shows the outlook first and fills the analysis in after.
+    const o = await api.planning.outlook(id, regime.value, false)
     outlook.value = o
     skipWatch = true  // loading the saved values is not a lever change
     saved.value = { ...o.values }
     draft.value = { ...o.values }
     savedRule.value = draftRule.value = o.plan.spending_rule
     savedProfile.value = draftProfile.value = o.plan.spending_profile
-    // The sprint takes a few seconds: run it once in the background for the saved plan. Lever changes
-    // clear it (it no longer matches) and the panel offers to run it again.
-    void runSprint()
+    const mine = ++seq
+    loading.value = false
+    void (async () => {
+      await withAnalysis(mine, () => api.planning.outlook(id, regime.value, true))
+      // The sprint takes a few seconds too: run it once in the background for the saved plan. Lever
+      // changes clear it (it no longer matches) and the panel offers to run it again.
+      if (mine === seq) void runSprint()
+    })()
   } catch (e) {
     error.value = apiErrorMessage(e, 'Could not compute the outlook')
     outlook.value = null
@@ -143,16 +151,33 @@ function whatIfBody(analysis = true) {
 }
 async function runWhatIf() {
   if (planId.value == null) return
+  const id = planId.value
   const mine = ++seq
   refreshing.value = true
   actionError.value = null
   try {
-    const o = await api.planning.whatIf(planId.value, whatIfBody())
-    if (mine === seq) outlook.value = o
+    const o = await api.planning.whatIf(id, whatIfBody(false))
+    if (mine !== seq) return
+    outlook.value = o
+    refreshing.value = false
+    const body = whatIfBody()
+    await withAnalysis(mine, () => api.planning.whatIf(id, body))
   } catch (e) {
     if (mine === seq) actionError.value = apiErrorMessage(e, 'Could not recompute')
   } finally {
     if (mine === seq) refreshing.value = false
+  }
+}
+/** Fetch the full outlook (with the analysis) and show it unless a newer request replaced this one. */
+async function withAnalysis(mine: number, fetchFull: () => Promise<PlanOutlook>) {
+  analyzing.value = true
+  try {
+    const full = await fetchFull()
+    if (mine === seq) outlook.value = full
+  } catch (e) {
+    if (mine === seq) actionError.value = apiErrorMessage(e, 'Could not work out what would need to be true')
+  } finally {
+    if (mine === seq) analyzing.value = false
   }
 }
 
@@ -582,6 +607,12 @@ Scheduled vests = unvested vest events × today's price. Roth basis = Roth contr
           </div>
           <OutlookFan v-if="fanBands" :bands="fanBands" :ages="o.fan.ages" :retirement-age="o.retirement_age" :milestones="o.milestones" :overlay="fanOverlay" />
         </ChartContainer>
+
+        <div v-if="analyzing && !o.goal_seek" role="status" data-testid="plan-analyzing"
+          class="flex items-center gap-3 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/30 p-4 text-sm text-indigo-900 dark:text-indigo-200">
+          <div class="h-4 w-4 flex-shrink-0 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          Working out what would need to be true: other retirement ages, market scenarios and which levers matter. This re-runs the simulation about 150 times.
+        </div>
 
         <!-- Retirement age as a dimension -->
         <ChartContainer v-if="o.goal_seek" title="Retire at different ages" :empty="!ageRows.length" empty-text="No milestone ages fall in the range compared."

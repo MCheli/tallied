@@ -5,8 +5,12 @@ planning_service.py. Research behind the defaults: docs/requirements/planning-v2
 """
 from __future__ import annotations
 
+import copy
+import hashlib
 import logging
 import statistics
+import threading
+from collections import OrderedDict
 from dataclasses import replace
 from datetime import date, timedelta
 
@@ -707,8 +711,42 @@ def rows_runout_age(rows: list[dict], r_age: int) -> int | None:
     return None
 
 
+# The analysis and the sprint re-run the simulation 100+ times (seconds on the home server). Their
+# results depend only on the computed inputs, so they are kept per process, keyed by those inputs:
+# any change to balances, pay, levers or events changes the key.
+_RESULTS: OrderedDict[str, dict] = OrderedDict()
+_RESULTS_MAX = 64
+_results_lock = threading.Lock()
+
+
+def _memo(key_parts: tuple, compute) -> dict:
+    key = hashlib.sha256(repr(key_parts).encode()).hexdigest()
+    with _results_lock:
+        if key in _RESULTS:
+            _RESULTS.move_to_end(key)
+            return copy.deepcopy(_RESULTS[key])
+    value = compute()
+    with _results_lock:
+        _RESULTS[key] = value
+        while len(_RESULTS) > _RESULTS_MAX:
+            _RESULTS.popitem(last=False)
+    return copy.deepcopy(value)
+
+
+def _events_key(plan: PlanVersion) -> list[tuple]:
+    return [(e.id, e.kind, e.label, e.start_age, e.end_age, float(e.amount or 0), float(e.pct or 0),
+             bool(e.enabled), sorted((e.params or {}).items())) for e in plan.events]
+
+
 def analysis(inputs: rs.PlanInputs, household: rs.Household, target: float, plan: PlanVersion,
              event_enabled: dict[int, bool] | None = None, regime: rs.Regime | None = None) -> dict:
+    key = ("analysis", inputs, household, target, _events_key(plan), sorted((event_enabled or {}).items()),
+           regime.key if regime else None)
+    return _memo(key, lambda: _analysis(inputs, household, target, plan, event_enabled, regime))
+
+
+def _analysis(inputs: rs.PlanInputs, household: rs.Household, target: float, plan: PlanVersion,
+              event_enabled: dict[int, bool] | None = None, regime: rs.Regime | None = None) -> dict:
     """Scenarios, goal-seek, sensitivity and per-event outcomes, under the selected macro scenario.
     Same seed everywhere, so differences come from the lever, not luck."""
     scenarios = []
@@ -815,6 +853,16 @@ SPRINT_SHIFTS = (-0.02, -0.01, 0.0, 0.01)
 def sprint(db: Session, plan: PlanVersion, overrides: dict[str, float] | None = None, spending_rule: str | None = None,
            spending_profile: str | None = None, event_enabled: dict[int, bool] | None = None,
            regime_key: str = "base", today: date | None = None) -> dict:
+    _, values, household, _, inputs = household_and_inputs(
+        db, plan, overrides, spending_rule, spending_profile, event_enabled, today)
+    key = ("sprint", inputs, household, sorted(values.items()), regime_key)
+    return _memo(key, lambda: _sprint(db, plan, overrides, spending_rule, spending_profile, event_enabled,
+                                      regime_key, today))
+
+
+def _sprint(db: Session, plan: PlanVersion, overrides: dict[str, float] | None = None, spending_rule: str | None = None,
+            spending_profile: str | None = None, event_enabled: dict[int, bool] | None = None,
+            regime_key: str = "base", today: date | None = None) -> dict:
     """Save as hard as possible now (401(k) at the IRS limit, every equity payout invested), then:
     for each retirement age and return assumption, the most living spending that reaches the target;
     for each spending level, the earliest age; and which levers move the answer most."""

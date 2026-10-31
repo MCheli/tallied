@@ -348,3 +348,46 @@ def test_projects_are_budgeted_not_counted_as_typical_living(client, db_session,
     assert b["typical_living"] == 12_000 and b["projects_observed"] == 7_200
     assert sp["living_spending"] == 12_000 and sp["projects_allowance"] == 3000
     assert b["suggested"] == 12_000           # projects are not assumed into retirement living spending
+
+
+def test_analysis_and_sprint_are_cached_by_their_inputs(client, db_session, born_30, monkeypatch):
+    """PLAN-V2-016: the 100+ simulation runs behind the analysis and the sprint are computed once per set of
+    inputs; any change to levers, events or the household's data computes them again."""
+    from app.services import retirement_outlook as ro
+
+    _household(db_session)
+    plan = _plan(client, retirement_age=55, retirement_spending=60_000)
+    ro._RESULTS.clear()
+    calls = {"analysis": 0, "sprint": 0}
+    real_analysis, real_sprint = ro._analysis, ro._sprint
+
+    def counted(kind, fn):
+        def wrapper(*a, **kw):
+            calls[kind] += 1
+            return fn(*a, **kw)
+        return wrapper
+
+    monkeypatch.setattr(ro, "_analysis", counted("analysis", real_analysis))
+    monkeypatch.setattr(ro, "_sprint", counted("sprint", real_sprint))
+    url = f"/api/v1/plans/{plan['id']}"
+
+    first = client.get(f"{url}/outlook").json()
+    again = client.get(f"{url}/outlook").json()
+    assert calls["analysis"] == 1 and again["goal_seek"] == first["goal_seek"]
+    assert client.get(f"{url}/outlook", params={"analysis": "false"}).json().get("goal_seek") is None
+    assert calls["analysis"] == 1  # the quick outlook never runs it
+
+    client.post(f"{url}/what-if", json={"overrides": {"retirement_spending": 50_000}})
+    assert calls["analysis"] == 2  # a lever moved
+    client.post(f"{url}/events", json={"kind": "one_off_expense", "label": "Roof", "start_age": 35, "amount": 30_000})
+    client.get(f"{url}/outlook")
+    assert calls["analysis"] == 3  # the events changed
+    db_session.add(BalanceSnapshot(account_id="chk", snapshot_date=date.today(), balance=Decimal("90000"), source="t2"))
+    db_session.query(BalanceSnapshot).filter_by(account_id="chk", source="test").delete()
+    db_session.commit()
+    client.get(f"{url}/outlook")
+    assert calls["analysis"] == 4  # the household's balances changed
+
+    s1 = client.post(f"{url}/sprint", json={}).json()
+    s2 = client.post(f"{url}/sprint", json={}).json()
+    assert calls["sprint"] == 1 and s1 == s2

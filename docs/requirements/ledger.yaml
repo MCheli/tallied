@@ -1345,3 +1345,18 @@ requirements:
       - artifacts/screens/login/desktop.png
       - artifacts/screens/login/mobile.png
       - artifacts/screens/demo/login/desktop.png
+
+  - id: PLAN-V2-016
+    title: Planning shows the outlook at once and does not recompute what it already knows
+    job: plan
+    area: planning
+    priority: p1
+    visible: true
+    done_means:
+      - "The page loads the outlook without the analysis first (one simulation, well under a second on the server) and then fills in goal-seek, scenarios, sensitivity and event impacts, with a visible 'working out what would need to be true' note meanwhile; a lever change does the same."
+      - "The analysis and the sprint are cached per process, keyed by the computed inputs (household data, levers, events, scenario); the same inputs return the stored result and any change computes it again."
+      - "Measured 2026-10-31 on the server before the change: outlook 12.6 s on average (53 s worst), sprint 41 s (116 s worst), because every request waited for 150+ simulation runs."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_planning_v2.py::test_analysis_and_sprint_are_cached_by_their_inputs
+      - artifacts/screens/planning/desktop.png
