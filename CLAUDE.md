@@ -9,6 +9,7 @@ FastAPI + Vue 3 + PostgreSQL (schema per tenant). One household's accounts, tran
 - `docs/CONTRIBUTING-FEATURES.md` — how to add a tile, page, endpoint, import context, provider or AI feature, and what evidence each needs.
 - `docs/requirements/ledger.yaml` — every requirement with acceptance criteria, status and evidence.
 - `docs/DEPLOYING.md` — production on the home server.
+- `docs/DEMO-PLAYBOOK.md` — how the public demo and login page were built; reusable for other apps.
 - `docs/research/` — as-built briefs from October 2026 (what each page really does, with file:line evidence) and the Monarch post-mortem.
 - `docs/archive/` — the March 2026 documents. Background only; not binding.
 - `docs/REVIEW-2026-10-29.md` — the October punch list and the decisions taken on it.
