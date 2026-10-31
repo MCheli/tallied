@@ -19,7 +19,8 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # Stage 1: Build frontend
 # ═══════════════════════════════════════════════════════════════════════════════
-FROM node:20-alpine AS frontend-builder
+# Exact patch pins: Node 20 is EOL and unpatched for CVE-2026-111497 (Brotli); 24.22.1 is the fixed 24.x.
+FROM node:24.22.1-alpine3.24 AS frontend-builder
 
 WORKDIR /build
 COPY frontend/package*.json ./
@@ -30,7 +31,7 @@ RUN npm run build
 # ═══════════════════════════════════════════════════════════════════════════════
 # Stage 2: Production Python server
 # ═══════════════════════════════════════════════════════════════════════════════
-FROM python:3.13-slim
+FROM python:3.13.18-slim-trixie
 
 # Labels
 LABEL org.opencontainers.image.title="Tallied"
@@ -39,9 +40,9 @@ LABEL org.opencontainers.image.source="https://github.com/MCheli/tallied"
 
 WORKDIR /app
 
-# Install system deps (curl for healthcheck, libpq for psycopg2)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+# Install system deps (libpq for psycopg2). No curl: the healthcheck uses Python, and curl pulls in
+# libcurl and libbrotli (CVE-2026-111497) for nothing else. apt-get upgrade takes Debian security fixes.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -77,7 +78,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=5)" || exit 1
 
 EXPOSE 8000
 

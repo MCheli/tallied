@@ -6,7 +6,7 @@
 services:
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine3.24
     container_name: tallied-postgres
     restart: unless-stopped
     environment:
@@ -20,7 +20,8 @@ services:
       - -c
       - hba_file=/etc/postgresql/pg_hba.conf
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Loopback only: the superuser must never be reachable from the LAN or internet.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
@@ -47,9 +48,10 @@ services:
     environment:
       - DATABASE_URL=postgresql://tallied:${POSTGRES_PASSWORD:-tallied_dev}@postgres:5432/tallied
     ports:
-      - "8000:8000"
+      # Loopback only; NGINX on the host (or the compose network) is the way in.
+      - "127.0.0.1:8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
