@@ -87,7 +87,7 @@ def attach_tenant_search_path(db: Session, schema: str, *, include_public: bool 
 
 
 @contextmanager
-def tenant_session(schema: str, *, include_public: bool = True) -> Generator[Session]:
+def tenant_session(schema: str, *, include_public: bool = True, read_only: bool = False) -> Generator[Session]:
     """Yield a Session whose search_path is the tenant schema on every transaction.
 
     `include_public=True` appends `public` so ORM queries that join platform
@@ -95,13 +95,18 @@ def tenant_session(schema: str, *, include_public: bool = True) -> Generator[Ses
     not resolve platform tables (the SQL runner does its own SET LOCAL instead).
 
     The session is rolled back and closed on exit; callers commit explicitly.
+    `read_only=True` makes every transaction READ ONLY in Postgres (the public demo).
     """
     if not validate_schema_name(schema):
         raise ValueError(f"Invalid tenant schema name: {schema!r}")
 
     path = f'"{schema}", public' if include_public else f'"{schema}"'
 
+    read_only = read_only and SessionLocal.kw["bind"].dialect.name == "postgresql"
+
     def _set_search_path(session, transaction, connection):
+        if read_only:
+            connection.execute(text("SET TRANSACTION READ ONLY"))
         connection.execute(text(f"SET search_path TO {path}"))
 
     db = SessionLocal()

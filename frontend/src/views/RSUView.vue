@@ -202,7 +202,7 @@ const priceChartOption = computed(() => {
     >
       <a :href="ETRADE_URL" target="_blank" rel="noopener" class="min-h-10 inline-flex items-center text-xs text-indigo-600 dark:text-indigo-400 hover:underline px-1">E-Trade Holdings</a>
       <button @click="openData('rsu')" class="min-h-10 px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">Data</button>
-      <button @click="openImport({ context: 'rsu', onComplete: fetchData })" class="min-h-10 px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Import</button>
+      <button v-demo-lock @click="openImport({ context: 'rsu', onComplete: fetchData })" class="min-h-10 px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Import</button>
     </PageHeader>
 
     <div v-if="loading" class="text-sm text-gray-400">Loading RSU data...</div>

@@ -406,7 +406,7 @@ const sourceOptions: ValuationSourceLabel[] = ['Manual', 'Redfin', 'Zillow', 'Ap
         class="px-4 py-2 min-h-10 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
         Data
       </button>
-      <button @click="openImport({ context: 'property', onComplete: refreshData })"
+      <button v-demo-lock @click="openImport({ context: 'property', onComplete: refreshData })"
         class="px-4 py-2 min-h-10 text-xs font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700">
         Import statement
       </button>
@@ -475,11 +475,11 @@ const sourceOptions: ValuationSourceLabel[] = ['Manual', 'Redfin', 'Zillow', 'Ap
             <template v-else>No property valuation on file.</template>
           </div>
           <div class="flex flex-wrap items-center gap-2">
-            <button @click="refreshFromRealtor" :disabled="refreshing"
+            <button v-demo-lock @click="refreshFromRealtor" :disabled="refreshing"
               class="px-3 py-2 min-h-10 text-xs font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 whitespace-nowrap">
               {{ refreshing ? 'Refreshing…' : 'Refresh from Realtor.com' }}
             </button>
-            <button v-if="!showManualEntry" @click="showManualEntry = true"
+            <button v-if="!showManualEntry" v-demo-lock @click="showManualEntry = true"
               class="px-3 py-2 min-h-10 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 whitespace-nowrap">
               Add entry
             </button>
@@ -507,7 +507,7 @@ const sourceOptions: ValuationSourceLabel[] = ['Manual', 'Redfin', 'Zillow', 'Ap
           <p class="text-[11px] text-gray-400 mt-2">Entries you add are kept when refreshing from Realtor.com. "Purchase price" records what you paid so equity can show the down payment and appreciation.</p>
           <div v-if="valuationError" class="text-xs text-red-500 mt-2">{{ valuationError }}</div>
           <div class="flex flex-wrap gap-2 mt-3">
-            <button @click="submitValuation" :disabled="savingValuation" class="px-4 py-2 min-h-10 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+            <button v-demo-lock @click="submitValuation" :disabled="savingValuation" class="px-4 py-2 min-h-10 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
               {{ savingValuation ? 'Saving…' : 'Add' }}
             </button>
             <button @click="showManualEntry = false; valuationError = ''" class="px-4 py-2 min-h-10 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
@@ -581,7 +581,7 @@ const sourceOptions: ValuationSourceLabel[] = ['Manual', 'Redfin', 'Zillow', 'Ap
             <div class="flex flex-wrap gap-2 items-center">
               <input v-model="purchaseInput" type="text" inputmode="decimal" placeholder="Purchase price, e.g. 450000" @keyup.enter="savePurchasePrice"
                 class="py-2 px-3 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white w-full sm:w-56" />
-              <button @click="savePurchasePrice" :disabled="savingPurchase" class="px-4 py-2 min-h-10 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+              <button v-demo-lock @click="savePurchasePrice" :disabled="savingPurchase" class="px-4 py-2 min-h-10 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
                 {{ savingPurchase ? 'Saving…' : 'Save purchase price' }}
               </button>
             </div>

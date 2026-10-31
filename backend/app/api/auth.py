@@ -324,6 +324,26 @@ def dev_login(body: LoginRequest, request: Request, response: Response, db: Sess
     return _login_response(user, tenant, tenants, response)
 
 
+# ── Public demo sign-in ───────────────────────────────────────────────────────
+
+@router.post("/demo")
+def demo_login(request: Request, response: Response, db: Session = Depends(get_db)):
+    """One-click sign-in as the demo persona. Only when FINANCE_DEMO_MODE=true (app/demo.py)."""
+    if not settings.demo_mode:
+        raise HTTPException(status_code=404, detail="Not found")
+    from app.demo import client_ip
+    from app.middleware.rate_limit import login_limiter
+
+    login_limiter.check(f"login:{client_ip(request)}")
+    user = db.execute(select(User).where(User.email == settings.demo_user_email)).scalar_one_or_none()
+    has_tenant = user is not None and db.execute(
+        select(TenantMembership.id).where(TenantMembership.user_id == user.id)).first() is not None
+    if not user or not user.is_active or not has_tenant:  # the nightly rebuild is running
+        raise HTTPException(status_code=503, detail="The demo is being rebuilt; try again in a minute.")
+    tenant, tenants = _resolve_tenant(user, db)
+    return _login_response(user, tenant, tenants, response)
+
+
 # ── Tenant switching ──────────────────────────────────────────────────────────
 
 class SelectTenantRequest(BaseModel):
@@ -453,6 +473,8 @@ def auth_config():
     return {
         "dev_mode": settings.dev_mode,
         "google_sso": bool(settings.google_client_id),
+        "demo_mode": settings.demo_mode,
+        "demo_url": settings.demo_url or None,
     }
 
 

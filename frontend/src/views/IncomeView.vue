@@ -236,7 +236,7 @@ const tableRows = computed(() => w2Records.value.map(w => ({ year: w.tax_year, .
       tooltip="<strong>Income</strong><br>Every figure on this page comes from the W-2 record for the selected tax year, entered on Settings → Income or read from a W-2 or pay stub by the import. Take-home = gross − taxes − 401(k) − employee pre-tax benefits; employer-paid health insurance is shown for information and never deducted."
     >
       <button @click="openData('income')" class="min-h-10 px-4 py-2 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">Data</button>
-      <button @click="openImport({ context: 'income', onComplete: load })" class="min-h-10 px-4 py-2 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Import</button>
+      <button v-demo-lock @click="openImport({ context: 'income', onComplete: load })" class="min-h-10 px-4 py-2 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Import</button>
       <template #below>
         <div v-if="years.length > 0" class="flex flex-wrap gap-1.5" role="tablist" aria-label="Tax year">
           <button v-for="y in years" :key="y" @click="selectedYear = y" role="tab" :aria-selected="y === selectedYear"

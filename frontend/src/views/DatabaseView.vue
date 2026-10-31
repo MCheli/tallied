@@ -1330,7 +1330,7 @@ onUnmounted(() => {
                     </select>
                   </div>
                   <button
-                    @click="createCredential"
+                    v-demo-lock @click="createCredential"
                     :disabled="!credName.trim() || credCreating"
                     class="px-4 py-2 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                   >
@@ -1390,7 +1390,7 @@ onUnmounted(() => {
                       <td class="py-2.5 text-right">
                         <button
                           v-if="cred.is_active"
-                          @click="revokeCredential(cred.id)"
+                          v-demo-lock @click="revokeCredential(cred.id)"
                           :disabled="credRevoking === cred.id"
                           class="px-2.5 py-1 text-[10px] font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 disabled:opacity-40 transition-colors"
                         >

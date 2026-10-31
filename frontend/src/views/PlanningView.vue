@@ -415,15 +415,15 @@ Scheduled vests = unvested vest events × today's price. Roth basis = Roth contr
       <select id="plan-pick" v-model="planId" class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-white max-w-[12rem]">
         <option v-for="p in plans" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
-      <button v-if="planId != null && o" type="button" class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800" @click="showNew = !showNew">Save as new plan</button>
+      <button v-if="planId != null && o" type="button" class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800" v-demo-lock @click="showNew = !showNew">Save as new plan</button>
       <template v-if="dirty">
         <button type="button" class="rounded-lg px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" @click="reset">Reset</button>
-        <button type="button" :disabled="saving" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50" @click="save">{{ saving ? 'Saving…' : 'Save changes' }}</button>
+        <button type="button" :disabled="saving" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50" v-demo-lock @click="save">{{ saving ? 'Saving…' : 'Save changes' }}</button>
       </template>
       <template #below>
         <form v-if="showNew" class="flex flex-wrap items-center gap-2" @submit.prevent="saveAsNew">
           <input v-model="newName" placeholder="Name, e.g. Sprint to 50" class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-white min-w-0 flex-1 max-w-xs" />
-          <button type="submit" :disabled="saving || !newName.trim()" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">Create from these levers</button>
+          <button v-demo-lock type="submit" :disabled="saving || !newName.trim()" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">Create from these levers</button>
           <span class="text-xs text-gray-500 dark:text-gray-400">Copies every lever, the spending rule and shape, and the life events.</span>
         </form>
         <p v-if="dirty && !showNew" class="text-xs text-indigo-700 dark:text-indigo-300">Showing a what-if: {{ changeCount }} change(s) not saved.</p>
@@ -441,14 +441,14 @@ Scheduled vests = unvested vest events × today's price. Roth basis = Roth contr
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <label class="sr-only" for="birth-date">Birth date</label>
         <input id="birth-date" v-model="birthInput" type="date" required class="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-sm text-gray-900 dark:text-white" />
-        <button type="submit" :disabled="saving || !birthInput" class="rounded-md bg-indigo-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50">Save birth date</button>
+        <button v-demo-lock type="submit" :disabled="saving || !birthInput" class="rounded-md bg-indigo-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50">Save birth date</button>
         <button v-if="editingBirth" type="button" class="text-sm text-gray-500" @click="editingBirth = false">Cancel</button>
       </div>
     </form>
 
     <div v-if="!loading && planId == null && !error" class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center text-sm text-gray-500 dark:text-gray-400">
       <p>No plans yet. A plan starts from today's balances and pay with default assumptions you can then change.</p>
-      <button type="button" :disabled="saving" class="mt-3 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50" @click="createFirst">Create a plan</button>
+      <button type="button" :disabled="saving" class="mt-3 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50" v-demo-lock @click="createFirst">Create a plan</button>
     </div>
 
     <div v-else-if="loading && !o" class="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
@@ -462,7 +462,7 @@ Scheduled vests = unvested vest events × today's price. Roth basis = Roth contr
         <div>
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Levers <InfoTooltip text="Moving a lever recomputes the outlook without saving. A dot marks a lever that differs from the saved plan. <strong>Save changes</strong> writes them; <strong>Reset</strong> goes back." /></h2>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Age {{ o.current_age }} (born {{ fmtDate(o.birth_date) }}) · plan to {{ o.plan_to_age }}
-            <button type="button" class="text-indigo-600 dark:text-indigo-400" @click="editingBirth = true; birthInput = o.birth_date">change</button>
+            <button type="button" class="text-indigo-600 dark:text-indigo-400" v-demo-lock @click="editingBirth = true; birthInput = o.birth_date">change</button>
           </p>
         </div>
 
@@ -720,7 +720,7 @@ Scheduled vests = unvested vest events × today's price. Roth basis = Roth contr
                 <option value="" disabled>Add a life event…</option>
                 <option v-for="(t, i) in catalogue?.event_templates ?? []" :key="i" :value="i">{{ t.label }}</option>
               </select>
-              <button type="submit" :disabled="templateIndex === ''" class="rounded-md bg-indigo-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50">Add</button>
+              <button v-demo-lock type="submit" :disabled="templateIndex === ''" class="rounded-md bg-indigo-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50">Add</button>
             </form>
           </div>
           <p v-if="!o.events.length" class="py-6 text-center text-sm text-gray-400 dark:text-gray-500">No life events in this plan. Add one to see what it does to the outlook.</p>
@@ -728,7 +728,7 @@ Scheduled vests = unvested vest events × today's price. Roth basis = Roth contr
             <li v-for="ev in o.events" :key="ev.id" class="py-3 min-w-0">
               <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <label class="inline-flex items-center gap-2 min-w-0 flex-1">
-                  <input type="checkbox" :checked="ev.enabled" class="accent-indigo-600" :aria-label="`Include ${ev.label}`" @change="toggleEvent(ev)" />
+                  <input v-demo-lock type="checkbox" :checked="ev.enabled" class="accent-indigo-600" :aria-label="`Include ${ev.label}`" @change="toggleEvent(ev)" />
                   <span class="font-medium text-sm text-gray-900 dark:text-white break-words min-w-0" :class="{ 'line-through text-gray-400 dark:text-gray-500': !ev.enabled }">{{ ev.label }}</span>
                 </label>
                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ eventSummary(ev) }}</span>
@@ -736,8 +736,8 @@ Scheduled vests = unvested vest events × today's price. Roth basis = Roth contr
                   :class="impactFor(ev.id)!.success_with >= impactFor(ev.id)!.success_without ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'">
                   {{ deltaPts(impactFor(ev.id)!.success_with, impactFor(ev.id)!.success_without) }}
                 </span>
-                <button type="button" class="text-xs text-indigo-600 dark:text-indigo-400" @click="startEdit(ev)">{{ editing?.id === ev.id ? 'Close' : 'Edit' }}</button>
-                <button type="button" class="text-xs text-red-600 dark:text-red-400" @click="deleteEvent(ev)">Remove</button>
+                <button type="button" class="text-xs text-indigo-600 dark:text-indigo-400" v-demo-lock @click="startEdit(ev)">{{ editing?.id === ev.id ? 'Close' : 'Edit' }}</button>
+                <button type="button" class="text-xs text-red-600 dark:text-red-400" v-demo-lock @click="deleteEvent(ev)">Remove</button>
               </div>
               <form v-if="editing?.id === ev.id" class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs" @submit.prevent="saveEvent">
                 <label class="col-span-2 sm:col-span-1">Label<input v-model="editing.label" class="mt-0.5 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-1.5 py-1 text-gray-900 dark:text-white" /></label>
@@ -751,7 +751,7 @@ Scheduled vests = unvested vest events × today's price. Roth basis = Roth contr
                   </label>
                 </template>
                 <div class="col-span-2 sm:col-span-4 flex flex-wrap items-center gap-2">
-                  <button type="submit" class="rounded bg-indigo-600 px-3 py-1 font-medium text-white">Save event</button>
+                  <button v-demo-lock type="submit" class="rounded bg-indigo-600 px-3 py-1 font-medium text-white">Save event</button>
                   <span class="text-gray-500 dark:text-gray-400">{{ templateFor(ev.kind)?.help }}</span>
                 </div>
               </form>

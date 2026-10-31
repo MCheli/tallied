@@ -7,6 +7,8 @@
  *   node scripts/screenshot_tour.mjs                # all routes, both widths
  *   node scripts/screenshot_tour.mjs spending cash  # only these routes
  *   TOUR_BASE=http://localhost:5173 TOUR_THEME=dark node scripts/screenshot_tour.mjs
+ *   TOUR_DEMO=1 TOUR_BASE=http://localhost:5176 node scripts/screenshot_tour.mjs   # against a backend with
+ *       FINANCE_DEMO_MODE=true: signs in with "Enter the demo", writes to artifacts/screens/demo/
  *
  * Output:
  *   artifacts/screens/<route>/mobile.png, desktop.png     (ledger evidence)
@@ -30,7 +32,8 @@ const { chromium, devices } = require('playwright');
 
 const BASE = process.env.TOUR_BASE || 'http://localhost:5173';
 const THEME = process.env.TOUR_THEME === 'dark' ? 'dark' : 'light';
-const OUT = path.join(repoRoot, 'artifacts', 'screens');
+const DEMO = process.env.TOUR_DEMO === '1';
+const OUT = path.join(repoRoot, 'artifacts', 'screens', ...(DEMO ? ['demo'] : []));
 const EMAIL = process.env.TOUR_EMAIL || 'claudius@tallied.dev';
 const PASSWORD = process.env.TOUR_PASSWORD || 'demo123';
 
@@ -117,9 +120,13 @@ for (const [vpName, vp] of Object.entries(VIEWPORTS)) {
   await settle(page);
   if (routes.some(([name]) => name === 'login')) await capture(page, path.join(OUT, 'login', `${vpName}.png`));
 
-  await page.fill('input[type="email"]', EMAIL);
-  await page.fill('input[type="password"]', PASSWORD);
-  await page.click('button[type="submit"]');
+  if (DEMO) {
+    await page.click('[data-testid="enter-demo"]');
+  } else {
+    await page.fill('input[type="email"]', EMAIL);
+    await page.fill('input[type="password"]', PASSWORD);
+    await page.click('button[type="submit"]');
+  }
   try {
     await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 });
   } catch {

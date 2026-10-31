@@ -119,3 +119,18 @@ Uploaded documents are not stored; only extracted data is. Provider credentials 
 - Send one now: `curl -X POST "https://tallied-weekly-recap.<subdomain>.workers.dev/send?token=$TRIGGER_TOKEN"`; it answers `sent: <subject>` or `failed: <reason>`.
 - A failed Monday run shows as an error on the worker's Cron Events in the Cloudflare dashboard.
 
+
+## Public demo (money-demo.markcheli.com)
+
+The same image in demo mode, on its own database, holding only the Claudius seed. It must never share the production database, secrets or `.env` (startup refuses AI and Google secrets and any database with non-persona users).
+
+| Container | Role |
+|---|---|
+| `tallied-demo-db` | `postgres:16-alpine`, volume `tallied_demo_db_data`, no published port |
+| `tallied-demo` | `ghcr.io/mcheli/tallied:latest` with `FINANCE_DEMO_MODE=true` and `APP_ROLE=web` (no scheduler). The entrypoint runs migrations, then `scripts/seed_test_data.py --reset`, then gunicorn. |
+
+- Its environment is listed in the compose file, not taken from `.env`: `DATABASE_URL` (the demo database, as its owner), `FINANCE_SECRET_KEY`, `FINANCE_API_KEY_PEPPER` and `FINANCE_CREDENTIAL_KEY` (its own, from `TALLIED_DEMO_*` in `.env`), `FINANCE_BASE_URL=https://money-demo.markcheli.com`, `FINANCE_CORS_ORIGINS`, `FINANCE_DEMO_MODE=true`.
+- Fresh data: the server crontab restarts `tallied-demo` at 08:00 UTC each day, and the restart reseeds; the site answers 502 for the few seconds that takes.
+- Production shows the demo link when `FINANCE_DEMO_URL=https://money-demo.markcheli.com` is set on `tallied`.
+- NGINX: a server block for `money-demo.markcheli.com` proxying to `tallied-demo:8000`, with the wildcard certificate. DNS: a proxied A record like `money`'s. (`demo.money.markcheli.com` would need a second-level certificate, which is why the name is flat.)
+- Check after a deploy: `curl -s https://money-demo.markcheli.com/api/v1/auth/config` shows `"demo_mode":true`, a POST to `/api/v1/api-keys/` answers 403, and the login page's "Enter the demo" opens the Dashboard.

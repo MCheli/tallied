@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     dev_user_password: str = "tallied-admin-change-me"
     api_key_pepper: str = "tallied-api-key-pepper-change-in-production"
 
+    # Public demo (money-demo.markcheli.com): a separate deployment holding only the Claudius seed.
+    # Visitors sign in as demo_user_email with one click; nothing can be changed (app/demo.py).
+    demo_mode: bool = False
+    demo_user_email: str = "claudius@tallied.dev"
+    demo_url: str = ""  # set on the real deployment to show "See a live demo" on the login page
+
     # RSU sell-today estimate (household tax assumptions, editable per deployment)
     ltcg_rate: float = 0.15  # federal long-term capital gains
     stcg_rate: float = 0.37  # short-term = ordinary income (top bracket estimate)

@@ -80,7 +80,7 @@ onMounted(loadAll)
         <input v-model="newEmail" type="email" placeholder="your.email@example.com"
           class="flex-1 min-w-0 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400"
           @keyup.enter="addForwardingEmail" />
-        <button @click="addForwardingEmail" :disabled="busy || !newEmail.trim()"
+        <button v-demo-lock @click="addForwardingEmail" :disabled="busy || !newEmail.trim()"
           class="px-4 py-2 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
           Add
         </button>
@@ -94,7 +94,7 @@ onMounted(loadAll)
         <div v-for="addr in forwardingEmails" :key="addr.id"
           class="flex items-center justify-between gap-3 py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <span class="text-sm text-gray-900 dark:text-white min-w-0 truncate" :title="addr.email">{{ addr.email }}</span>
-          <button @click="removeForwardingEmail(addr.id)" class="text-xs text-red-500 hover:text-red-700 whitespace-nowrap">Remove</button>
+          <button v-demo-lock @click="removeForwardingEmail(addr.id)" class="text-xs text-red-500 hover:text-red-700 whitespace-nowrap">Remove</button>
         </div>
       </div>
     </div>

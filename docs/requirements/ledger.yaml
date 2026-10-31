@@ -1300,3 +1300,47 @@ requirements:
       - backend/tests/test_weekly_recap.py::test_recap_email_carries_the_month_pace_chart_as_an_inline_png
       - workers/weekly-recap/src/index.ts
 
+  - id: DEMO-001
+    title: A public, read-only demo on made-up data
+    job: platform
+    area: security
+    priority: p1
+    visible: true
+    done_means:
+      - "With FINANCE_DEMO_MODE=true, POST /auth/demo signs a visitor in as the demo persona with no password; outside demo mode it answers 404."
+      - "Every write route is refused with 403 and demo: true except sign-in/out, plan what-if and sprint, and the read-only SQL runner; a new write route is refused without being listed anywhere (deny by default)."
+      - "Tenant sessions run in READ ONLY transactions in demo mode, so a write that slipped past the middleware still fails in Postgres; the stock price lookup uses stored prices instead of fetching and caching."
+      - "Startup refuses demo mode when the database holds any user who is not a @tallied.dev persona, or when Anthropic or Google secrets are set."
+      - "Every page shows a banner saying Claudius Banks is made up and the data is generated; controls that write are disabled with an explanation (v-demo-lock), not hidden and not failing after a click."
+      - "Rate limits apply per visitor IP, responses carry X-Robots-Tag: noindex, and the container reseeds on every start (nightly restart)."
+    status: done
+    evidence:
+      - backend/tests/test_demo_mode.py::test_every_write_route_is_refused_in_demo_mode
+      - backend/tests/test_demo_mode.py::test_only_sign_in_and_calculations_may_write
+      - backend/tests/test_demo_mode.py::test_demo_sign_in_issues_a_session_for_the_persona
+      - backend/tests/test_demo_mode.py::test_demo_refuses_a_database_with_real_users
+      - backend/tests/test_demo_mode.py::test_demo_refuses_ai_and_sso_secrets
+      - backend/tests/test_demo_mode.py::test_demo_uses_the_seeded_price_and_never_fetches
+      - backend/tests/test_demo_mode.py::test_outside_demo_mode_nothing_changes
+      - backend/tests/test_e2e/test_demo_read_only.py::test_read_only_tenant_session_refuses_writes_and_allows_reads
+      - frontend/tests/demo-lock.spec.ts#disables a control that writes in the demo, says why, and swallows clicks
+      - artifacts/screens/demo/login/desktop.png
+      - artifacts/screens/demo/settings/desktop.png
+      - artifacts/screens/demo/dashboard/mobile.png
+
+  - id: LOGIN-001
+    title: The login page introduces Tallied and links to the demo
+    job: platform
+    area: auth
+    priority: p2
+    visible: true
+    done_means:
+      - "A dark hero with the headline, an illustrated collage of Tallied tiles (fictional figures, static, no API calls) and the main features sits beside the sign-in panel; on a phone the collage is hidden so sign-in is on the first screen."
+      - "When FINANCE_DEMO_URL is set, the panel shows 'Just looking? Try the live demo' linking to it; in demo mode the panel offers 'Enter the demo' instead of sign-in."
+    status: done
+    evidence:
+      - backend/tests/test_demo_mode.py::test_the_real_deployment_links_to_the_demo
+      - backend/tests/test_demo_mode.py::test_reads_work_and_pages_are_not_indexed
+      - artifacts/screens/login/desktop.png
+      - artifacts/screens/login/mobile.png
+      - artifacts/screens/demo/login/desktop.png

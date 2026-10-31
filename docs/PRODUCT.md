@@ -80,6 +80,17 @@ Seven pages, each answering one question:
 
 **Settings.** Accounts (name, type, group, active, in net worth), income records (all fields), SimpleFIN connection and per-account sync options, email forwarding addresses and receipt log, import history. Must never show a connection tab for a provider that does not work.
 
+## The public demo
+
+The owner shows Tallied in interviews and links it from www.markcheli.com, but the real deployment holds real finances and cannot be shown. So a second deployment, **money-demo.markcheli.com**, runs the same image in demo mode (`FINANCE_DEMO_MODE=true`) on its own Postgres container. That database holds only the Claudius Banks seed, rebuilt every time the container starts and every night, so its dates are always current.
+
+- **What a visitor gets:** the login page explains that Claudius is made up, and one button signs them in as him, with no account needed. Every page works, with a banner saying the data is generated. Planning what-ifs and "sprint to retirement" recompute live, and the Database page's SQL runner runs queries.
+- **What a visitor cannot do:** anything that would save or send something. The server refuses every write except signing in and out and those two calculations. A second layer runs every tenant session in a read-only Postgres transaction. The controls for those writes stay on the page but are disabled with "Not available in the demo", so the demo shows every feature without a button that pretends to work.
+- **What the demo never has:** a real person's data, AI keys, the SimpleFIN credential, Google sign-in, or a way to create API keys, database credentials, webhooks or email addresses. The demo refuses to start if its database contains any user who is not a `@tallied.dev` persona, or if AI or SSO secrets are set.
+- **How it is linked:** the real login page shows "Just looking? Try the live demo" when `FINANCE_DEMO_URL` is set, and PersonalWebsite lists the demo under its custom applications. The demo's responses carry `X-Robots-Tag: noindex`.
+
+**Login page.** A dark hero with the product's headline, an illustrated collage of Tallied tiles (fictional figures, static, no API calls) and the main features, beside the sign-in panel. On the real deployment the panel offers Google sign-in and the demo link; on the demo it offers "Enter the demo". On a phone the collage is hidden so sign-in is on the first screen.
+
 ## One source of truth
 
 Today the same quantity lives in several tables and pages disagree. The rule going forward:
@@ -122,7 +133,7 @@ Today the same quantity lives in several tables and pages disagree. The rule goi
 
 ## Explicitly later or never
 
-- **Never** (unless the owner changes this document): billing, invitations, public sign-up, per-tenant plans, a public API programme, multi-currency.
+- **Never** (unless the owner changes this document): billing, invitations, public sign-up (the read-only demo is not sign-up), per-tenant plans, a public API programme, multi-currency.
 - **Later**: a second bank provider through the provider interface; a review queue for email receipts; categorisation rules for SimpleFIN transactions; investment accounts beyond RSU and 401(k); a native mobile app (responsive web first).
 
 ## Decisions taken while drafting (confirm or change)

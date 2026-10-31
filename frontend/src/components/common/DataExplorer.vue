@@ -3,10 +3,12 @@ import { ref, computed, watch } from 'vue'
 import { useDataExplorer, PAGE_TABLES, type DataContext } from '../../composables/useDataExplorer'
 import { getFormConfig, type TableFormConfig } from '../../config/tableFormConfigs'
 import { api } from '../../api/client'
+import { useAppConfig } from '../../stores/appConfig'
 import type { SchemaResponse, SchemaTable as TableSchema, TablePreview as PreviewResponse } from '../../types'
 
 // ── State ────────────────────────────────────────────────────────────────────
 
+const appConfig = useAppConfig()
 const { isOpen, context, closeData } = useDataExplorer()
 
 const schema = ref<SchemaResponse | null>(null)
@@ -333,7 +335,7 @@ watch(isOpen, (open) => {
             <div class="flex items-center gap-2">
               <button
                 v-if="activeTable && mode === 'browse' && activeFormConfig"
-                @click="startCreate"
+                v-demo-lock @click="startCreate"
                 class="px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
               >Add New</button>
               <button
@@ -421,9 +423,9 @@ watch(isOpen, (open) => {
                     :key="idx"
                     :class="[
                       'border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50/60 dark:hover:bg-gray-800/30 transition-colors',
-                      activeFormConfig ? 'cursor-pointer' : ''
+                      activeFormConfig && !appConfig.demo ? 'cursor-pointer' : ''
                     ]"
-                    @click="activeFormConfig ? startEdit(row) : undefined"
+                    @click="activeFormConfig && !appConfig.demo ? startEdit(row) : undefined"
                   >
                     <td
                       v-for="col in previewData.columns"
@@ -447,7 +449,7 @@ watch(isOpen, (open) => {
                   <tr v-if="previewData.rows.length === 0">
                     <td :colspan="previewData.columns.length + (activeFormConfig ? 1 : 0)" class="px-4 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">
                       No rows found
-                      <button v-if="activeFormConfig" @click="startCreate" class="block mx-auto mt-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                      <button v-if="activeFormConfig" v-demo-lock @click="startCreate" class="block mx-auto mt-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
                         Add the first one
                       </button>
                     </td>
@@ -556,7 +558,7 @@ watch(isOpen, (open) => {
               <div class="flex items-center gap-2">
                 <button
                   v-if="mode === 'edit'"
-                  @click="deleteRecord"
+                  v-demo-lock @click="deleteRecord"
                   :disabled="deleting"
                   class="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors disabled:opacity-50"
                 >{{ deleting ? 'Deleting...' : 'Delete' }}</button>
@@ -567,7 +569,7 @@ watch(isOpen, (open) => {
                 <button @click="cancelForm"
                   class="px-4 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 >Cancel</button>
-                <button @click="saveRecord" :disabled="saving"
+                <button v-demo-lock @click="saveRecord" :disabled="saving"
                   class="px-4 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
                 >{{ saving ? 'Saving...' : mode === 'create' ? 'Create' : 'Save Changes' }}</button>
               </div>

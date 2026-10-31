@@ -144,7 +144,7 @@ const inputClass = 'w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300
         <InfoTooltip text="One record per tax year. These feed the Income page, the Dashboard's compensation tiles and the Planning engine. Add every box you have; a blank field is stored as unknown." />
       </h3>
       <button
-        @click="showNewForm ? cancelForm() : startNew()"
+        v-demo-lock @click="showNewForm ? cancelForm() : startNew()"
         class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors font-medium"
       >
         {{ showNewForm ? 'Cancel' : 'Add W-2' }}
@@ -167,7 +167,7 @@ const inputClass = 'w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300
         </div>
       </div>
       <div class="flex gap-2">
-        <button @click="save" class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors font-medium">
+        <button v-demo-lock @click="save" class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors font-medium">
           {{ editingYear !== null ? 'Save changes' : 'Save' }}
         </button>
         <button @click="cancelForm" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
@@ -206,7 +206,7 @@ const inputClass = 'w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300
             <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ currency(total401k(w2)) }}</td>
             <td class="px-5 py-3 text-right text-gray-900 dark:text-white whitespace-nowrap">{{ currency(takeHome(w2)) }}</td>
             <td class="px-5 py-3 text-right">
-              <button @click="startEdit(w2)" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 text-sm font-medium">Edit</button>
+              <button v-demo-lock @click="startEdit(w2)" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 text-sm font-medium">Edit</button>
             </td>
           </tr>
           <tr v-if="w2Records.length === 0 && !loading">

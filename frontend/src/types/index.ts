@@ -1195,7 +1195,7 @@ export interface AuthUser {
   tenants: AuthTenant[]
 }
 export interface AuthMeResponse { user: AuthUser | null; authenticated: boolean }
-export interface AuthConfig { dev_mode: boolean; google_sso: boolean }
+export interface AuthConfig { dev_mode: boolean; google_sso: boolean; demo_mode: boolean; demo_url: string | null }
 
 // ── Document import ──────────────────────────────────────────────────────────
 export interface ImportConfig { context: string; guidance: string; examples: string[]; expected_fields: string[] }

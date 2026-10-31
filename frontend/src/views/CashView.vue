@@ -292,7 +292,7 @@ LIMIT 25 OFFSET :offset`,
         class="px-3 py-2 min-h-[40px] text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
         Data
       </button>
-      <button @click="syncBalances" :disabled="syncing"
+      <button v-demo-lock @click="syncBalances" :disabled="syncing"
         class="px-3 py-2 min-h-[40px] text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-50">
         {{ syncing ? 'Syncing...' : 'Sync' }}
       </button>

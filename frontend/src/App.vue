@@ -5,6 +5,7 @@ import ImportModal from './components/import/ImportModal.vue'
 import TenantSwitcher from './components/common/TenantSwitcher.vue'
 import { useAuthStore } from './stores/auth'
 import { useThemeStore } from './stores/theme'
+import { useAppConfig } from './stores/appConfig'
 import {
   LayoutDashboard,
   LogOut,
@@ -29,12 +30,14 @@ import {
   PanelLeftOpen,
   LogIn,
   CalendarDays,
+  FlaskConical,
 } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const theme = useThemeStore()
+const appConfig = useAppConfig()
 theme.init()
 const dark = computed(() => theme.dark)
 
@@ -49,6 +52,7 @@ function checkMobile() {
 }
 
 onMounted(() => {
+  void appConfig.load()
   auth.checkAuth()
   checkMobile()
   window.addEventListener('resize', checkMobile)
@@ -287,6 +291,13 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
 
     <!-- Main Content -->
     <main class="flex-1 min-w-0 overflow-y-auto overflow-x-hidden max-md:pt-14">
+      <div v-if="appConfig.demo" data-testid="demo-banner"
+        class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-6 py-2 text-xs sm:text-sm bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-100 border-b border-amber-200 dark:border-amber-900">
+        <FlaskConical class="w-4 h-4 flex-shrink-0" />
+        <span class="min-w-0 flex-1"><strong class="font-semibold">Live demo.</strong>
+          Claudius Banks is a made-up person and every number here is generated. Look around; nothing can be changed.</span>
+        <a href="https://www.markcheli.com" class="font-medium underline underline-offset-2 whitespace-nowrap">Built by Mark Cheli</a>
+      </div>
       <div class="p-4 sm:p-6 max-w-[1600px] mx-auto min-w-0">
         <RouterView />
       </div>

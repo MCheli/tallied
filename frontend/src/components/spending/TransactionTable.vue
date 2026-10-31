@@ -164,11 +164,11 @@ const totalPages = computed(() => Math.ceil(props.total / props.pageSize))
                 </label>
                 <p v-if="editError" class="text-[11px] text-red-600 dark:text-red-400 whitespace-normal">{{ editError }}</p>
                 <div class="flex gap-1.5">
-                  <button @click="saveEdit(tx)" :disabled="saving" class="text-xs px-2.5 py-1 rounded bg-indigo-600 text-white disabled:opacity-50">{{ saving ? 'Saving…' : 'Save' }}</button>
+                  <button v-demo-lock @click="saveEdit(tx)" :disabled="saving" class="text-xs px-2.5 py-1 rounded bg-indigo-600 text-white disabled:opacity-50">{{ saving ? 'Saving…' : 'Save' }}</button>
                   <button @click="editingId = null" class="text-xs px-2.5 py-1 rounded border border-gray-300 dark:border-gray-700">Cancel</button>
                 </div>
               </div>
-              <button v-else @click="startEdit(tx)" :title="sourceLabel(tx.category_source) || 'Set a category'"
+              <button v-else v-demo-lock @click="startEdit(tx)" :title="sourceLabel(tx.category_source) || 'Set a category'"
                 class="text-left hover:text-indigo-600 dark:hover:text-indigo-400 underline decoration-dotted decoration-gray-300 dark:decoration-gray-600 underline-offset-2">
                 {{ tx.category || 'Uncategorized' }}
               </button>

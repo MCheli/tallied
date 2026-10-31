@@ -190,7 +190,7 @@ const cellInputClass = 'w-full min-w-[8rem] px-2 py-1 text-sm rounded border bor
     <div class="flex flex-wrap items-center justify-between gap-2 px-5 py-4 border-b border-gray-200 dark:border-gray-800">
       <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Accounts</h3>
       <button
-        @click="showNewAccountForm ? cancelNewAccount() : (showNewAccountForm = true)"
+        v-demo-lock @click="showNewAccountForm ? cancelNewAccount() : (showNewAccountForm = true)"
         class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors font-medium"
       >
         {{ showNewAccountForm ? 'Cancel' : 'Add Account' }}
@@ -235,7 +235,7 @@ const cellInputClass = 'w-full min-w-[8rem] px-2 py-1 text-sm rounded border bor
           <input v-model="accountForm.notes" :class="inputClass" />
         </div>
         <div class="flex items-end gap-2">
-          <button @click="saveNewAccount" class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors font-medium">Save</button>
+          <button v-demo-lock @click="saveNewAccount" class="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors font-medium">Save</button>
           <button @click="cancelNewAccount" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
         </div>
       </div>
@@ -299,10 +299,10 @@ const cellInputClass = 'w-full min-w-[8rem] px-2 py-1 text-sm rounded border bor
               </td>
               <td class="px-3 py-3 text-right">
                 <div class="flex gap-3 justify-end">
-                  <button @click="startEditAccount(acct)" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 text-sm font-medium">
+                  <button v-demo-lock @click="startEditAccount(acct)" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 text-sm font-medium">
                     Edit
                   </button>
-                  <button @click="startDeleteAccount(acct)" class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm font-medium">
+                  <button v-demo-lock @click="startDeleteAccount(acct)" class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm font-medium">
                     Delete
                   </button>
                 </div>
@@ -336,7 +336,7 @@ const cellInputClass = 'w-full min-w-[8rem] px-2 py-1 text-sm rounded border bor
               <td class="px-5 py-2 text-right text-gray-400 text-sm">—</td>
               <td class="px-5 py-2 text-right">
                 <div class="flex gap-1 justify-end">
-                  <button @click="saveEditAccount" class="px-2 py-1 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">Save</button>
+                  <button v-demo-lock @click="saveEditAccount" class="px-2 py-1 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">Save</button>
                   <button @click="cancelEditAccount" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
                 </div>
               </td>
@@ -399,7 +399,7 @@ const cellInputClass = 'w-full min-w-[8rem] px-2 py-1 text-sm rounded border bor
             Cancel
           </button>
           <button
-            @click="confirmDeleteAccount"
+            v-demo-lock @click="confirmDeleteAccount"
             :disabled="deleteBusy || deleteRelatedCounts === null || (hasRelatedRecords() && !deleteCascade)"
             class="px-3 py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:hover:bg-red-600"
           >

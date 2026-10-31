@@ -331,6 +331,7 @@ export const api = {
     me: () => fetchJsonNoRetry<AuthMeResponse>('/auth/me'),
     login: (email: string, password: string) =>
       fetchJsonNoRetry<AuthMeResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+    demo: () => fetchJsonNoRetry<AuthMeResponse>('/auth/demo', { method: 'POST' }),
     logout: () => fetchJsonNoRetry<{ message: string }>('/auth/logout', { method: 'POST' }),
     refresh: () => fetchJsonNoRetry<AuthMeResponse>('/auth/refresh', { method: 'POST' }),
     selectTenant: (tenant_id: number) =>

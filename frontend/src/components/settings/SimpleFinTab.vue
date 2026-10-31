@@ -188,7 +188,7 @@ const selectClass = 'px-2 py-1 text-xs rounded border border-gray-300 dark:borde
         <textarea v-model="setupToken" placeholder="Paste base64 setup token here" rows="3"
           class="w-full px-3 py-2 text-xs font-mono border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></textarea>
         <div class="flex justify-end">
-          <button @click="connect" :disabled="connecting || !setupToken.trim()"
+          <button v-demo-lock @click="connect" :disabled="connecting || !setupToken.trim()"
             class="px-4 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
             {{ connecting ? 'Connecting...' : 'Connect' }}
           </button>
@@ -210,15 +210,15 @@ const selectClass = 'px-2 py-1 text-xs rounded border border-gray-300 dark:borde
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
-            <button @click="syncAll" :disabled="syncing"
+            <button v-demo-lock @click="syncAll" :disabled="syncing"
               class="px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
               {{ syncing ? 'Syncing...' : 'Sync now' }}
             </button>
-            <button @click="openRefresh" :disabled="refreshing"
+            <button v-demo-lock @click="openRefresh" :disabled="refreshing"
               class="px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg disabled:opacity-50">
               Refresh credentials
             </button>
-            <button @click="disconnect"
+            <button v-demo-lock @click="disconnect"
               class="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg">
               Disconnect
             </button>
@@ -233,7 +233,7 @@ const selectClass = 'px-2 py-1 text-xs rounded border border-gray-300 dark:borde
             class="w-full px-3 py-2 text-xs font-mono border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></textarea>
           <div class="flex items-center justify-end gap-2">
             <button @click="cancelRefresh" class="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">Cancel</button>
-            <button @click="refreshCredentials" :disabled="refreshing || !refreshToken.trim()"
+            <button v-demo-lock @click="refreshCredentials" :disabled="refreshing || !refreshToken.trim()"
               class="px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
               {{ refreshing ? 'Refreshing...' : 'Refresh' }}
             </button>

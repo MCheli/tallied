@@ -95,6 +95,19 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /** The public demo: one click signs in as the demo persona (server only allows it in demo mode). */
+  async function demoLogin(): Promise<string | null> {
+    try {
+      const data = await api.auth.demo()
+      user.value = data.user
+      authenticated.value = true
+      rememberSession(true)
+      return null
+    } catch (e) {
+      return apiErrorMessage(e, 'Could not open the demo')
+    }
+  }
+
   async function logout() {
     try { await api.auth.logout() } catch { /* the cookie is cleared server-side even on a stale session */ }
     rememberSession(false)
@@ -113,5 +126,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { user, loading, authenticated, checkAuth, login, logout, selectTenant, refreshOnce }
+  return { user, loading, authenticated, checkAuth, login, demoLogin, logout, selectTenant, refreshOnce }
 })

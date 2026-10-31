@@ -300,7 +300,7 @@ const inputClass = 'w-full px-3 py-2 min-h-10 text-sm border border-gray-200 dar
       tooltip="<strong>Assets</strong><br>Vehicles with an estimated value, depreciation since purchase, and a value history. Values are Claude's estimate from year, make, model, mileage and condition; each one is labelled with its confidence, model and date."
     >
       <button @click="openData('assets')" class="px-3 py-2 min-h-10 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">Data</button>
-      <button v-if="!showAddForm" @click="showAddForm = true; resetAddForm()" class="px-4 py-2 min-h-10 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors">Add Vehicle</button>
+      <button v-if="!showAddForm" v-demo-lock @click="showAddForm = true; resetAddForm()" class="px-4 py-2 min-h-10 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors">Add Vehicle</button>
     </PageHeader>
 
     <div v-if="loading" class="text-sm text-gray-400">Loading assets...</div>
@@ -335,7 +335,7 @@ const inputClass = 'w-full px-3 py-2 min-h-10 text-sm border border-gray-200 dar
         </div>
         <p class="text-[11px] text-gray-400 mb-3">After saving, a value is estimated right away. The purchase date lets the chart start at what you paid.</p>
         <div class="flex flex-wrap items-center gap-3">
-          <button @click="addVehicle" :disabled="addLoading" class="px-4 py-2 min-h-10 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50">{{ addLoading ? 'Saving…' : 'Save' }}</button>
+          <button v-demo-lock @click="addVehicle" :disabled="addLoading" class="px-4 py-2 min-h-10 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50">{{ addLoading ? 'Saving…' : 'Save' }}</button>
           <button @click="showAddForm = false" :disabled="addLoading" class="px-4 py-2 min-h-10 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg">Cancel</button>
         </div>
       </div>
@@ -420,11 +420,11 @@ const inputClass = 'w-full px-3 py-2 min-h-10 text-sm border border-gray-200 dar
               <div v-if="v.notes" class="text-xs text-gray-500 dark:text-gray-400 mb-3 italic">{{ v.notes }}</div>
 
               <div class="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
-                <button @click="refreshValue(v.id)" :disabled="refreshingId === v.id" class="px-3 py-2 min-h-10 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-lg disabled:opacity-50">
+                <button v-demo-lock @click="refreshValue(v.id)" :disabled="refreshingId === v.id" class="px-3 py-2 min-h-10 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-lg disabled:opacity-50">
                   {{ refreshingId === v.id ? 'Estimating…' : 'Refresh Value' }}
                 </button>
-                <button @click="startEdit(v)" class="px-3 py-2 min-h-10 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg">Edit</button>
-                <button v-if="confirmDeleteId !== v.id" @click="confirmDeleteId = v.id" class="px-3 py-2 min-h-10 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg">Delete</button>
+                <button v-demo-lock @click="startEdit(v)" class="px-3 py-2 min-h-10 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg">Edit</button>
+                <button v-if="confirmDeleteId !== v.id" v-demo-lock @click="confirmDeleteId = v.id" class="px-3 py-2 min-h-10 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg">Delete</button>
                 <template v-else>
                   <button @click="deleteVehicle(v.id)" class="px-3 py-2 min-h-10 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg">Confirm delete</button>
                   <button @click="confirmDeleteId = null" class="px-3 py-2 min-h-10 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
@@ -444,7 +444,7 @@ const inputClass = 'w-full px-3 py-2 min-h-10 text-sm border border-gray-200 dar
               </div>
               <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-4">Notes<textarea v-model="editForm.notes" rows="2" :class="inputClass" class="mt-1"></textarea></label>
               <div class="flex flex-wrap items-center gap-3">
-                <button @click="saveEdit(v.id)" :disabled="editLoading" class="px-4 py-2 min-h-10 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50">{{ editLoading ? 'Saving…' : 'Save' }}</button>
+                <button v-demo-lock @click="saveEdit(v.id)" :disabled="editLoading" class="px-4 py-2 min-h-10 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50">{{ editLoading ? 'Saving…' : 'Save' }}</button>
                 <button @click="editingId = null" :disabled="editLoading" class="px-4 py-2 min-h-10 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg">Cancel</button>
               </div>
             </template>
@@ -454,7 +454,7 @@ const inputClass = 'w-full px-3 py-2 min-h-10 text-sm border border-gray-200 dar
 
       <div v-if="!hasVehicles && !showAddForm" class="text-center py-16">
         <div class="text-gray-400 dark:text-gray-500 text-sm mb-4">No vehicles tracked yet.</div>
-        <button @click="showAddForm = true; resetAddForm()" class="px-4 py-2 min-h-10 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">Add Vehicle</button>
+        <button v-demo-lock @click="showAddForm = true; resetAddForm()" class="px-4 py-2 min-h-10 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg">Add Vehicle</button>
       </div>
     </template>
 

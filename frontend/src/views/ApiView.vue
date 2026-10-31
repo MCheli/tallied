@@ -291,7 +291,7 @@ onMounted(() => {
               <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Manage programmatic access to your data</p>
             </div>
             <button
-              @click="showCreate = !showCreate"
+              v-demo-lock @click="showCreate = !showCreate"
               class="min-h-10 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
             >{{ showCreate ? 'Cancel' : 'New Key' }}</button>
           </div>
@@ -315,7 +315,7 @@ onMounted(() => {
                   <option value="admin">Admin (also the platform routes)</option>
                 </select>
               </div>
-              <button @click="createKey" :disabled="creating || !newName.trim()"
+              <button v-demo-lock @click="createKey" :disabled="creating || !newName.trim()"
                 class="w-full min-h-10 px-3 py-2 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors">
                 {{ creating ? 'Creating...' : 'Create API Key' }}
               </button>
@@ -352,7 +352,7 @@ onMounted(() => {
                   <span v-if="key.last_used" class="ml-2 font-sans">Last used {{ fmtDate(key.last_used) }}</span>
                 </div>
               </div>
-              <button v-if="key.is_active" @click="revokeKey(key.id)"
+              <button v-if="key.is_active" v-demo-lock @click="revokeKey(key.id)"
                 class="min-h-10 px-2 text-xs text-red-500 hover:text-red-600 font-medium transition-colors shrink-0">
                 Revoke
               </button>
@@ -483,7 +483,7 @@ const data = await res.json();</pre>
               <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">An HTTP POST to your URL when a sync completes or an import is confirmed</p>
             </div>
             <button
-              @click="showCreateWebhook = !showCreateWebhook"
+              v-demo-lock @click="showCreateWebhook = !showCreateWebhook"
               class="min-h-10 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
             >{{ showCreateWebhook ? 'Cancel' : 'New Webhook' }}</button>
           </div>
@@ -511,7 +511,7 @@ const data = await res.json();</pre>
                   </label>
                 </div>
               </div>
-              <button @click="createWebhook" :disabled="creatingWebhook || !newWebhookUrl.trim() || newWebhookEvents.length === 0"
+              <button v-demo-lock @click="createWebhook" :disabled="creatingWebhook || !newWebhookUrl.trim() || newWebhookEvents.length === 0"
                 class="w-full min-h-10 px-3 py-2 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors">
                 {{ creatingWebhook ? 'Creating...' : 'Create Webhook' }}
               </button>
@@ -555,17 +555,17 @@ const data = await res.json();</pre>
                   </div>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
-                  <button @click="testWebhook(wh.id)"
+                  <button v-demo-lock @click="testWebhook(wh.id)"
                     :disabled="testingId === wh.id"
                     class="min-h-10 px-2 text-xs text-indigo-500 hover:text-indigo-600 font-medium transition-colors disabled:opacity-50">
                     {{ testingId === wh.id ? 'Sending...' : 'Test' }}
                   </button>
-                  <button @click="toggleWebhook(wh)"
+                  <button v-demo-lock @click="toggleWebhook(wh)"
                     class="min-h-10 px-2 text-xs font-medium transition-colors"
                     :class="wh.is_active ? 'text-amber-500 hover:text-amber-600' : 'text-green-500 hover:text-green-600'">
                     {{ wh.is_active ? 'Pause' : 'Resume' }}
                   </button>
-                  <button @click="deleteWebhook(wh.id)"
+                  <button v-demo-lock @click="deleteWebhook(wh.id)"
                     class="min-h-10 px-2 text-xs text-red-500 hover:text-red-600 font-medium transition-colors">
                     Delete
                   </button>

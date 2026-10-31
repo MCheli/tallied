@@ -60,7 +60,12 @@ def get_tenant_context(request: Request) -> TenantContext:
 
     from app.middleware.rate_limit import rate_limiter
 
-    rl_key = f"user:{ctx.user_id}"
+    if settings.demo_mode:  # every visitor is the same demo user; limit each visitor instead
+        from app.demo import client_ip
+
+        rl_key = f"ip:{client_ip(request)}"
+    else:
+        rl_key = f"user:{ctx.user_id}"
     rate_limiter.check(rl_key)
     request.state.rate_limit_key = rl_key
     return ctx
@@ -159,7 +164,7 @@ def get_tenant_db(
     from app.services.tenant_service import tenant_session
 
     try:
-        with tenant_session(ctx.tenant_schema) as db:
+        with tenant_session(ctx.tenant_schema, read_only=settings.demo_mode) as db:
             yield db
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid tenant schema")

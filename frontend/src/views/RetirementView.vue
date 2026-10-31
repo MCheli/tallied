@@ -168,7 +168,7 @@ const allocationPieOption = computed(() => {
       tooltip="<strong>401(k)</strong><br>Balances, rates and holdings come from the newest statement you imported; an older statement only adds a history point. The balance here is also what net worth and Planning use for the account."
     >
       <button @click="openData('retirement')" class="min-h-10 px-4 py-2 text-xs font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">Data</button>
-      <button @click="openImport({ context: 'retirement', onComplete: fetchData })" class="min-h-10 px-4 py-2 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Import</button>
+      <button v-demo-lock @click="openImport({ context: 'retirement', onComplete: fetchData })" class="min-h-10 px-4 py-2 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Import</button>
     </PageHeader>
 
     <div v-if="loading" class="text-sm text-gray-400">Loading retirement data...</div>
@@ -225,7 +225,7 @@ const allocationPieOption = computed(() => {
             <SqlViewerModal :open="showContributionRatesSql" :sql="SQL.contributionRates" title="Contribution Rates" :tables="['retirement_accounts']" @close="showContributionRatesSql = false" />
             <div class="flex items-center justify-between mb-3 pr-8 gap-2">
               <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Contribution Rates <InfoTooltip :text="`<strong>Contribution rates</strong><br>Your deferral elections as a percentage of salary, from the statement; edit them here when you change them with ${providerName}.<br><br>The IRS employee deferral limit is ${money(IRS_401K_LIMIT.amount)} for ${IRS_401K_LIMIT.year}.`" /></h3>
-              <button v-if="!editingRates" @click="startEditRates" class="min-h-10 px-2 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Edit</button>
+              <button v-if="!editingRates" v-demo-lock @click="startEditRates" class="min-h-10 px-2 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Edit</button>
             </div>
             <template v-if="!editingRates">
               <div class="grid grid-cols-2 gap-4">
@@ -244,7 +244,7 @@ const allocationPieOption = computed(() => {
                 <p class="text-xs text-gray-400">Total: {{ editPretax + editRoth }}% + employer match</p>
                 <div class="flex gap-2">
                   <button @click="editingRates = false" class="min-h-10 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">Cancel</button>
-                  <button @click="saveRates" class="min-h-10 px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Save</button>
+                  <button v-demo-lock @click="saveRates" class="min-h-10 px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Save</button>
                 </div>
               </div>
             </template>

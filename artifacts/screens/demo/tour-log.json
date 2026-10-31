@@ -1,0 +1,107 @@
+{
+  "capturedAt": "2026-10-31T13:13:13.688Z",
+  "base": "http://localhost:5176",
+  "theme": "light",
+  "routes": {
+    "login/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": []
+    },
+    "dashboard/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5176/",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "planning/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5176/planning",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "developer/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5176/developer",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "settings/mobile": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5176/settings",
+      "pageScrollWidth": {
+        "main": 390,
+        "viewport": 390
+      }
+    },
+    "login/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": []
+    },
+    "dashboard/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5176/",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "planning/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5176/planning",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "developer/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5176/developer",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    },
+    "settings/desktop": {
+      "consoleErrors": [],
+      "failedRequests": [],
+      "badResponses": [],
+      "overflow": [],
+      "finalUrl": "http://localhost:5176/settings",
+      "pageScrollWidth": {
+        "main": 1216,
+        "viewport": 1440
+      }
+    }
+  }
+}

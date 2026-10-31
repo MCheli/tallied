@@ -69,7 +69,15 @@ async def lifespan(app: FastAPI):
             "This should NEVER be enabled in production. Set FINANCE_DEV_MODE=false."
         )
 
-    if not settings.dev_mode and not settings.google_client_id:
+    if settings.demo_mode:
+        from app.database import SessionLocal
+        from app.demo import check_demo_database, check_demo_settings
+
+        check_demo_settings()
+        with SessionLocal() as db:
+            check_demo_database(db)
+        logger.info("DEMO MODE: read-only, one-click sign-in as %s", settings.demo_user_email)
+    elif not settings.dev_mode and not settings.google_client_id:
         logger.warning("Neither dev mode nor Google SSO is configured. Users will not be able to log in.")
 
     # Platform tables are created by Alembic (backend/entrypoint.sh runs
@@ -231,6 +239,11 @@ class RateLimitHeaderMiddleware(BaseHTTPMiddleware):
 
 
 v1.add_middleware(RateLimitHeaderMiddleware)
+
+from app.demo import DemoReadOnlyMiddleware, NoIndexMiddleware
+
+v1.add_middleware(DemoReadOnlyMiddleware)  # both act only when settings.demo_mode is on
+app.add_middleware(NoIndexMiddleware)
 
 from app.middleware.usage_logger import UsageLoggerMiddleware
 
