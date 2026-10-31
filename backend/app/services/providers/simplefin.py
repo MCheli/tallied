@@ -110,6 +110,14 @@ def normalize(raw: dict) -> ProviderSnapshot:
     return ProviderSnapshot(accounts=accounts, warnings=warnings)
 
 
+def _require_public_https(url: str, what: str) -> None:
+    """Refuse a SimpleFIN URL that is not https to a public host (no localhost, LAN or Docker addresses)."""
+    from app.services.webhook_service import validate_webhook_url
+
+    if not url.startswith("https://") or validate_webhook_url(url) is not None:
+        raise ProviderError(f"The SimpleFIN {what} must be an https URL on a public host.", status_code=400)
+
+
 class SimpleFinProvider:
     name = "simplefin"
     display_name = "SimpleFIN"
@@ -125,6 +133,7 @@ class SimpleFinProvider:
             raise ProviderError("Setup token is not valid base64. Paste the entire token from SimpleFIN.", status_code=400)
         if not claim_url.startswith("https://"):
             raise ProviderError("Decoded setup token doesn't look like a claim URL.", status_code=400)
+        _require_public_https(claim_url, "claim URL")
         return claim_url
 
     async def claim_setup_token(self, setup_token: str) -> str:
@@ -132,12 +141,16 @@ class SimpleFinProvider:
         claim_url = self.decode_setup_token(setup_token)
         timeout = aiohttp.ClientTimeout(total=30)
         async with aiohttp.ClientSession(timeout=timeout) as s:
-            async with s.post(claim_url, headers={"Content-Length": "0", "User-Agent": USER_AGENT}) as r:
+            # No redirects, and the body is never echoed: a crafted token must not turn this into a proxy
+            # that fetches internal URLs and hands back what they say.
+            async with s.post(claim_url, headers={"Content-Length": "0", "User-Agent": USER_AGENT},
+                              allow_redirects=False) as r:
                 body = (await r.text()).strip()
                 if r.status != 200:
-                    raise ProviderError(f"SimpleFIN rejected the setup token ({r.status}): {body[:200]}", status_code=400)
+                    raise ProviderError(f"SimpleFIN rejected the setup token (HTTP {r.status}).", status_code=400)
                 if not body.startswith("https://"):
                     raise ProviderError("SimpleFIN response wasn't an access URL; the token may already be used.", status_code=400)
+                _require_public_https(body, "access URL")
                 return body
 
     # ── data ──────────────────────────────────────────────────────────────
@@ -149,10 +162,11 @@ class SimpleFinProvider:
         end = int(datetime.now(timezone.utc).timestamp())
         start = end - HISTORY_DAYS * 24 * 3600
         url = f"{p.scheme}://{p.hostname}{p.path}/accounts?start-date={start}&end-date={end}&pending=1"
+        _require_public_https(url, "access URL")
         auth = aiohttp.BasicAuth(p.username, p.password)
         timeout = aiohttp.ClientTimeout(total=120)
         async with aiohttp.ClientSession(timeout=timeout) as s:
-            async with s.get(url, auth=auth, headers={"User-Agent": USER_AGENT}) as r:
+            async with s.get(url, auth=auth, headers={"User-Agent": USER_AGENT}, allow_redirects=False) as r:
                 if r.status in (401, 403):
                     raise ProviderError("SimpleFIN access URL was revoked. Re-claim a fresh setup token in Settings.", status_code=401)
                 if r.status >= 400:

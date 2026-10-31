@@ -247,3 +247,30 @@ def test_google_sign_in_requires_a_verified_email(client, db_session):
     res = _google_callback(client, {"email": "unverified@test.dev", "email_verified": False})
     assert res.status_code == 403
     assert db_session.query(User).filter_by(email="unverified@test.dev").first() is None
+
+
+@pytest.mark.parametrize("claim_url", [
+    "https://127.0.0.1/claim",
+    "https://tallied-db:5432/claim",
+    "https://10.0.0.5/claim",
+    "https://169.254.169.254/latest/meta-data",
+    "https://localhost/claim",
+])
+def test_simplefin_setup_token_cannot_point_at_internal_hosts(claim_url):
+    import base64
+
+    from app.services.providers.base import ProviderError
+    from app.services.providers.simplefin import SimpleFinProvider
+
+    with pytest.raises(ProviderError) as exc:
+        SimpleFinProvider.decode_setup_token(base64.b64encode(claim_url.encode()).decode())
+    assert exc.value.status_code == 400
+
+
+def test_simplefin_setup_token_accepts_a_public_claim_url():
+    import base64
+
+    from app.services.providers.simplefin import SimpleFinProvider
+
+    url = "https://8.8.8.8/simplefin/claim/abc"
+    assert SimpleFinProvider.decode_setup_token(base64.b64encode(url.encode()).decode()) == url
