@@ -190,6 +190,7 @@ requirements:
       - "`make seed-test` rebuilds the Claudius tenant with transactions and snapshots whose latest month is the month it runs, so every page's default period has data."
       - "The seed contains no real person's address, employer plan name or figures; the persona matches CLAUDE.md and fixtures/test_documents/MANIFEST.md (456 Oak Street, Springfield MA)."
       - "The seed's stock price row survives page loads in tests (the price cache does not delete non-yahoo rows for today when a yahoo row cannot be fetched)."
+      - "Because the public demo runs on it (DEMO-001), the seed is one simulation whose pages agree: biweekly paychecks through today, about $5K a month of spending across 30+ categories with excluded payments, weekly balances ending today, W-2s and RSU vests from the same paychecks and releases, and nothing dated in the future."
     status: done
     evidence:
       - backend/tests/test_data_rules.py::test_seed_months_ago_helper
