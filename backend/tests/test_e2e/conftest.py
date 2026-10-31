@@ -35,7 +35,7 @@ from app.config import settings  # noqa: E402
 
 
 def _hash_password(password: str) -> str:
-    from app.api.auth import _hash_password as app_hash
+    from app.services.passwords import hash_password as app_hash
 
     return app_hash(password)
 

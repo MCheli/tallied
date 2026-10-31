@@ -255,10 +255,10 @@ def seed(reset=False, offline=False):
         print("Seeding Claudius Banks test data...")
 
         # ── User + Tenant ──
-        import hashlib
+        from app.services.passwords import hash_password
         user = User(
             email="claudius@tallied.dev",
-            password_hash=hashlib.sha256(b"demo123").hexdigest(),
+            password_hash=hash_password("demo123"),
             display_name="Claudius Banks",
             auth_provider="local",
         )

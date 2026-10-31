@@ -819,6 +819,22 @@ requirements:
       - backend/app/api/email_import.py
     notes:
       - "2026-10-29: hmac.compare_digest in email_import; validate_webhook_url in webhook_service."
+  - id: NFR-SEC-004
+    title: Passwords hashed with argon2id; legacy SHA-256 hashes upgraded on login
+    job: platform
+    area: security
+    priority: p0
+    done_means:
+      - "New local passwords are argon2id (`$argon2id$`, salted); a stored legacy unsalted SHA-256 hex digest still verifies and is rewritten as argon2id on the first successful login; a wrong password fails and leaves the hash alone; a Google-only user (empty hash) can never password-login (unit tests on POST /auth/login). No SHA-256 fallback remains for new hashes (CodeQL alert #13)."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_password_hashing.py::test_new_hash_is_argon2id_and_round_trips
+      - backend/tests/test_api/test_password_hashing.py::test_login_with_legacy_hash_upgrades_to_argon2id
+      - backend/tests/test_api/test_password_hashing.py::test_wrong_password_on_legacy_hash_fails_and_keeps_hash
+      - backend/tests/test_api/test_password_hashing.py::test_google_only_user_cannot_password_login_and_is_untouched
+      - backend/app/services/passwords.py
+    notes:
+      - "2026-10-31: services/passwords.py; the seed writes argon2id. users.password_hash is an unbounded VARCHAR, so no migration. The legacy SHA-256 verify path stays until no legacy hashes remain; API keys keep peppered HMAC-SHA-256 (high-entropy tokens)."
   - id: NFR-MIG-001
     title: Migrations build an empty database
     job: platform
