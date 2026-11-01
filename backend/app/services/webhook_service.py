@@ -1,9 +1,12 @@
 """Webhook delivery service — signs and POSTs events to subscriber URLs."""
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
+import socket
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select
@@ -15,6 +18,41 @@ logger = logging.getLogger("tallied.webhooks")
 
 MAX_FAILURES = 10
 DELIVERY_TIMEOUT = 10  # seconds
+TEST_FAILED = "Delivery failed: the URL did not accept the POST with a 2xx response."
+
+
+class WebhookTargetError(Exception):
+    """The delivery URL does not resolve to a public host."""
+
+
+def _resolve_public(url: str) -> tuple[str | None, list]:
+    """Return (problem, addresses); `problem` is None when every address `url` resolves to is public."""
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except ValueError:
+        return "Invalid URL", []
+    if parsed.scheme not in ("http", "https"):
+        return "Webhook URL must start with http:// or https://", []
+    host = parsed.hostname
+    if not host:
+        return "Webhook URL must include a host", []
+    if host in ("localhost",) or host.endswith(".localhost") or host.endswith(".local") or host.endswith(".internal"):
+        return "Webhook URL must point at a public host", []
+    try:
+        addresses = [ipaddress.ip_address(host)]
+    except ValueError:
+        try:
+            infos = socket.getaddrinfo(host, port or (443 if parsed.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+        except socket.gaierror:
+            return "Webhook host could not be resolved", []
+        addresses = list(dict.fromkeys(ipaddress.ip_address(info[4][0]) for info in infos))
+    if not addresses:
+        return "Webhook host could not be resolved", []
+    for addr in addresses:
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_reserved or addr.is_unspecified:
+            return "Webhook URL must point at a public host", []
+    return None, addresses
 
 
 def validate_webhook_url(url: str) -> str | None:
@@ -23,33 +61,33 @@ def validate_webhook_url(url: str) -> str | None:
     Accepts http(s) URLs to public hosts only, so the test and delivery POSTs
     cannot be pointed at localhost, the database, or other private services.
     """
-    import ipaddress
-    import socket
-    from urllib.parse import urlparse
+    return _resolve_public(url)[0]
 
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return "Invalid URL"
-    if parsed.scheme not in ("http", "https"):
-        return "Webhook URL must start with http:// or https://"
-    host = parsed.hostname
-    if not host:
-        return "Webhook URL must include a host"
-    if host in ("localhost",) or host.endswith(".localhost") or host.endswith(".local") or host.endswith(".internal"):
-        return "Webhook URL must point at a public host"
-    try:
-        addresses = {ipaddress.ip_address(host)}
-    except ValueError:
-        try:
-            infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
-        except socket.gaierror:
-            return "Webhook host could not be resolved"
-        addresses = {ipaddress.ip_address(info[4][0]) for info in infos}
-    for addr in addresses:
-        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_reserved or addr.is_unspecified:
-            return "Webhook URL must point at a public host"
-    return None
+
+def _client() -> httpx.Client:
+    return httpx.Client(timeout=DELIVERY_TIMEOUT, follow_redirects=False)
+
+
+def _post(url: str, body: bytes, headers: dict) -> httpx.Response:
+    """POST `body` to `url` at an address checked just now.
+
+    The URL was checked when the subscription was saved, but its DNS can change after that (rebinding).
+    So resolve it again, refuse any private address, and connect to the checked IP itself, sending the
+    original host as the Host header and the TLS server name so httpx never resolves the name again.
+    """
+    problem, addresses = _resolve_public(url)
+    if problem:
+        raise WebhookTargetError(problem)
+    parsed = urlparse(url)
+    ip = addresses[0]
+    ip_host = f"[{ip}]" if ip.version == 6 else str(ip)
+    pinned = parsed._replace(netloc=f"{ip_host}:{parsed.port}" if parsed.port else ip_host).geturl()
+    headers = {**headers, "Host": parsed.netloc.rsplit("@", 1)[-1]}
+    extensions = {"sni_hostname": parsed.hostname} if parsed.scheme == "https" else {}
+    with _client() as client:
+        resp = client.post(pinned, content=body, headers=headers, extensions=extensions)
+        resp.raise_for_status()
+        return resp
 
 
 def sign_payload(payload: bytes, secret: str) -> str:
@@ -89,9 +127,7 @@ def deliver_webhook(event_type: str, tenant_id: int, payload: dict, db: Session)
             "X-Webhook-Signature": signature,
         }
         try:
-            with httpx.Client(timeout=DELIVERY_TIMEOUT) as client:
-                resp = client.post(sub.url, content=body, headers=headers)
-                resp.raise_for_status()
+            resp = _post(sub.url, body, headers)
             sub.failure_count = 0
             sub.last_delivery = datetime.now(timezone.utc)
             successes += 1
@@ -122,9 +158,47 @@ def send_test_event(sub: WebhookSubscription) -> dict:
         "X-Webhook-Signature": signature,
     }
     try:
-        with httpx.Client(timeout=DELIVERY_TIMEOUT) as client:
-            resp = client.post(sub.url, content=body, headers=headers)
-            resp.raise_for_status()
+        resp = _post(sub.url, body, headers)
         return {"success": True, "status_code": resp.status_code}
-    except Exception as exc:
+    except WebhookTargetError as exc:
         return {"success": False, "error": str(exc)}
+    except Exception as exc:
+        # Generic on purpose: refused, timed out and each HTTP status would together map a host's open ports.
+        logger.warning("Webhook test failed: sub=%d error=%s", sub.id, exc)
+        return {"success": False, "error": TEST_FAILED}
+
+
+def create_subscription(db: Session, *, user_id: int, tenant_id: int, url: str, events: list[str]) -> WebhookSubscription:
+    """Save a new subscription with a fresh signing secret (the caller shows it once)."""
+    sub = WebhookSubscription(
+        user_id=user_id,
+        tenant_id=tenant_id,
+        url=url,
+        events=",".join(events),
+        secret=WebhookSubscription.generate_secret(),
+    )
+    db.add(sub)
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+
+def update_subscription(db: Session, sub: WebhookSubscription, *, url: str | None = None,
+                        events: list[str] | None = None, is_active: bool | None = None) -> WebhookSubscription:
+    """Apply the given changes; the caller has validated `url` and `events`."""
+    if url is not None:
+        sub.url = url
+    if events is not None:
+        sub.events = ",".join(events)
+    if is_active is not None:
+        sub.is_active = is_active
+        if is_active:
+            sub.failure_count = 0  # reset on re-activation
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+
+def delete_subscription(db: Session, sub: WebhookSubscription) -> None:
+    db.delete(sub)
+    db.commit()

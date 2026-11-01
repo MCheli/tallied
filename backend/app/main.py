@@ -249,6 +249,10 @@ from app.middleware.usage_logger import UsageLoggerMiddleware
 
 v1.add_middleware(UsageLoggerMiddleware)
 
+from app.middleware.csrf import OriginCheckMiddleware
+
+v1.add_middleware(OriginCheckMiddleware)  # outermost on v1: a refused cross-origin write runs nothing else
+
 # Financial data routes (tenant-scoped)
 v1.include_router(accounts.router)
 v1.include_router(transactions.router)
