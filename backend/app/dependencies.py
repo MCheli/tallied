@@ -107,11 +107,14 @@ def _resolve_api_key(key: str, request: Request | None = None) -> TenantContext:
             select(ApiKey).where(ApiKey.key_hash == key_hash, ApiKey.is_active.is_(True))
         ).scalar_one_or_none()
 
+        from app.middleware.rate_limit import invalid_api_key_limiter, rate_limiter
+
         if not api_key:
+            client = request.client.host if request is not None and request.client else "unknown"
+            invalid_api_key_limiter.check(f"badkey:{client}")  # 429 once an address keeps guessing
             raise HTTPException(status_code=401, detail="Invalid API key")
 
         # Rate-limit per API key
-        from app.middleware.rate_limit import rate_limiter
         rl_key = f"apikey:{api_key.id}"
         rate_limiter.check(rl_key)
 

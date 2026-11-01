@@ -62,3 +62,5 @@ class RateLimiter:
 # Both are per process: with N workers the effective limit is N times this.
 rate_limiter = RateLimiter()
 login_limiter = RateLimiter(requests_per_hour=settings.login_rate_limit_per_hour)
+# Counts only failed API-key lookups, so it never slows a valid key that shares an address (e.g. the proxy's).
+invalid_api_key_limiter = RateLimiter(requests_per_hour=settings.invalid_api_key_rate_limit_per_hour)

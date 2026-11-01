@@ -5,9 +5,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import TenantContext, get_tenant_context
+from app.dependencies import TenantContext, get_tenant_context, require_permission
 from app.models.webhook import WEBHOOK_EVENTS, WebhookSubscription
-from app.services.webhook_service import send_test_event, validate_webhook_url
+from app.services.webhook_service import (
+    create_subscription,
+    delete_subscription,
+    send_test_event,
+    update_subscription,
+    validate_webhook_url,
+)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -65,7 +71,8 @@ def list_webhooks(ctx: TenantContext = Depends(get_tenant_context), db: Session 
 @router.post("/", response_model=WebhookCreatedResponse, status_code=201)
 def create_webhook(
     body: CreateWebhookRequest,
-    ctx: TenantContext = Depends(get_tenant_context),
+    # A webhook sends tenant events to any URL, so only an admin-level API key may add or re-point one.
+    ctx: TenantContext = Depends(require_permission("admin")),
     db: Session = Depends(get_db),
 ):
     """Create a new webhook subscription. The signing secret is returned only once."""
@@ -79,17 +86,7 @@ def create_webhook(
     if url_problem:
         raise HTTPException(status_code=400, detail=url_problem)
 
-    secret = WebhookSubscription.generate_secret()
-    sub = WebhookSubscription(
-        user_id=ctx.user_id,
-        tenant_id=ctx.tenant_id,
-        url=body.url,
-        events=",".join(body.events),
-        secret=secret,
-    )
-    db.add(sub)
-    db.commit()
-    db.refresh(sub)
+    sub = create_subscription(db, user_id=ctx.user_id, tenant_id=ctx.tenant_id, url=body.url, events=body.events)
 
     return WebhookCreatedResponse(
         id=sub.id,
@@ -99,7 +96,7 @@ def create_webhook(
         created_at=sub.created_at.isoformat() if sub.created_at else None,
         last_delivery=None,
         failure_count=0,
-        secret=secret,
+        secret=sub.secret,
     )
 
 
@@ -107,7 +104,7 @@ def create_webhook(
 def update_webhook(
     webhook_id: int,
     body: UpdateWebhookRequest,
-    ctx: TenantContext = Depends(get_tenant_context),
+    ctx: TenantContext = Depends(require_permission("admin")),
     db: Session = Depends(get_db),
 ):
     """Update a webhook subscription."""
@@ -125,21 +122,14 @@ def update_webhook(
         url_problem = validate_webhook_url(body.url)
         if url_problem:
             raise HTTPException(status_code=400, detail=url_problem)
-        sub.url = body.url
     if body.events is not None:
         invalid = [e for e in body.events if e not in WEBHOOK_EVENTS]
         if invalid:
             raise HTTPException(status_code=400, detail=f"Invalid event types: {', '.join(invalid)}")
         if not body.events:
             raise HTTPException(status_code=400, detail="At least one event type is required")
-        sub.events = ",".join(body.events)
-    if body.is_active is not None:
-        sub.is_active = body.is_active
-        if body.is_active:
-            sub.failure_count = 0  # reset on re-activation
 
-    db.commit()
-    db.refresh(sub)
+    update_subscription(db, sub, url=body.url, events=body.events, is_active=body.is_active)
     return _to_response(sub)
 
 
@@ -160,8 +150,7 @@ def delete_webhook(
     if not sub:
         raise HTTPException(status_code=404, detail="Webhook not found")
 
-    db.delete(sub)
-    db.commit()
+    delete_subscription(db, sub)
     return {"message": "Webhook deleted"}
 
 

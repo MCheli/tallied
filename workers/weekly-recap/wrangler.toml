@@ -18,4 +18,4 @@ RECAP_FROM = "recap@markcheli.com"
 # Secrets (wrangler secret put):
 #   TALLIED_API_KEY  read-only Tallied API key for the household
 #   RECAP_TO         the verified address the recap goes to
-#   TRIGGER_TOKEN    lets POST /send?token=... send the recap now (for testing)
+#   TRIGGER_TOKEN    lets POST /send with "Authorization: Bearer <token>" send the recap now (for testing)

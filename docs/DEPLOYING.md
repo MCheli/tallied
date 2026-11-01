@@ -116,7 +116,7 @@ Uploaded documents are not stored; only extracted data is. Provider credentials 
 - The recipient must be a verified Email Routing destination address on the Cloudflare account, and `RECAP_FROM` must be on a domain with Email Routing enabled.
 - Secrets: `TALLIED_API_KEY` (a **read**-permission key named `weekly-recap-email`), `RECAP_TO`, `TRIGGER_TOKEN`.
 - Deploy: `cd workers/weekly-recap && npm install && CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... npx wrangler deploy`.
-- Send one now: `curl -X POST "https://tallied-weekly-recap.<subdomain>.workers.dev/send?token=$TRIGGER_TOKEN"`; it answers `sent: <subject>` or `failed: <reason>`.
+- Send one now: `curl -X POST -H "Authorization: Bearer $TRIGGER_TOKEN" "https://tallied-weekly-recap.<subdomain>.workers.dev/send"`; it answers `sent: <subject>` or `failed: <reason>`.
 - A failed Monday run shows as an error on the worker's Cron Events in the Cloudflare dashboard.
 
 
