@@ -48,9 +48,9 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
+# Install Python deps from the pinned lockfile (gunicorn included), so a rebuild never pulls new library versions
 COPY backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt gunicorn
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code
 COPY backend/ ./backend/
