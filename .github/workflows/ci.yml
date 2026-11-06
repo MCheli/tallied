@@ -175,3 +175,33 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          load: ${{ github.event_name == 'pull_request' }}
+
+      - name: Smoke test the image (migrate, healthy, no curl)
+        if: github.event_name == 'pull_request'
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        run: |
+          docker network create smoke
+          docker run -d --name db --network smoke -e POSTGRES_USER=tallied -e POSTGRES_PASSWORD=smoke -e POSTGRES_DB=tallied postgres:16.15-alpine3.24
+          # The app runs migrations once at boot and exits if the DB refuses, so wait for Postgres first.
+          for _ in $(seq 1 30); do
+            docker exec db pg_isready -h 127.0.0.1 -U tallied -d tallied >/dev/null 2>&1 && break; sleep 1
+          done
+          docker exec db pg_isready -h 127.0.0.1 -U tallied -d tallied
+          # Production config fails closed on default secrets, so give the smoke run throwaway ones.
+          docker run -d --name app --network smoke \
+            -e FINANCE_DATABASE_URL=postgresql://tallied:smoke@db:5432/tallied \
+            -e FINANCE_SECRET_KEY="$(openssl rand -base64 48)" \
+            -e FINANCE_API_KEY_PEPPER="$(openssl rand -base64 32)" \
+            -e FINANCE_CREDENTIAL_KEY="$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" \
+            -e APP_ROLE=web \
+            "$IMAGE"
+          for _ in $(seq 1 60); do
+            s=$(docker inspect -f '{{.State.Health.Status}}' app); [ "$s" = healthy ] && break; sleep 2
+          done
+          docker logs app
+          [ "$(docker inspect -f '{{.State.Health.Status}}' app)" = healthy ]
+          docker run --rm --entrypoint sh "$IMAGE" -c '! command -v curl'
+          docker image inspect -f 'image size: {{.Size}} bytes' "$IMAGE"
+          docker run --rm --entrypoint sh "$IMAGE" -c 'echo "dpkg packages: $(dpkg-query -W | wc -l)"'
