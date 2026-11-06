@@ -189,7 +189,14 @@ jobs:
             docker exec db pg_isready -h 127.0.0.1 -U tallied -d tallied >/dev/null 2>&1 && break; sleep 1
           done
           docker exec db pg_isready -h 127.0.0.1 -U tallied -d tallied
-          docker run -d --name app --network smoke -e FINANCE_DATABASE_URL=postgresql://tallied:smoke@db:5432/tallied "$IMAGE"
+          # Production config fails closed on default secrets, so give the smoke run throwaway ones.
+          docker run -d --name app --network smoke \
+            -e FINANCE_DATABASE_URL=postgresql://tallied:smoke@db:5432/tallied \
+            -e FINANCE_SECRET_KEY="$(openssl rand -base64 48)" \
+            -e FINANCE_API_KEY_PEPPER="$(openssl rand -base64 32)" \
+            -e FINANCE_CREDENTIAL_KEY="$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" \
+            -e APP_ROLE=web \
+            "$IMAGE"
           for _ in $(seq 1 60); do
             s=$(docker inspect -f '{{.State.Health.Status}}' app); [ "$s" = healthy ] && break; sleep 2
           done
