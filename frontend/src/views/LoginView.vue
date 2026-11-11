@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ArrowRight, Database, FileText, LineChart, Landmark } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { useAppConfig } from '../stores/appConfig'
+import { signInErrorMessage } from '../config/signInErrors'
 import HeroVisual from '../components/login/HeroVisual.vue'
 
 const API = import.meta.env.VITE_API_URL || ''
 const auth = useAuthStore()
 const appConfig = useAppConfig()
 const router = useRouter()
+const route = useRoute()
+const signInError = computed(() => signInErrorMessage(route.query.error))
 
 const email = ref('')
 const password = ref('')
@@ -120,6 +123,9 @@ function handleGoogleLogin() {
         <template v-else>
           <h2 class="text-2xl font-semibold text-gray-900 dark:text-white">Sign in</h2>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Your finances, tallied.</p>
+
+          <div v-if="signInError" role="alert" data-testid="sign-in-error"
+            class="mt-6 text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 rounded-lg px-3 py-2">{{ signInError }}</div>
 
           <button v-if="googleSso" type="button" @click="handleGoogleLogin"
             class="mt-6 w-full flex items-center justify-center gap-3 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">

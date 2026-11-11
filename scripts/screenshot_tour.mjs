@@ -116,6 +116,12 @@ for (const [vpName, vp] of Object.entries(VIEWPORTS)) {
   const loginKey = `login/${vpName}`;
   track(page, loginKey);
 
+  if (routes.some(([name]) => name === 'login')) {
+    // Where a failed Google callback lands (backend/app/api/auth.py _sign_in_failed).
+    await page.goto(`${BASE}/login?error=google`, { waitUntil: 'domcontentloaded' });
+    await settle(page);
+    await capture(page, path.join(OUT, 'login', `error-${vpName}.png`));
+  }
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
   await settle(page);
   if (routes.some(([name]) => name === 'login')) await capture(page, path.join(OUT, 'login', `${vpName}.png`));

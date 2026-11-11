@@ -4,6 +4,7 @@ Authentication — Google SSO (production) + dev mode login (local development).
 Both modes issue JWT tokens that include tenant context (tenant_id + tenant_schema).
 The rest of the app resolves tenant from the JWT via get_tenant_context dependency.
 """
+import logging
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -24,6 +25,7 @@ from app.services.passwords import hash_password, verify_and_upgrade
 from app.services.tenant_service import create_tenant_schema
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger("tallied")
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 4
@@ -171,22 +173,64 @@ async def google_login(request: Request):
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
+def _frontend_url() -> str:
+    """Where sign-in lands: the dev server in dev mode (cors_origins[0]), "/" in production (same origin)."""
+    return settings.cors_origins[0] if settings.dev_mode and settings.cors_origins else "/"
+
+
+def _frontend_path(path: str) -> str:
+    base = _frontend_url()
+    return path if base == "/" else f"{base.rstrip('/')}{path}"
+
+
+def _has_valid_session(request: Request) -> bool:
+    token = request.cookies.get("tallied_token")
+    if not token:
+        return False
+    try:
+        jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+    except JWTError:
+        return False
+    return True
+
+
+def _sign_in_failed(reason: str) -> RedirectResponse:
+    """Send a failed Google sign-in back to the login page, which explains it and offers a retry.
+
+    A JSON error is a dead end in an iPhone Home Screen web app: there is no back button.
+    """
+    return RedirectResponse(url=_frontend_path(f"/login?error={reason}"), status_code=302)
+
+
 @router.get("/google/callback")
 async def google_callback(request: Request, response: Response, db: Session = Depends(get_db)):
-    """Handle Google OAuth callback — create/login user, resolve tenant."""
+    """Handle Google OAuth callback — create/login user, resolve tenant.
+
+    Every failure redirects to /login?error=<reason> (google, unverified, disabled) rather than
+    returning JSON. A Home Screen web app on iOS can deliver the callback twice for one sign-in
+    (once from the app, once from the in-app browser that showed Google's page); the second copy
+    fails the state/code check. If that request already carries a valid session, it goes to the app.
+    """
     if not settings.google_client_id:
         raise HTTPException(status_code=501, detail="Google SSO not configured")
 
     try:
         token = await oauth.google.authorize_access_token(request)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"OAuth error: {e}")
+    except Exception as e:  # Authlib raises several unrelated types (state mismatch, invalid_grant, network)
+        if _has_valid_session(request):
+            logger.info("Google callback failed (%s) but the request is already signed in; sending it to the app",
+                        type(e).__name__)
+            return RedirectResponse(url=_frontend_url(), status_code=302)
+        logger.warning("Google callback failed: %s: %s", type(e).__name__, e)
+        return _sign_in_failed("google")
     user_info = token.get("userinfo")
     if not user_info:
-        raise HTTPException(status_code=400, detail="Failed to get user info from Google")
+        logger.warning("Google callback returned no userinfo")
+        return _sign_in_failed("google")
 
     if user_info.get("email_verified") is not True:
-        raise HTTPException(status_code=403, detail="Google has not verified this email address")
+        logger.warning("Google sign-in refused: email not verified")
+        return _sign_in_failed("unverified")
     email = user_info["email"]
     name = user_info.get("name", email.split("@")[0])
 
@@ -206,14 +250,12 @@ async def google_callback(request: Request, response: Response, db: Session = De
     # Disabled or suspended accounts get no session at all (only new sign-ups wait as pending).
     if not user.is_active or user.status not in ("active", "pending_approval"):
         db.commit()
-        raise HTTPException(status_code=403, detail="Account is disabled")
+        logger.warning("Google sign-in refused: account %s is disabled", user.id)
+        return _sign_in_failed("disabled")
 
     user.last_login = datetime.now(timezone.utc)
 
-    # In dev, redirect to the frontend origin; in prod, "/" works (same origin)
-    # In production (not dev mode), redirect to "/" since frontend is same origin.
-    # In dev mode, redirect to the frontend dev server (cors_origins[0] = localhost:5173).
-    frontend_url = settings.cors_origins[0] if settings.dev_mode and settings.cors_origins else "/"
+    frontend_url = _frontend_url()
 
     # Pending approval users get redirected to the pending page
     if user.status == "pending_approval":
