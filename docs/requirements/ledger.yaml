@@ -738,7 +738,7 @@ requirements:
     done_means:
       - "Refresh rejects a user whose status is not active; API-key auth rejects an inactive user (unit tests)."
       - "Every cookie request re-checks the user (active), the tenant (active) and the membership, so disabling or removing someone takes effect at once; API keys stop working when the membership is removed (unit tests)."
-      - "Google sign-in refuses a disabled or suspended user and an email Google has not verified (unit tests)."
+      - "Google sign-in refuses a disabled or suspended user and an email Google has not verified, without setting a cookie (unit tests; since 2026-11-11 the refusal is a redirect to /login?error=..., see MOBILE-001)."
       - "The login page does not print the demo password; dev mode shows a neutral hint."
     status: done
     evidence:
@@ -1402,6 +1402,30 @@ requirements:
       - artifacts/screens/login/desktop.png
       - artifacts/screens/login/mobile.png
       - artifacts/screens/demo/login/desktop.png
+
+  - id: MOBILE-001
+    title: Tallied works as an iPhone Home Screen web app
+    job: platform
+    area: auth
+    priority: p1
+    visible: true
+    done_means:
+      - "The build serves /manifest.webmanifest (name Tallied, start_url and scope /, display standalone) and every icon it lists at its stated size, plus an opaque 180px /apple-touch-icon.png linked from index.html (frontend test; build-smoke fetches them from the production bundle)."
+      - "A failed Google callback (state mismatch, reused code, no userinfo) redirects to /login?error=google, an unverified email to /login?error=unverified and a disabled account to /login?error=disabled; none sets a cookie and none returns JSON (unit tests)."
+      - "A failed callback that already carries a valid session cookie redirects to the app: iOS can deliver one sign-in's callback twice from a Home Screen web app (unit test)."
+      - "The login page explains each error code above the Google button and ignores unknown codes (frontend test, tour screenshot)."
+    status: done
+    evidence:
+      - frontend/tests/home-screen.spec.ts#lists icons that exist at the sizes they claim
+      - frontend/tests/home-screen.spec.ts#links the manifest and a 180px opaque apple-touch-icon from index.html
+      - backend/tests/test_api/test_security.py::test_failed_google_callback_returns_to_the_login_page
+      - backend/tests/test_api/test_security.py::test_repeated_google_callback_with_a_session_goes_to_the_app
+      - backend/tests/test_api/test_security.py::test_google_sign_in_refuses_disabled_or_suspended_users
+      - frontend/tests/sign-in-errors.spec.ts#explains each code the Google callback sends
+      - artifacts/screens/login/error-mobile.png
+      - artifacts/screens/login/error-desktop.png
+    notes:
+      - "2026-11-11: iOS 26 opens every site added to the Home Screen as a web app, with its own cookies. Tallied had no manifest or touch icon, and a failed or repeated Google callback returned JSON, a dead end with no back button. The login-error screenshots come from a login-only tour run; tour-log.json is still the last full run."
 
   - id: PLAN-V2-016
     title: Planning shows the outlook at once and does not recompute what it already knows

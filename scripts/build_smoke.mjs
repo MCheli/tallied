@@ -66,6 +66,24 @@ try {
     else console.log(`build-smoke: ${route} ok`)
     await page.close()
   }
+  // Home Screen web app: the built site serves the manifest and every icon it names.
+  const base = `http://localhost:${PORT}`
+  const homeScreen = []
+  try {
+    const res = await fetch(`${base}/manifest.webmanifest`)
+    const manifest = res.ok ? await res.json() : null
+    if (!manifest) homeScreen.push(`/manifest.webmanifest: HTTP ${res.status}`)
+    const srcs = [...(manifest?.icons ?? []).map(i => i.src), '/apple-touch-icon.png']
+    for (const src of srcs) {
+      const r = await fetch(base + src)
+      const type = r.headers.get('content-type') || ''
+      if (!r.ok || !type.startsWith('image/png')) homeScreen.push(`${src}: HTTP ${r.status} ${type}`)
+    }
+  } catch (e) {
+    homeScreen.push(`manifest: ${e.message}`)
+  }
+  if (homeScreen.length) failures.push(`home screen: ${homeScreen.join(' | ')}`)
+  else console.log('build-smoke: manifest and icons ok')
 } finally {
   await browser.close()
   stopPreview()

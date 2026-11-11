@@ -6,12 +6,18 @@ import { ref } from 'vue'
  * the ERD canvas and the Scalar iframe read it, so charts re-theme when the
  * user flips the switch instead of caching the class list at mount.
  */
+/** The mobile top bar's colour (white / gray-900), so a Home Screen web app's status bar matches it. */
+function setThemeColor(isDark: boolean) {
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isDark ? '#111827' : '#ffffff')
+}
+
 export const useThemeStore = defineStore('theme', () => {
   const dark = ref(false)
 
   function apply(value: boolean) {
     dark.value = value
     document.documentElement.classList.toggle('dark', value)
+    setThemeColor(value)
     try {
       localStorage.setItem('theme', value ? 'dark' : 'light')
     } catch {
@@ -28,6 +34,7 @@ export const useThemeStore = defineStore('theme', () => {
     }
     dark.value = saved === 'dark'
     document.documentElement.classList.toggle('dark', dark.value)
+    setThemeColor(dark.value)
   }
 
   function toggle() {

@@ -220,13 +220,19 @@ def test_api_key_cannot_mint_a_stronger_key(db_session, caller, requested, allow
         assert exc.value.status == 403
 
 
-def _google_callback(client, userinfo):
+def _google_callback(client, userinfo=None, error=None, cookies=None):
+    """Call the callback as production would (same origin, not dev mode) with a faked Google exchange."""
     async def fake_token(_request):
+        if error:
+            raise error
         return {"userinfo": userinfo}
 
     from app.api import auth
 
+    if cookies:
+        client.cookies.update(cookies)
     with patch.object(settings, "google_client_id", "test-client"), \
+            patch.object(settings, "dev_mode", False), \
             patch.object(auth.oauth, "google", create=True) as google:
         google.authorize_access_token = fake_token
         return client.get("/api/v1/auth/google/callback", follow_redirects=False)
@@ -239,14 +245,43 @@ def test_google_sign_in_refuses_disabled_or_suspended_users(client, db_session, 
     db_session.add(user)
     db_session.commit()
     res = _google_callback(client, {"email": user.email, "email_verified": True, "name": "D"})
-    assert res.status_code == 403
+    assert res.status_code == 302
+    assert res.headers["location"] == "/login?error=disabled"
     assert "tallied_token" not in res.cookies
 
 
 def test_google_sign_in_requires_a_verified_email(client, db_session):
     res = _google_callback(client, {"email": "unverified@test.dev", "email_verified": False})
-    assert res.status_code == 403
+    assert res.status_code == 302
+    assert res.headers["location"] == "/login?error=unverified"
+    assert "tallied_token" not in res.cookies
     assert db_session.query(User).filter_by(email="unverified@test.dev").first() is None
+
+
+def test_failed_google_callback_returns_to_the_login_page(client):
+    """A failed exchange (here a state mismatch, as when iOS delivers the callback twice) is a redirect, not JSON."""
+    from authlib.integrations.base_client.errors import MismatchingStateError
+
+    res = _google_callback(client, error=MismatchingStateError())
+    assert res.status_code == 302
+    assert res.headers["location"] == "/login?error=google"
+    assert "tallied_token" not in res.cookies
+
+
+def test_repeated_google_callback_with_a_session_goes_to_the_app(client):
+    """The second copy of a callback fails Google's checks; if it already carries a session, open the app."""
+    from authlib.integrations.base_client.errors import OAuthError
+
+    token = jwt.encode({"sub": "1", "type": "access", "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+                       settings.secret_key, algorithm="HS256")
+    res = _google_callback(client, error=OAuthError(error="invalid_grant"), cookies={"tallied_token": token})
+    assert res.status_code == 302
+    assert res.headers["location"] == "/"
+
+    expired = jwt.encode({"sub": "1", "type": "access", "exp": datetime.now(timezone.utc) - timedelta(hours=1)},
+                         settings.secret_key, algorithm="HS256")
+    res = _google_callback(client, error=OAuthError(error="invalid_grant"), cookies={"tallied_token": expired})
+    assert res.headers["location"] == "/login?error=google"
 
 
 @pytest.mark.parametrize("claim_url", [

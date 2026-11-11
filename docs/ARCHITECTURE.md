@@ -54,7 +54,7 @@ Tallied is a household app, but it was built multi-tenant and that structure sta
 
 ## Auth
 
-- Production: Google SSO. New users land in `pending` until an admin approves them.
+- Production: Google SSO. New users land in `pending` until an admin approves them. The callback never answers with JSON: every failure redirects to `/login?error=google|unverified|disabled`, and a failed callback that already carries a valid session goes to the app. That keeps the iPhone Home Screen web app (manifest and icons in `frontend/public/`) usable, since it has no back button and iOS can deliver one sign-in's callback twice.
 - Dev (`FINANCE_DEV_MODE=true`): email/password login. Claudius Banks (`claudius@tallied.dev` / `demo123`) is the only persona.
 - Demo (`FINANCE_DEMO_MODE=true`, the money-demo deployment): `POST /auth/demo` signs in as `FINANCE_DEMO_USER_EMAIL` with no password. `app/demo.py` holds the rest: a v1 middleware refusing every write outside `ALLOWED_WRITES` (sign-in/out, plan what-if and sprint, the SQL runner), READ ONLY transactions for tenant sessions (`get_tenant_db`), rate limits per visitor IP (CF-Connecting-IP) instead of per user, `X-Robots-Tag: noindex`, and startup checks that refuse a database with non-persona users or AI/SSO secrets. The frontend reads `demo_mode` from `/auth/config` (`stores/appConfig.ts`); controls that write carry `v-demo-lock`, which disables them in the demo.
 - Access token: 4h JWT in an httpOnly cookie. Refresh token: 30 days, rotated on `/auth/refresh`. Both refresh and API-key auth must check `user.status` so a suspended user loses access at the next refresh, not in 30 days.
