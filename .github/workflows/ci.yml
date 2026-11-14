@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16.15-alpine3.24
+        image: postgres:16.16-alpine3.24
         env:
           POSTGRES_USER: tallied
           POSTGRES_PASSWORD: tallied_dev
@@ -183,7 +183,7 @@ jobs:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
         run: |
           docker network create smoke
-          docker run -d --name db --network smoke -e POSTGRES_USER=tallied -e POSTGRES_PASSWORD=smoke -e POSTGRES_DB=tallied postgres:16.15-alpine3.24
+          docker run -d --name db --network smoke -e POSTGRES_USER=tallied -e POSTGRES_PASSWORD=smoke -e POSTGRES_DB=tallied postgres:16.16-alpine3.24
           # The app runs migrations once at boot and exits if the DB refuses, so wait for Postgres first.
           for _ in $(seq 1 30); do
             docker exec db pg_isready -h 127.0.0.1 -U tallied -d tallied >/dev/null 2>&1 && break; sleep 1

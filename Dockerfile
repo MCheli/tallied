@@ -19,8 +19,8 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # Stage 1: Build frontend
 # ═══════════════════════════════════════════════════════════════════════════════
-# Exact patch pins: Node 20 is EOL and unpatched for CVE-2026-111497 (Brotli); 24.22.1 is the fixed 24.x.
-FROM node:24.22.2-alpine3.24 AS frontend-builder
+# Exact patch pins: Node 20 is EOL; 24.22.3 is the 24.x with the 2026-11-11 security fixes (HTTP/2, TLS, mTLS).
+FROM node:24.22.3-alpine3.24 AS frontend-builder
 
 WORKDIR /build
 COPY frontend/package*.json ./
