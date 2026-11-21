@@ -3,7 +3,7 @@
 #   uv pip compile requirements.in -o requirements.txt --python-version 3.13 --python-platform x86_64-manylinux_2_28
 # A rebuild (including the weekly fresh-base one) only ever installs requirements.txt, so app
 # library versions change only through a reviewed lockfile change (Dependabot or by hand).
-fastapi>=0.164.0
+fastapi>=0.165.0
 uvicorn[standard]>=0.34.0
 sqlalchemy>=2.0.58,<2.1
 alembic>=1.14.0
