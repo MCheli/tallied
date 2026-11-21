@@ -149,6 +149,19 @@ if not settings.dev_mode:
 
     app.add_middleware(HSTSMiddleware)
 
+
+# Baseline browser hardening. SAMEORIGIN, not DENY: the frontend embeds the Scalar reference in an iframe.
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 # ── Import all routers ────────────────────────────────────────────────────────
 
 from app.api import (

@@ -6,7 +6,7 @@
 services:
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:16.15-alpine3.24
+    image: postgres:16.16-alpine3.24
     container_name: tallied-postgres
     restart: unless-stopped
     environment:

@@ -859,6 +859,7 @@ requirements:
       - "Only cookie sessions and admin-level API keys may create or re-point a webhook or issue a database credential (unit tests)."
       - "tld_* roles are created with CONNECTION LIMIT 5 and, when the credential expires, VALID UNTIL its expiry; listing credentials revokes expired ones without failing on the naive expires_at column (unit tests)."
       - "After 60 wrong X-API-Key attempts in an hour from one address the API answers 429; valid keys from that address still work (unit test)."
+      - "Every response carries X-Content-Type-Options nosniff, X-Frame-Options SAMEORIGIN (the Scalar reference is a same-origin iframe) and Referrer-Policy strict-origin-when-cross-origin (unit test)."
     status: done
     evidence:
       - backend/tests/test_api/test_hardening.py::test_delivery_refuses_a_host_that_now_resolves_to_a_private_address
@@ -871,8 +872,10 @@ requirements:
       - backend/tests/test_api/test_hardening.py::test_db_role_is_created_with_valid_until_and_a_connection_limit
       - backend/tests/test_api/test_hardening.py::test_listing_revokes_expired_credentials_stored_as_naive_utc
       - backend/tests/test_api/test_hardening.py::test_invalid_api_keys_are_throttled_but_valid_ones_are_not
+      - backend/tests/test_security_headers.py::test_api_responses_carry_security_headers
       - backend/app/middleware/csrf.py
     notes:
+      - "2026-11-21: baseline security headers added in app/main.py (weekly sweep)."
       - "2026-11-01: follow-ups from the October security sweep. Webhook and DB-credential writes moved into services. The CREATE ROLE ... CONNECTION LIMIT ... VALID UNTIL statement was checked on local PostgreSQL 16 in a rolled-back transaction. The weekly-recap worker compares TRIGGER_TOKEN in constant time and takes it as a Bearer header (it still accepts ?token=); that needs a wrangler deploy. Not done: receipt forwarding-address verification and SPF/DKIM checks, a shared rate-limit store across workers."
   - id: NFR-MIG-001
     title: Migrations build an empty database
