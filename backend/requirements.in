@@ -26,4 +26,4 @@ argon2-cffi>=25.1.0
 ruff>=0.17.5
 aiohttp>=3.9
 pillow>=11.0  # recap email chart (services/pace_chart.py)
-gunicorn>=23.0
+gunicorn>=27.0.1
