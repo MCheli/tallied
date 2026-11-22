@@ -18,7 +18,7 @@ click==8.5.0
 cryptography==50.0.2
 docstring-parser==0.18.0
 et-xmlfile==2.0.0
-fastapi==0.164.0
+fastapi==0.165.0
 frozenlist==1.8.0
 greenlet==3.5.6
 gunicorn==26.2.0
