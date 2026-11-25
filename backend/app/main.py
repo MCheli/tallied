@@ -344,12 +344,12 @@ def spa_response(static_dir: Path, full_path: str):
     """A file from the built SPA, or index.html for any client route. An unknown /api path is a JSON 404, not the app."""
     if full_path == "api" or full_path.startswith("api/"):
         return JSONResponse({"detail": "Not Found"}, status_code=404)
-    root = static_dir.resolve()
-    file_path = (root / full_path).resolve()
-    if file_path.is_relative_to(root) and file_path.is_file():
-        headers = REVALIDATE if file_path.suffix in (".html", ".webmanifest") else None
+    root = os.path.realpath(static_dir)
+    file_path = os.path.realpath(os.path.join(root, full_path))
+    if file_path.startswith(root + os.sep) and os.path.isfile(file_path):
+        headers = REVALIDATE if file_path.endswith((".html", ".webmanifest")) else None
         return FileResponse(file_path, headers=headers)
-    return FileResponse(root / "index.html", headers=REVALIDATE)
+    return FileResponse(os.path.join(root, "index.html"), headers=REVALIDATE)
 
 
 if STATIC_DIR.exists():

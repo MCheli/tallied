@@ -50,3 +50,4 @@ def test_path_outside_static_dir_falls_back_to_index(tmp_path):
     (tmp_path / "secret.txt").write_text("nope")
     res = spa_response(static, "../secret.txt")
     assert str(res.path) == str(static.resolve() / "index.html")
+    assert "nope" not in _client(static).get("/%2e%2e/secret.txt").text
