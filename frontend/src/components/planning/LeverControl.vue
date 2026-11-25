@@ -53,7 +53,7 @@ function onBox(e: Event) {
         :min="lo" :max="hi" :step="step" :value="modelValue" @input="onSlider"
       />
       <input
-        type="number" :aria-label="`${spec.display_name} exact value`"
+        type="number" :inputmode="lo >= 0 ? 'decimal' : undefined" enterkeyhint="done" :aria-label="`${spec.display_name} exact value`"
         class="w-20 shrink-0 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-1.5 py-0.5 text-xs text-right tabular-nums text-gray-900 dark:text-white"
         :step="isPct ? 0.25 : step" :value="boxValue" @change="onBox"
       />

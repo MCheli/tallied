@@ -117,6 +117,8 @@ const totalPages = computed(() => Math.ceil(props.total / props.pageSize))
             v-model="searchTerm"
             @input="onSearch"
             type="search"
+            enterkeyhint="search"
+            autocapitalize="off"
             placeholder="Search transactions..."
             aria-label="Search transactions"
             class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"

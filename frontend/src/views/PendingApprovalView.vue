@@ -59,7 +59,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+  <div class="min-h-dvh flex items-center justify-center bg-gray-50 dark:bg-gray-950">
     <div class="w-full max-w-md">
       <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 shadow-lg text-center">
         <div class="mb-6">

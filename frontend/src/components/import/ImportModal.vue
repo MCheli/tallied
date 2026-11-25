@@ -331,7 +331,7 @@ function fmt(n: unknown, format?: string, column?: string): string {
       <div class="absolute inset-0 bg-black/50" @click="step === 'done' ? closeImport() : null"></div>
 
       <!-- Modal -->
-      <div class="relative bg-white dark:bg-gray-900 shadow-2xl flex flex-col w-full h-full sm:w-[90vw] sm:h-[85vh] sm:max-w-[1200px] sm:rounded-2xl min-w-0">
+      <div class="relative bg-white dark:bg-gray-900 shadow-2xl flex flex-col w-full h-full max-sm:safe-top max-sm:safe-bottom max-sm:safe-x sm:w-[90vw] sm:h-[85dvh] sm:max-w-[1200px] sm:rounded-2xl min-w-0">
 
         <!-- Header -->
         <div class="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-800">

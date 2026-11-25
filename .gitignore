@@ -46,5 +46,8 @@ Thumbs.db
 /Screenshot*
 .simplefin_access_url.local
 
+# iPhone QA screenshots (scripts/mobile_qa.mjs)
+.mobile-qa/
+
 # Claude Code agent worktrees
 .claude/worktrees/

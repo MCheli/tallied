@@ -283,7 +283,7 @@ watch(isOpen, (open) => {
       <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="close"></div>
 
       <!-- Modal -->
-      <div class="relative w-[92vw] max-w-6xl max-h-[88vh] bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex overflow-hidden">
+      <div class="relative w-[92vw] max-w-6xl max-h-[88dvh] bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex overflow-hidden">
 
         <!-- Left: Table list -->
         <div class="w-56 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 flex flex-col bg-gray-50 dark:bg-gray-800/50">

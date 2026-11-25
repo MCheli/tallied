@@ -3,3 +3,51 @@
 
 /* v-demo-lock: controls that would change data, in the public demo */
 .demo-locked { cursor: not-allowed !important; opacity: 0.5; }
+
+/* Phone (Home Screen app) feel. No double-tap zoom or tap delay, no whole-page rubber band
+   (scroll containers keep their own momentum), no grey tap flash, no font inflation on rotate. */
+html, body {
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+main { overscroll-behavior-y: contain; }
+
+/* Safe areas (viewport-fit=cover): nothing under the notch, Dynamic Island, rounded corners or
+   home indicator. env() is 0 on desktop, so these change nothing there. */
+@utility safe-top { padding-top: env(safe-area-inset-top); }
+@utility safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+@utility safe-x { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+/* The phone top bar is 3.5rem tall plus the status bar inset; <main> starts below it. */
+.app-topbar { height: calc(3.5rem + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left)); }
+@media (max-width: 767px) {
+  .app-main {
+    padding-top: calc(3.5rem + env(safe-area-inset-top));
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+@media (pointer: coarse) {
+  /* iOS zooms into any field under 16px when it is focused. */
+  input:not([type="checkbox"], [type="radio"], [type="range"]), textarea, select, [contenteditable="true"] {
+    font-size: max(16px, 1em) !important;
+  }
+  /* The SQL editor paints highlighted text behind a transparent textarea; keep the two the same size. */
+  .sql-highlight-layer { font-size: 16px !important; }
+  /* Controls, not content: no text selection or long-press callout; a pressed state replaces the tap flash. */
+  button, [role="button"], [role="tab"], nav a, aside a {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  button:not(:disabled):active, [role="button"]:active, [role="tab"]:active, nav a:active { opacity: 0.6; }
+}
+
+/* Keyboard shortcut hints mean nothing on a phone. */
+@media (hover: none) and (pointer: coarse) {
+  kbd, .shortcut-hint { display: none !important; }
+}

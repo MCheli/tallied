@@ -149,7 +149,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
 
 <template>
   <!-- Public routes (login, pending approval): no sidebar -->
-  <div v-if="isPublic" class="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+  <div v-if="isPublic" class="min-h-dvh safe-top safe-bottom safe-x bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
     <RouterView />
   </div>
 
@@ -157,11 +157,11 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
   <div v-else class="flex h-dvh bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
 
     <!-- Mobile top bar -->
-    <div class="md:hidden fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 h-14">
+    <div class="md:hidden fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center app-topbar">
       <button
         @click="mobileOpen = true"
         aria-label="Open navigation menu"
-        class="w-10 h-10 -ml-2.5 flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        class="w-11 h-11 -ml-3 flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
         <Menu class="w-5 h-5" />
       </button>
@@ -187,7 +187,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
       :class="[
         'flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-all duration-200',
         // Mobile: fixed overlay drawer
-        'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[80%] max-md:max-w-xs max-md:shadow-xl',
+        'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[80%] max-md:max-w-xs max-md:shadow-xl max-md:safe-top max-md:safe-bottom',
         mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full',
         // Desktop: inline, collapsible
         collapsed ? 'md:w-16' : 'md:w-56',
@@ -200,7 +200,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
           v-if="isMobile"
           @click="mobileOpen = false"
           aria-label="Close navigation menu"
-          class="w-10 h-10 -mr-2 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          class="w-11 h-11 -mr-2 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
           <X class="w-5 h-5" />
         </button>
@@ -231,7 +231,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
             :title="collapsed && !isMobile ? item.label : undefined"
             :aria-label="collapsed && !isMobile ? item.label : undefined"
             :class="[
-              'flex items-center rounded-lg text-sm font-medium transition-colors min-h-10',
+              'flex items-center rounded-lg text-sm font-medium transition-colors min-h-10 max-md:min-h-11',
               collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
               currentRoute === item.name
                 ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
@@ -250,7 +250,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
           :title="collapsed && !isMobile ? (dark ? 'Light Mode' : 'Dark Mode') : undefined"
           :aria-label="dark ? 'Switch to light mode' : 'Switch to dark mode'"
           :class="[
-            'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors min-h-10',
+            'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors min-h-10 max-md:min-h-11',
             collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
           ]"
         >
@@ -264,7 +264,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
             :title="collapsed && !isMobile ? 'Sign out' : undefined"
             aria-label="Sign out"
             :class="[
-              'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-colors min-h-10',
+              'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 transition-colors min-h-10 max-md:min-h-11',
               collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
             ]"
           >
@@ -279,7 +279,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
           aria-label="Sign in"
           :title="collapsed && !isMobile ? 'Sign in' : undefined"
           :class="[
-            'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors min-h-10',
+            'w-full flex items-center rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors min-h-10 max-md:min-h-11',
             collapsed && !isMobile ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
           ]"
         >
@@ -290,7 +290,7 @@ const showLabels = computed(() => isMobile.value || !collapsed.value)
     </aside>
 
     <!-- Main Content -->
-    <main class="flex-1 min-w-0 overflow-y-auto overflow-x-hidden max-md:pt-14">
+    <main class="app-main flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
       <div v-if="appConfig.demo" data-testid="demo-banner"
         class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-6 py-2 text-xs sm:text-sm bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-100 border-b border-amber-200 dark:border-amber-900">
         <FlaskConical class="w-4 h-4 flex-shrink-0" />

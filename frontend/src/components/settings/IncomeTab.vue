@@ -155,14 +155,14 @@ const inputClass = 'w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300
     <div v-if="showNewForm" class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 space-y-4">
       <div class="max-w-[12rem]">
         <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Tax year</label>
-        <input v-model.number="form.tax_year" type="number" :disabled="editingYear !== null" :class="[inputClass, 'disabled:opacity-60']" />
+        <input v-model.number="form.tax_year" type="number" inputmode="numeric" :disabled="editingYear !== null" :class="[inputClass, 'disabled:opacity-60']" />
       </div>
       <div v-for="group in FIELD_GROUPS" :key="group.title">
         <div class="text-[11px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500 mb-2">{{ group.title }}</div>
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <div v-for="f in group.fields" :key="f.key">
             <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{{ f.label }}</label>
-            <input v-model.number="form[f.key]" type="number" step="0.01" :class="inputClass" placeholder="—" />
+            <input v-model.number="form[f.key]" type="number" inputmode="decimal" step="0.01" :class="inputClass" placeholder="—" />
           </div>
         </div>
       </div>

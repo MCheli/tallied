@@ -1430,6 +1430,30 @@ requirements:
     notes:
       - "2026-11-11: iOS 26 opens every site added to the Home Screen as a web app, with its own cookies. Tallied had no manifest or touch icon, and a failed or repeated Google callback returned JSON, a dead end with no back button. The login-error screenshots come from a login-only tour run; tour-log.json is still the last full run."
 
+  - id: MOBILE-002
+    title: The Home Screen app feels like an app on iPhone, not a web page
+    job: platform
+    area: auth
+    priority: p1
+    visible: true
+    done_means:
+      - "Tapping any field does not zoom the page: on touch screens every input, textarea and select renders at 16px or more, and the viewport is width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover (never user-scalable=no)."
+      - "The page does not double-tap zoom, rubber-band as a whole or scroll sideways at iPhone SE and iPhone 15 Pro widths; the phone top bar, drawer, import modal and content clear the notch and home indicator by env(safe-area-inset-*)."
+      - "Keyboard-shortcut hints are hidden on touch screens; number fields bring up the number or decimal keypad; search and token fields do not autocapitalise or autocorrect."
+      - "index.html and the manifest are served with Cache-Control: no-cache so a Home Screen app picks up a new release on its next launch (unit test)."
+      - "scripts/mobile_qa.mjs signs in under WebKit with the iPhone 15 Pro and iPhone SE profiles and checks field sizes, sideways overflow, shortcut hints and the viewport meta on every main page."
+    status: done
+    evidence:
+      - frontend/tests/home-screen.spec.ts#declares a full-screen viewport that iOS does not zoom on focus, and runs as an app
+      - frontend/tests/home-screen.spec.ts#keeps every field at 16px or more on touch screens so iOS does not zoom into it
+      - frontend/tests/home-screen.spec.ts#stops double-tap zoom and the whole-page rubber band, and hides shortcut hints on touch
+      - frontend/tests/home-screen.spec.ts#pads the phone top bar and main content by the safe-area insets
+      - backend/tests/test_spa_serving.py::test_client_routes_get_index_html_that_revalidates
+      - backend/tests/test_spa_serving.py::test_manifest_revalidates_and_icons_do_not
+      - artifacts/screens/dashboard/mobile.png
+    notes:
+      - "2026-11-25: on the iPhone Home Screen app, focusing a field zoomed and shifted the page, the whole page could pinch-zoom and wobble, and the SQL editor showed a ⌘Enter hint. Before/after WebKit screenshots are in .mobile-qa/ (not committed)."
+
   - id: PLAN-V2-016
     title: Planning shows the outlook at once and does not recompute what it already knows
     job: plan

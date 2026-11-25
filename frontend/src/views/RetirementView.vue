@@ -236,8 +236,8 @@ const allocationPieOption = computed(() => {
             </template>
             <template v-else>
               <div class="grid grid-cols-2 gap-4">
-                <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4"><label class="text-xs text-gray-500 dark:text-gray-400 font-medium block mb-1">Pre-tax deferral (%)</label><input v-model.number="editPretax" type="number" min="0" max="100" step="1" class="w-full min-h-10 px-3 py-2 text-lg font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg" /></div>
-                <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4"><label class="text-xs text-gray-500 dark:text-gray-400 font-medium block mb-1">Roth deferral (%)</label><input v-model.number="editRoth" type="number" min="0" max="100" step="1" class="w-full min-h-10 px-3 py-2 text-lg font-bold text-green-600 dark:text-green-400 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg" /></div>
+                <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4"><label class="text-xs text-gray-500 dark:text-gray-400 font-medium block mb-1">Pre-tax deferral (%)</label><input v-model.number="editPretax" type="number" inputmode="numeric" min="0" max="100" step="1" class="w-full min-h-10 px-3 py-2 text-lg font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg" /></div>
+                <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4"><label class="text-xs text-gray-500 dark:text-gray-400 font-medium block mb-1">Roth deferral (%)</label><input v-model.number="editRoth" type="number" inputmode="numeric" min="0" max="100" step="1" class="w-full min-h-10 px-3 py-2 text-lg font-bold text-green-600 dark:text-green-400 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg" /></div>
               </div>
               <p v-if="rateError" class="text-xs text-red-500 mt-2">{{ rateError }}</p>
               <div class="flex items-center justify-between mt-3 gap-2 flex-wrap">
