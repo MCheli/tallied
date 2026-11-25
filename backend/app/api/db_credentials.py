@@ -1,6 +1,5 @@
 """Database credential management endpoints for direct Postgres access."""
 import logging
-from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,9 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import TenantContext, get_tenant_context
+from app.dependencies import TenantContext, get_tenant_context, require_permission
 from app.models.db_credential import DbCredential
-from app.services.db_credentials import create_db_credential, revoke_db_credential
+from app.services.db_credentials import as_utc, issue_credential, list_and_expire, revoke_credential
 
 logger = logging.getLogger("tallied")
 
@@ -46,6 +45,10 @@ class DbCredentialCreatedResponse(DbCredentialResponse):
     connection_string: str
 
 
+def _expires(c: DbCredential) -> str | None:
+    return as_utc(c.expires_at).isoformat() if c.expires_at else None
+
+
 @router.get("/", response_model=list[DbCredentialResponse])
 def list_db_credentials(
     ctx: TenantContext = Depends(get_tenant_context),
@@ -53,25 +56,10 @@ def list_db_credentials(
 ):
     """List all database credentials for the current user's active tenant.
 
-    Automatically revokes expired credentials on read.
+    Automatically revokes expired credentials on read. Postgres also refuses an expired
+    credential on its own: each role is created with VALID UNTIL its expiry.
     """
-    creds = db.execute(
-        select(DbCredential).where(
-            DbCredential.user_id == ctx.user_id,
-            DbCredential.tenant_id == ctx.tenant_id,
-        ).order_by(DbCredential.created_at.desc())
-    ).scalars().all()
-
-    now = datetime.now(timezone.utc)
-    for c in creds:
-        if c.is_active and c.expires_at and c.expires_at <= now:
-            try:
-                revoke_db_credential(c.pg_username)
-            except Exception as e:
-                logger.error(f"Failed to revoke expired credential {c.pg_username}: {e}")
-            c.is_active = False
-    db.commit()
-
+    creds = list_and_expire(db, user_id=ctx.user_id, tenant_id=ctx.tenant_id)
     return [
         DbCredentialResponse(
             id=c.id,
@@ -80,7 +68,7 @@ def list_db_credentials(
             access_level=c.access_level,
             is_active=c.is_active,
             created_at=c.created_at.isoformat() if c.created_at else None,
-            expires_at=c.expires_at.isoformat() if c.expires_at else None,
+            expires_at=_expires(c),
         )
         for c in creds
     ]
@@ -89,7 +77,8 @@ def list_db_credentials(
 @router.post("/", response_model=DbCredentialCreatedResponse, status_code=201)
 def create_db_credential_endpoint(
     body: CreateDbCredentialRequest,
-    ctx: TenantContext = Depends(get_tenant_context),
+    # A database login outlives the key that made it, so only an admin-level API key may issue one.
+    ctx: TenantContext = Depends(require_permission("admin")),
     db: Session = Depends(get_db),
 ):
     """Create a new database credential. Connection details are returned only once."""
@@ -102,28 +91,15 @@ def create_db_credential_endpoint(
     if body.expires_in_days < 0 or body.expires_in_days > MAX_EXPIRES_DAYS:
         raise HTTPException(status_code=400, detail=f"expires_in_days must be 0-{MAX_EXPIRES_DAYS}")
 
-    expires_at = None
-    if body.expires_in_days > 0:
-        expires_at = datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
-
     try:
-        result = create_db_credential(ctx.tenant_schema, body.access_level)
+        credential, result = issue_credential(
+            db, user_id=ctx.user_id, tenant_id=ctx.tenant_id, tenant_schema=ctx.tenant_schema,
+            name=body.name.strip(), access_level=body.access_level, expires_in_days=body.expires_in_days,
+        )
     except Exception as e:
         # Not str(e): a SQLAlchemy error carries the bound parameters, which include the new role's password.
         logger.error("Failed to create database credential: %s: %s", type(e).__name__, getattr(e, "orig", None) or "")
         raise HTTPException(status_code=500, detail="Failed to create database credential")
-
-    credential = DbCredential(
-        user_id=ctx.user_id,
-        tenant_id=ctx.tenant_id,
-        pg_username=result["username"],
-        access_level=body.access_level,
-        name=body.name.strip(),
-        expires_at=expires_at,
-    )
-    db.add(credential)
-    db.commit()
-    db.refresh(credential)
 
     return DbCredentialCreatedResponse(
         id=credential.id,
@@ -132,7 +108,7 @@ def create_db_credential_endpoint(
         access_level=credential.access_level,
         is_active=True,
         created_at=credential.created_at.isoformat() if credential.created_at else None,
-        expires_at=credential.expires_at.isoformat() if credential.expires_at else None,
+        expires_at=_expires(credential),
         password=result["password"],
         host=result["host"],
         port=result["port"],
@@ -153,6 +129,7 @@ def revoke_db_credential_endpoint(
         select(DbCredential).where(
             DbCredential.id == credential_id,
             DbCredential.user_id == ctx.user_id,
+            DbCredential.tenant_id == ctx.tenant_id,
         )
     ).scalar_one_or_none()
 
@@ -162,12 +139,5 @@ def revoke_db_credential_endpoint(
     if not credential.is_active:
         raise HTTPException(status_code=400, detail="Credential already revoked")
 
-    try:
-        revoke_db_credential(credential.pg_username)
-    except Exception as e:
-        logger.error(f"Failed to revoke Postgres role {credential.pg_username}: {e}")
-        # Mark as inactive even if role drop fails (role may have been manually removed)
-
-    credential.is_active = False
-    db.commit()
+    revoke_credential(db, credential)
     return {"message": "Database credential revoked"}

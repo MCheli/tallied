@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # Rate limiting
     rate_limit_per_hour: int = 1000  # Max requests per hour per API key / user
     login_rate_limit_per_hour: int = 100  # Max dev-login attempts per hour per IP (tours log in repeatedly)
+    invalid_api_key_rate_limit_per_hour: int = 60  # Max wrong X-API-Key attempts per hour per client address
 
     # App
     base_url: str = "http://localhost:8000"  # Used for OAuth redirect URLs

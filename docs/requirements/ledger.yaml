@@ -848,6 +848,32 @@ requirements:
       - backend/app/services/passwords.py
     notes:
       - "2026-10-31: services/passwords.py; the seed writes argon2id. users.password_hash is an unbounded VARCHAR, so no migration. The legacy SHA-256 verify path stays until no legacy hashes remain; API keys keep peppered HMAC-SHA-256 (high-entropy tokens)."
+  - id: NFR-SEC-005
+    title: Webhooks re-check their target, cross-origin writes refused, DB credentials expire in Postgres
+    job: platform
+    area: security
+    priority: p1
+    done_means:
+      - "Every webhook delivery and test resolves the host again, refuses a private address, connects to the checked IP (Host header and TLS SNI keep the name) and does not follow redirects; a failed test returns one generic message, not the connection error or status (unit tests)."
+      - "POST/PUT/PATCH/DELETE on /api/v1 with an Origin (or Referer) that is neither this host, FINANCE_BASE_URL nor FINANCE_CORS_ORIGINS gets 403; requests with X-API-Key or with neither header pass; reads are unaffected (unit tests)."
+      - "Only cookie sessions and admin-level API keys may create or re-point a webhook or issue a database credential (unit tests)."
+      - "tld_* roles are created with CONNECTION LIMIT 5 and, when the credential expires, VALID UNTIL its expiry; listing credentials revokes expired ones without failing on the naive expires_at column (unit tests)."
+      - "After 60 wrong X-API-Key attempts in an hour from one address the API answers 429; valid keys from that address still work (unit test)."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_hardening.py::test_delivery_refuses_a_host_that_now_resolves_to_a_private_address
+      - backend/tests/test_api/test_hardening.py::test_delivery_connects_to_the_checked_ip_with_the_original_host_and_sni
+      - backend/tests/test_api/test_hardening.py::test_test_endpoint_failure_is_generic
+      - backend/tests/test_api/test_hardening.py::test_cross_origin_writes_are_refused
+      - backend/tests/test_api/test_hardening.py::test_same_origin_and_non_browser_writes_pass
+      - backend/tests/test_api/test_hardening.py::test_write_api_key_cannot_create_or_repoint_webhooks
+      - backend/tests/test_api/test_hardening.py::test_write_api_key_cannot_issue_db_credentials
+      - backend/tests/test_api/test_hardening.py::test_db_role_is_created_with_valid_until_and_a_connection_limit
+      - backend/tests/test_api/test_hardening.py::test_listing_revokes_expired_credentials_stored_as_naive_utc
+      - backend/tests/test_api/test_hardening.py::test_invalid_api_keys_are_throttled_but_valid_ones_are_not
+      - backend/app/middleware/csrf.py
+    notes:
+      - "2026-11-01: follow-ups from the October security sweep. Webhook and DB-credential writes moved into services. The CREATE ROLE ... CONNECTION LIMIT ... VALID UNTIL statement was checked on local PostgreSQL 16 in a rolled-back transaction. The weekly-recap worker compares TRIGGER_TOKEN in constant time and takes it as a Bearer header (it still accepts ?token=); that needs a wrangler deploy. Not done: receipt forwarding-address verification and SPF/DKIM checks, a shared rate-limit store across workers."
   - id: NFR-MIG-001
     title: Migrations build an empty database
     job: platform

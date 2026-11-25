@@ -99,6 +99,17 @@ async function sendRecap(env: Env): Promise<string> {
   return mail.subject;
 }
 
+// Constant-time comparison: hash both sides so the lengths match, then compare every byte.
+async function sameSecret(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [x, y] = await Promise.all([a, b].map((v) => crypto.subtle.digest("SHA-256", enc.encode(v))));
+  const xa = new Uint8Array(x);
+  const ya = new Uint8Array(y);
+  let diff = 0;
+  for (let i = 0; i < xa.length; i++) diff |= xa[i] ^ ya[i];
+  return diff === 0;
+}
+
 export default {
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
     // A thrown error marks the cron run failed in the Cloudflare dashboard; nothing is swallowed.
@@ -107,7 +118,10 @@ export default {
 
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method !== "POST" || url.pathname !== "/send" || !env.TRIGGER_TOKEN || url.searchParams.get("token") !== env.TRIGGER_TOKEN) {
+    // Prefer the Authorization header: a query-string token ends up in logs. ?token= still works.
+    const bearer = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
+    const presented = bearer || url.searchParams.get("token") || "";
+    if (request.method !== "POST" || url.pathname !== "/send" || !env.TRIGGER_TOKEN || !(await sameSecret(presented, env.TRIGGER_TOKEN))) {
       return new Response("Not found", { status: 404 });
     }
     try {
