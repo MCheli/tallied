@@ -5,7 +5,7 @@
  *
  * Usage (a running app, dev server or production build, database seeded):
  *   node scripts/mobile_qa.mjs [base url] [label] [playwright package dir]   # default http://localhost:5173 after
- *   QA_DEMO=1 node scripts/mobile_qa.mjs https://money-demo.markcheli.com live
+ *   node scripts/mobile_qa.mjs https://money-demo.markcheli.com live playwright demo   # "Enter the demo" sign-in
  *
  * Needs `npx playwright install webkit` in frontend/. Writes .mobile-qa/<label>/<device>/<route>.png
  * and .mobile-qa/<label>/report.json (git-ignored). Exit code 1 if any check fails.
@@ -27,7 +27,7 @@ const { webkit, devices } = require(process.argv[4] || 'playwright');
 
 const BASE = process.argv[2] || 'http://localhost:5173';
 const LABEL = process.argv[3] || 'after';
-const DEMO = process.env.QA_DEMO === '1';
+const DEMO = process.env.QA_DEMO === '1' || process.argv[5] === 'demo';
 const OUT = path.join(repoRoot, '.mobile-qa', LABEL);
 const DEVICES = { 'iphone-15-pro': devices['iPhone 15 Pro'], 'iphone-se': devices['iPhone SE'] };
 const ROUTES = {
