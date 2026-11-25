@@ -1454,6 +1454,27 @@ requirements:
     notes:
       - "2026-11-25: on the iPhone Home Screen app, focusing a field zoomed and shifted the page, the whole page could pinch-zoom and wobble, and the SQL editor showed a ⌘Enter hint. Before/after WebKit screenshots are in .mobile-qa/ (not committed)."
 
+  - id: MOBILE-003
+    title: A sign-in lasts 30 days from the last visit, like Tasks and Cookbook
+    job: platform
+    area: auth
+    priority: p1
+    visible: false
+    done_means:
+      - "GET /auth/me with no valid access token but a valid refresh cookie renews both cookies and answers signed in; it refuses an expired or wrong-type token and a user who is inactive, suspended or pending (unit tests)."
+      - "The refresh cookie is server-set, httpOnly, SameSite=Lax, Max-Age 30 days and scoped to /api/v1/auth, so data routes never receive it; a renewal deletes the cookie at the old /api/v1/auth/refresh path, and sign-out clears both (unit tests)."
+      - "The frontend remembers a session that arrived by cookie (Google sign-in), so a refresh cookie at the old path is still used after a lapsed access token (frontend test)."
+    status: done
+    evidence:
+      - backend/tests/test_api/test_session_length.py::test_me_renews_a_lapsed_session_from_the_refresh_cookie
+      - backend/tests/test_api/test_session_length.py::test_renewed_cookies_are_server_set_http_only_and_last_30_days
+      - backend/tests/test_api/test_session_length.py::test_renewal_retires_the_cookie_at_the_old_refresh_path
+      - backend/tests/test_api/test_session_length.py::test_me_does_not_renew_for_users_who_may_not_sign_in
+      - backend/tests/test_api/test_session_length.py::test_logout_clears_the_refresh_cookie_at_both_paths
+      - frontend/tests/auth-session.spec.ts#remembers a session that arrived by cookie (Google sign-in), so a lapsed access token is refreshed later
+    notes:
+      - "2026-11-25: Google sessions ended with the 4h access token. The 30-day refresh cookie only reached /auth/refresh, and the frontend called that only when a localStorage flag said a session existed; Google sign-in never set the flag. The server logs had no /auth/refresh call at all."
+
   - id: PLAN-V2-016
     title: Planning shows the outlook at once and does not recompute what it already knows
     job: plan

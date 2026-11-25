@@ -67,6 +67,8 @@ export const useAuthStore = defineStore('auth', () => {
       if (data.authenticated) {
         user.value = data.user
         authenticated.value = true
+        // Google sign-in lands here with cookies only, so this is where that session is remembered.
+        rememberSession(true)
       } else {
         // Access token may have expired — try refresh
         const ok = await refreshOnce()

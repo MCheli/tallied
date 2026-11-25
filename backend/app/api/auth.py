@@ -30,6 +30,11 @@ logger = logging.getLogger("tallied")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 4
 REFRESH_TOKEN_EXPIRE_DAYS = 30
+# The refresh cookie goes to /auth/me as well as /auth/refresh, so opening the app after the 4h
+# access token has lapsed renews the session on the server instead of landing on the login page.
+# Data routes never receive it. Until 2026-11 it was scoped to /auth/refresh only.
+REFRESH_COOKIE_PATH = "/api/v1/auth"
+LEGACY_REFRESH_COOKIE_PATH = "/api/v1/auth/refresh"
 
 # ── OAuth setup ────────────────────────────────────────────────────────────────
 
@@ -84,9 +89,10 @@ def _set_auth_cookie(response: Response, token: str, refresh_token: str | None =
         response.set_cookie(
             key="tallied_refresh", value=refresh_token,
             httponly=True, samesite="lax", secure=not settings.dev_mode,
-            path="/api/v1/auth/refresh",
+            path=REFRESH_COOKIE_PATH,
             max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         )
+        response.delete_cookie("tallied_refresh", path=LEGACY_REFRESH_COOKIE_PATH)
 
 
 def _resolve_tenant(user: User, db: Session) -> tuple[Tenant, list[Tenant]]:
@@ -416,13 +422,16 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
             ip_address=request.client.host if request.client else None,
         )
     response.delete_cookie("tallied_token")
-    response.delete_cookie("tallied_refresh", path="/api/v1/auth/refresh")
+    response.delete_cookie("tallied_refresh", path=REFRESH_COOKIE_PATH)
+    response.delete_cookie("tallied_refresh", path=LEGACY_REFRESH_COOKIE_PATH)
     return {"message": "Logged out"}
 
 
-@router.post("/refresh")
-def refresh_token(request: Request, response: Response, db: Session = Depends(get_db)):
-    """Exchange a refresh token for a new access token + refresh token (rotation)."""
+def _renew_session(request: Request, response: Response, db: Session) -> dict:
+    """Rotate both cookies from a valid refresh cookie; 401 if there is none or the user may not sign in.
+
+    Each renewal starts a fresh 30 days, so the session slides: 30 days without opening the app signs out.
+    """
     refresh = request.cookies.get("tallied_refresh")
     if not refresh:
         raise HTTPException(status_code=401, detail="No refresh token")
@@ -452,12 +461,26 @@ def refresh_token(request: Request, response: Response, db: Session = Depends(ge
     }
 
 
+@router.post("/refresh")
+def refresh_token(request: Request, response: Response, db: Session = Depends(get_db)):
+    """Exchange a refresh token for a new access token + refresh token (rotation)."""
+    return _renew_session(request, response, db)
+
+
 @router.get("/me")
-def get_me(request: Request, db: Session = Depends(get_db)):
-    """Get current authenticated user with tenant info."""
+def get_me(request: Request, response: Response, db: Session = Depends(get_db)):
+    """Get current authenticated user with tenant info.
+
+    With no valid access token but a valid refresh cookie, renews the session and answers signed in.
+    """
     user = get_current_user(request, db)
     if not user:
-        return {"user": None, "authenticated": False}
+        try:
+            return _renew_session(request, response, db)
+        except HTTPException as e:
+            if request.cookies.get("tallied_refresh"):
+                logger.info("Session renewal on /auth/me refused: %s", e.detail)
+            return {"user": None, "authenticated": False}
 
     # Get tenant info from JWT
     token = request.cookies.get("tallied_token")
