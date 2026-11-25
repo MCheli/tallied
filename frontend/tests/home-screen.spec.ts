@@ -54,4 +54,33 @@ describe('home screen web app', () => {
     // iOS fills transparent pixels with black, so the icon must be opaque.
     expect(pngHasAlpha(touchIcon)).toBe(false)
   })
+
+  it('declares a full-screen viewport that iOS does not zoom on focus, and runs as an app', () => {
+    const viewport = indexHtml.match(/<meta name="viewport" content="([^"]+)"/)?.[1] ?? ''
+    for (const part of ['width=device-width', 'initial-scale=1', 'maximum-scale=1', 'viewport-fit=cover']) {
+      expect(viewport).toContain(part)
+    }
+    expect(viewport).not.toContain('user-scalable=no')
+    expect(indexHtml).toContain('<meta name="apple-mobile-web-app-capable" content="yes" />')
+    expect(indexHtml).toContain('<meta name="mobile-web-app-capable" content="yes" />')
+    expect(indexHtml).toMatch(/<meta name="apple-mobile-web-app-status-bar-style" content="(default|black-translucent)" \/>/)
+  })
+})
+
+describe('phone feel (style.css)', () => {
+  const css = readFileSync(path.join(frontend, 'src', 'style.css'), 'utf8')
+
+  it('keeps every field at 16px or more on touch screens so iOS does not zoom into it', () => {
+    expect(css).toMatch(/@media \(pointer: coarse\)[\s\S]*textarea, select[\s\S]*font-size: max\(16px, 1em\)/)
+  })
+
+  it('stops double-tap zoom and the whole-page rubber band, and hides shortcut hints on touch', () => {
+    expect(css).toMatch(/html, body \{[^}]*touch-action: manipulation[^}]*overscroll-behavior: none/)
+    expect(css).toMatch(/@media \(hover: none\) and \(pointer: coarse\) \{\s*kbd, \.shortcut-hint \{ display: none !important; \}/)
+  })
+
+  it('pads the phone top bar and main content by the safe-area insets', () => {
+    expect(css).toMatch(/\.app-topbar \{[^}]*env\(safe-area-inset-top\)/)
+    expect(css).toMatch(/\.app-main \{[^}]*env\(safe-area-inset-bottom\)/)
+  })
 })

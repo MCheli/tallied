@@ -782,7 +782,7 @@ onUnmounted(() => {
   </div>
   <div v-else :class="[
     'flex flex-col min-h-0',
-    isFullscreen ? 'fixed inset-0 z-50 bg-white dark:bg-gray-950 p-4' : 'h-[calc(100vh-120px)]'
+    isFullscreen ? 'fixed inset-0 z-50 bg-white dark:bg-gray-950 p-4' : 'h-[calc(100dvh-120px)]'
   ]">
     <!-- Header -->
     <div class="flex items-center justify-between mb-4 flex-shrink-0">
@@ -835,7 +835,11 @@ onUnmounted(() => {
         <div class="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
           <input
             v-model="searchQuery"
-            type="text"
+            type="search"
+            enterkeyhint="search"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
             placeholder="Filter tables..."
             class="w-full px-2.5 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
           />
@@ -1204,18 +1208,20 @@ onUnmounted(() => {
                   @scroll="syncScroll"
                   placeholder="SELECT * FROM accounts LIMIT 10"
                   spellcheck="false"
+                  autocapitalize="off"
+                  autocorrect="off"
                   class="relative w-full min-h-[80px] max-h-[200px] px-3 py-2 text-[12px] leading-[1.6] font-mono bg-transparent text-transparent caret-gray-800 dark:caret-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none resize-y z-10"
                 ></textarea>
               </div>
               <div class="flex items-center justify-between mt-1.5">
-                <span class="text-[10px] text-gray-400 dark:text-gray-500">
+                <span class="shortcut-hint text-[10px] text-gray-400 dark:text-gray-500">
                   <kbd class="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-mono">&#x2318;Enter</kbd> to run
                 </span>
                 <button
                   @click="runSql"
                   :disabled="sqlRunning || !sqlText.trim()"
                   :class="[
-                    'px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
+                    'ml-auto px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
                     sqlRunning || !sqlText.trim()
                       ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                       : 'bg-indigo-600 hover:bg-indigo-700 text-white'
@@ -1460,7 +1466,7 @@ df = pd.read_sql("SELECT * FROM accounts", engine)</pre>
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="closeCredentialModal"></div>
 
         <!-- Modal -->
-        <div class="relative w-[90vw] max-w-2xl max-h-[85vh] bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+        <div class="relative w-[90vw] max-w-2xl max-h-[85dvh] bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
           <!-- Header -->
           <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div class="flex items-center gap-2.5">
@@ -1614,7 +1620,7 @@ engine = create_engine("{{ newCredential.connection_string }}")</code>
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="closePreviewModal"></div>
 
         <!-- Modal -->
-        <div class="relative w-[90vw] max-w-5xl max-h-[85vh] bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+        <div class="relative w-[90vw] max-w-5xl max-h-[85dvh] bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
           <!-- Header -->
           <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div class="flex items-center gap-3">

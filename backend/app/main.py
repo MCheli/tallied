@@ -335,16 +335,27 @@ app.mount("/api/v1", v1)
 # ── Static file serving (production: serves Vue SPA) ──────────────────────────
 
 STATIC_DIR = Path(__file__).parent.parent.parent / "static"
+# index.html and the manifest name the hashed bundles; without this a Home Screen app on iOS can keep
+# a cached index.html (heuristic freshness) and run the previous release. Hashed /assets stay cacheable.
+REVALIDATE = {"Cache-Control": "no-cache"}
+
+
+def spa_response(static_dir: Path, full_path: str):
+    """A file from the built SPA, or index.html for any client route. An unknown /api path is a JSON 404, not the app."""
+    if full_path == "api" or full_path.startswith("api/"):
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    root = static_dir.resolve()
+    file_path = (root / full_path).resolve()
+    if file_path.is_relative_to(root) and file_path.is_file():
+        headers = REVALIDATE if file_path.suffix in (".html", ".webmanifest") else None
+        return FileResponse(file_path, headers=headers)
+    return FileResponse(root / "index.html", headers=REVALIDATE)
+
+
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="static-assets")
 
     @app.get("/{full_path:path}")
     async def serve_spa(request: Request, full_path: str):
-        """Serve Vue SPA — all non-API routes return index.html. An unknown /api path is a JSON 404, not the app."""
-        if full_path == "api" or full_path.startswith("api/"):
-            return JSONResponse({"detail": "Not Found"}, status_code=404)
-        root = STATIC_DIR.resolve()
-        file_path = (root / full_path).resolve()
-        if file_path.is_relative_to(root) and file_path.is_file():
-            return FileResponse(file_path)
-        return FileResponse(root / "index.html")
+        """Serve Vue SPA — all non-API routes return index.html."""
+        return spa_response(STATIC_DIR, full_path)

@@ -314,19 +314,19 @@ const inputClass = 'w-full px-3 py-2 min-h-10 text-sm border border-gray-200 dar
         <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-4">Add Vehicle</h2>
         <div v-if="addError" class="text-sm text-red-500 mb-3">{{ addError }}</div>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Year *<input v-model.number="addForm.year" type="number" min="1900" max="2100" :class="inputClass" class="mt-1" /></label>
+          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Year *<input v-model.number="addForm.year" type="number" inputmode="numeric" min="1900" max="2100" :class="inputClass" class="mt-1" /></label>
           <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Make *<input v-model="addForm.make" type="text" placeholder="e.g. Toyota" :class="inputClass" class="mt-1" /></label>
           <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Model *<input v-model="addForm.model" type="text" placeholder="e.g. RAV4" :class="inputClass" class="mt-1" /></label>
           <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Trim<input v-model="addForm.trim" type="text" placeholder="e.g. XLE" :class="inputClass" class="mt-1" /></label>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Mileage<input v-model.number="addForm.mileage" type="number" min="0" placeholder="e.g. 85000" :class="inputClass" class="mt-1" /></label>
+          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Mileage<input v-model.number="addForm.mileage" type="number" inputmode="numeric" min="0" placeholder="e.g. 85000" :class="inputClass" class="mt-1" /></label>
           <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Condition
             <select v-model="addForm.condition" :class="inputClass" class="mt-1">
               <option v-for="(label, key) in conditionLabels" :key="key" :value="key">{{ label }}</option>
             </select>
           </label>
-          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Purchase price<input v-model.number="addForm.purchase_price" type="number" min="0" placeholder="e.g. 25000" :class="inputClass" class="mt-1" /></label>
+          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Purchase price<input v-model.number="addForm.purchase_price" type="number" inputmode="decimal" min="0" placeholder="e.g. 25000" :class="inputClass" class="mt-1" /></label>
           <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Purchase date<input v-model="addForm.purchase_date" type="date" :class="inputClass" class="mt-1" /></label>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -435,11 +435,11 @@ const inputClass = 'w-full px-3 py-2 min-h-10 text-sm border border-gray-200 dar
             <template v-else>
               <h3 class="text-base font-bold text-gray-900 dark:text-white mb-4">{{ v.year }} {{ v.make }} {{ v.model }} <span v-if="v.trim" class="text-sm font-normal text-gray-500 dark:text-gray-400">{{ v.trim }}</span></h3>
               <div class="grid grid-cols-2 gap-4 mb-4">
-                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Mileage<input v-model.number="editForm.mileage" type="number" min="0" :class="inputClass" class="mt-1" /></label>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Mileage<input v-model.number="editForm.mileage" type="number" inputmode="numeric" min="0" :class="inputClass" class="mt-1" /></label>
                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Condition
                   <select v-model="editForm.condition" :class="inputClass" class="mt-1"><option v-for="(label, key) in conditionLabels" :key="key" :value="key">{{ label }}</option></select>
                 </label>
-                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Purchase price<input v-model.number="editForm.purchase_price" type="number" min="0" :class="inputClass" class="mt-1" /></label>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Purchase price<input v-model.number="editForm.purchase_price" type="number" inputmode="decimal" min="0" :class="inputClass" class="mt-1" /></label>
                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">Purchase date<input v-model="editForm.purchase_date" type="date" :class="inputClass" class="mt-1" /></label>
               </div>
               <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-4">Notes<textarea v-model="editForm.notes" rows="2" :class="inputClass" class="mt-1"></textarea></label>

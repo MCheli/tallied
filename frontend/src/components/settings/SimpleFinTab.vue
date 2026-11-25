@@ -186,6 +186,7 @@ const selectClass = 'px-2 py-1 text-xs rounded border border-gray-300 dark:borde
       </p>
       <div class="space-y-2">
         <textarea v-model="setupToken" placeholder="Paste base64 setup token here" rows="3"
+          autocapitalize="off" autocorrect="off" spellcheck="false"
           class="w-full px-3 py-2 text-xs font-mono border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></textarea>
         <div class="flex justify-end">
           <button v-demo-lock @click="connect" :disabled="connecting || !setupToken.trim()"
@@ -230,6 +231,7 @@ const selectClass = 'px-2 py-1 text-xs rounded border border-gray-300 dark:borde
           <h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300">Refresh access URL</h4>
           <p class="text-xs text-gray-400 dark:text-gray-500">Paste a fresh setup token. Account settings are preserved.</p>
           <textarea v-model="refreshToken" placeholder="New setup token" rows="3"
+            autocapitalize="off" autocorrect="off" spellcheck="false"
             class="w-full px-3 py-2 text-xs font-mono border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></textarea>
           <div class="flex items-center justify-end gap-2">
             <button @click="cancelRefresh" class="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">Cancel</button>

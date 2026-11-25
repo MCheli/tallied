@@ -1,11 +1,14 @@
 SHELL := /bin/bash
 .PHONY: dev dev-backend dev-frontend test test-e2e test-frontend test-all seed-test lint build clean db-start pre-commit typecheck setup-db-roles ledger-check tour
 
+PYTHON ?= python3
+BACKEND_PORT ?= 8000
+
 # Development
 dev: dev-backend dev-frontend
 
-dev-backend:
-	cd backend && source .venv/bin/activate && uvicorn app.main:app --reload --port 8000
+dev-backend:  ## BACKEND_PORT=8010 runs a second checkout's backend beside the main one (pair with VITE_API_PROXY)
+	cd backend && source .venv/bin/activate && uvicorn app.main:app --reload --port $(BACKEND_PORT)
 
 dev-frontend:
 	cd frontend && npm run dev
@@ -73,7 +76,7 @@ clean:
 
 # Install dependencies
 install:
-	cd backend && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+	cd backend && $(PYTHON) -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 	cd frontend && npm install
 
 # Help

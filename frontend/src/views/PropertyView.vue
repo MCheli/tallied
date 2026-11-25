@@ -495,7 +495,7 @@ const sourceOptions: ValuationSourceLabel[] = ['Manual', 'Redfin', 'Zillow', 'Ap
               <input v-model="valuationDate" type="date" class="mt-1 w-full py-2 px-3 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
             </label>
             <label class="block text-xs text-gray-500 dark:text-gray-400">Value
-              <input v-model="newValuation" type="text" inputmode="decimal" placeholder="e.g. 550000" @keyup.enter="submitValuation"
+              <input v-model="newValuation" type="text" inputmode="decimal" enterkeyhint="done" placeholder="e.g. 550000" @keyup.enter="submitValuation"
                 class="mt-1 w-full py-2 px-3 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
             </label>
             <label class="block text-xs text-gray-500 dark:text-gray-400">Source
@@ -579,7 +579,7 @@ const sourceOptions: ValuationSourceLabel[] = ['Manual', 'Redfin', 'Zillow', 'Ap
           <div v-if="equity.needsPurchasePrice" class="mt-4 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-3">
             <div class="text-xs text-gray-600 dark:text-gray-400 mb-2">Enter what you paid for the house to split equity into down payment and appreciation.</div>
             <div class="flex flex-wrap gap-2 items-center">
-              <input v-model="purchaseInput" type="text" inputmode="decimal" placeholder="Purchase price, e.g. 450000" @keyup.enter="savePurchasePrice"
+              <input v-model="purchaseInput" type="text" inputmode="decimal" enterkeyhint="done" placeholder="Purchase price, e.g. 450000" @keyup.enter="savePurchasePrice"
                 class="py-2 px-3 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white w-full sm:w-56" />
               <button v-demo-lock @click="savePurchasePrice" :disabled="savingPurchase" class="px-4 py-2 min-h-10 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
                 {{ savingPurchase ? 'Saving…' : 'Save purchase price' }}

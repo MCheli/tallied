@@ -303,7 +303,7 @@ onMounted(() => {
             <div class="space-y-3">
               <div>
                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-                <input v-model="newName" type="text" placeholder="e.g., jupyter-notebook"
+                <input v-model="newName" type="text" autocapitalize="off" autocorrect="off" placeholder="e.g., jupyter-notebook"
                   class="w-full px-3 py-2 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
               </div>
               <div>
