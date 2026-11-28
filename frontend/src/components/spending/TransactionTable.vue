@@ -68,7 +68,7 @@ async function startEdit(tx: Transaction) {
 }
 
 async function saveEdit(tx: Transaction) {
-  let category = '', group = ''
+  let category: string, group: string
   if (choice.value === '__new__') { category = newCategory.value.trim(); group = newGroup.value.trim() || 'Other' }
   else [category, group] = choice.value.split('||')
   if (!category) { editError.value = 'Pick a category'; return }

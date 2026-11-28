@@ -273,8 +273,8 @@ const sqlPreview = computed(() => {
       return `  ${f.column} = ${formatted}`
     })
 
-    let sql = ''
-    let action = ''
+    let sql: string
+    let action: string
     const whereClause = change.record_key
       ? `WHERE ${change.record_key}`
       : table === 'w2_records' && change.tax_year

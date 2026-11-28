@@ -26,7 +26,7 @@ export const useThemeStore = defineStore('theme', () => {
   }
 
   function init() {
-    let saved: string | null = null
+    let saved: string | null
     try {
       saved = localStorage.getItem('theme')
     } catch {
