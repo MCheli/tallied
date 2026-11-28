@@ -59,8 +59,14 @@ class TestSqlRunnerPerTenantRole:
         escaped = "\\0074" + other[1:]  # U&"\0074enant_..." names the schema without matching tenant_\w
         resp = _run(client, sql.format(other=other, other_escaped=escaped))
         assert resp.status_code == 400, resp.text
-        # set_config's search_path does not reach query_to_xml's lookup, so that one fails on the name instead.
-        assert "permission denied" in resp.text.lower() or "does not exist" in resp.text.lower()
+        # Refused up front (these functions and escapes are not available), or by Postgres if one got through.
+        text = resp.text.lower()
+        assert "not available" in text or "permission denied" in text or "does not exist" in text
+
+    def test_the_runner_role_cannot_be_dropped_inside_the_query(self, client, seed_test_data):
+        resp = _run(client, "SELECT set_config('role', 'none', true) AS r")
+        assert resp.status_code == 400, resp.text
+        assert "not available" in resp.text.lower()
 
     def test_tenants_get_distinct_runner_roles(self, pg_engine, seed_test_data, second_tenant_setup, e2e_setup):
         from sqlalchemy import text

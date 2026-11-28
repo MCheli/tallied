@@ -651,9 +651,11 @@ requirements:
       - "SELECT email FROM users, SELECT * FROM \"public\".\"users\", SELECT * FROM pg_authid and SELECT pg_read_file('/etc/passwd') all fail from the runner; SELECT count(*) FROM accounts succeeds (e2e test against Postgres)."
       - "Queries run as a role with no privileges on public and no superuser rights, in a read-only transaction, with a statement timeout."
       - "Each tenant has its own runner role with SELECT on its schema only, so another tenant's tables are refused by Postgres even through query_to_xml, U&\"\" identifiers or set_config (e2e test)."
+      - "Functions that change settings or run SQL from a string (set_config, query_to_xml, ts_stat, ts_rewrite, dblink) and U&\"\" identifiers are refused before the query runs (unit and e2e tests)."
     status: done
     evidence:
       - backend/tests/test_e2e/test_sql_runner.py::test_other_tenant_is_refused_even_when_the_regex_is_bypassed
+      - backend/tests/test_e2e/test_sql_runner.py::test_the_runner_role_cannot_be_dropped_inside_the_query
       - backend/tests/test_e2e/test_sql_runner.py::test_tenants_get_distinct_runner_roles
       - backend/tests/test_e2e/test_sql_runner.py::test_platform_tables_and_superuser_functions_are_refused
       - backend/tests/test_e2e/test_sql_runner.py::test_other_tenant_schema_is_refused

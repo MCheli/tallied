@@ -130,10 +130,28 @@ def test_webhook_accepts_public_ip_url(client):
     "SET ROLE postgres",
     "SELECT set_config('search_path', 'public', false); SELECT 1",
     "COPY (SELECT 1) TO PROGRAM 'id'",
+    "SELECT set_config('role', 'none', true)",
+    'SELECT "set_config"(\'statement_timeout\', \'0\', true)',
+    "SELECT query_to_xml('select 1', true, false, '')",
+    "SELECT ts_stat('select 1')",
+    'SELECT * FROM U&"\\0061ccounts"',
+    "SELECT query_to_xml_and_xmlschema('select 1', true, false, '')",
+    "SELECT dblink_exec('dbname=x', 'select 1')",
+    "SELECT ts_rewrite('a & b'::tsquery, 'select 1')",
 ])
 def test_sql_runner_rejects_dangerous_text(sql):
     with pytest.raises(QueryRejected):
         validate_sql(sql, 100)
+
+
+@pytest.mark.parametrize("sql", [
+    "SELECT status, count(*) AS receipts_status FROM email_receipts GROUP BY status",
+    "SELECT count(*) AS accounts_stats FROM accounts",
+    "SELECT * FROM transactions WHERE description ILIKE '%reset config%'",
+    "SELECT 'U&' AS label",
+])
+def test_sql_runner_allows_ordinary_selects_near_blocked_names(sql):
+    assert validate_sql(sql, 100).startswith(sql)
 
 
 def test_sql_runner_adds_limit_and_caps_it():
