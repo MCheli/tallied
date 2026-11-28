@@ -46,7 +46,10 @@ DANGEROUS_WORDS = ("DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "TRU
 QUALIFIED_SCHEMA_RE = re.compile(r'"?\b(public|pg_catalog|pg_\w+|information_schema|tenant_\w*)"?\s*\.', re.IGNORECASE)
 SET_RE = re.compile(r"\b(SET|RESET)\s+(LOCAL\s+|SESSION\s+)?(ROLE|search_path|statement_timeout|transaction)\b", re.IGNORECASE)
 # Settings changes and SQL run from a string (query_to_xml* and friends could call set_config again).
-BLOCKED_FUNCTION_RE = re.compile(r'set_config|query_to_xml|ts_stat|ts_rewrite|dblink|\bU&\s*"', re.IGNORECASE)
+# Whole names only, so identifiers like receipts_status or an alias accounts_stats still run.
+BLOCKED_FUNCTION_RE = re.compile(
+    r'\b(set_config|query_to_xml\w*|ts_stat|ts_rewrite|dblink\w*)\b|\bU&\s*"', re.IGNORECASE
+)
 
 _granted_schemas: set[str] = set()
 _legacy_checked = False
