@@ -130,6 +130,11 @@ def test_webhook_accepts_public_ip_url(client):
     "SET ROLE postgres",
     "SELECT set_config('search_path', 'public', false); SELECT 1",
     "COPY (SELECT 1) TO PROGRAM 'id'",
+    "SELECT set_config('role', 'none', true)",
+    'SELECT "set_config"(\'statement_timeout\', \'0\', true)',
+    "SELECT query_to_xml('select 1', true, false, '')",
+    "SELECT ts_stat('select 1')",
+    'SELECT * FROM U&"\\0061ccounts"',
 ])
 def test_sql_runner_rejects_dangerous_text(sql):
     with pytest.raises(QueryRejected):

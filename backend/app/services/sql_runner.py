@@ -8,7 +8,9 @@ Isolation is enforced by Postgres, not by parsing:
   pg_authid, pg_read_file and friends are refused by the server, however the
   query names them: query_to_xml, U&"" identifiers, set_config);
 - `search_path` is set to the tenant schema alone for the transaction;
-- the transaction is READ ONLY and has a statement timeout.
+- the transaction is READ ONLY and has a statement timeout;
+- queries may not call functions that change settings or run SQL passed as a string,
+  nor use Unicode-escaped identifiers, so the role and search_path stay as set here.
 
 A tenant's role is created and granted SELECT on its schema the first time that
 tenant runs a query (cached per process). The application role must be able to
@@ -43,6 +45,8 @@ DANGEROUS_WORDS = ("DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "TRU
 # Defence in depth; the role and search_path are what actually isolate the query.
 QUALIFIED_SCHEMA_RE = re.compile(r'"?\b(public|pg_catalog|pg_\w+|information_schema|tenant_\w*)"?\s*\.', re.IGNORECASE)
 SET_RE = re.compile(r"\b(SET|RESET)\s+(LOCAL\s+|SESSION\s+)?(ROLE|search_path|statement_timeout|transaction)\b", re.IGNORECASE)
+# Settings changes and SQL run from a string (query_to_xml* and friends could call set_config again).
+BLOCKED_FUNCTION_RE = re.compile(r'set_config|query_to_xml|ts_stat|ts_rewrite|dblink|\bU&\s*"', re.IGNORECASE)
 
 _granted_schemas: set[str] = set()
 _legacy_checked = False
@@ -75,6 +79,8 @@ def validate_sql(sql: str, limit: int) -> str:
         raise QueryRejected("Schema-qualified table names are not allowed")
     if SET_RE.search(sql):
         raise QueryRejected("Session settings cannot be changed")
+    if BLOCKED_FUNCTION_RE.search(sql):
+        raise QueryRejected("That function is not available in the SQL runner")
     limit = max(1, min(int(limit), MAX_ROWS))
     if not re.search(r"\bLIMIT\b", sql, re.IGNORECASE):
         sql = f"{sql} LIMIT {limit}"

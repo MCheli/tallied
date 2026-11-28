@@ -35,3 +35,15 @@ updates:
     ignore:
       - dependency-name: sqlalchemy
         versions: [">=2.1"]
+
+  # Frontend build tooling (Vite, Vitest, ESLint) and the Cloudflare workers' Wrangler; one grouped PR a week.
+  - package-ecosystem: npm
+    directories:
+      - "/frontend"
+      - "/workers/email-receipt"
+      - "/workers/weekly-recap"
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
